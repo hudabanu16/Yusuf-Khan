@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "538647707022",
+    "project_id": "salman-1ce8f",
+    "storage_bucket": "salman-1ce8f.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:538647707022:android:44159bf4d817937543f8df",
+        "android_client_info": {
+          "package_name": "com.example.genz_protech"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCEPJmirllrI0rNjQ8UzLmQGxdHT2N7Z2Q"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
