@@ -3,13 +3,13 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
 import 'package:QUIK/core/theme/app_theme.dart';
-import 'package:QUIK/auth/register/register_screen_local.dart' as reg;
-import 'package:QUIK/modules/sales/quotations/quotation_screen_local.dart';
+import 'package:QUIK/modules/administration/users/screen_user_management.dart';
 import 'package:QUIK/modules/crm/customers/screens_customer_list.dart';
 import 'package:QUIK/modules/inventory/products/screens_product_list.dart';
-import 'package:QUIK/modules/sales/inquiries/screens_inquiry_list.dart';
-import 'package:QUIK/modules/administration/users/screen_user_management.dart';
 import 'package:QUIK/modules/iot/screen_iot_monitoring.dart';
+import 'package:QUIK/modules/sales/inquiries/screens_inquiry_list.dart';
+import 'package:QUIK/modules/sales/quotations/quotation_screen_local.dart';
+import 'package:QUIK/modules/settings/screen_settings_home.dart';
 
 enum ShellPage {
   dashboard,
@@ -484,12 +484,14 @@ class _ZohoShellState extends State<ZohoShell> {
 
   bool _isImplementedPage(ShellPage page) {
     switch (page) {
+      case ShellPage.dashboard:
       case ShellPage.salesInquiries:
       case ShellPage.crmCustomers:
       case ShellPage.inventoryProducts:
       case ShellPage.salesQuotations:
       case ShellPage.adminUsers:
       case ShellPage.iotMonitoring:
+      case ShellPage.settingsGeneral:
         return true;
       default:
         return false;
@@ -502,9 +504,7 @@ class _ZohoShellState extends State<ZohoShell> {
       return;
     }
 
-    if (_isImplementedPage(activePage) ||
-        activePage == ShellPage.dashboard ||
-        activePage == ShellPage.settingsGeneral) {
+    if (_isImplementedPage(activePage)) {
       return;
     }
 
@@ -521,15 +521,35 @@ class _ZohoShellState extends State<ZohoShell> {
 
   String _activeSectionTitle() {
     if (activePage == ShellPage.dashboard) return 'Dashboard';
+    if (activePage == ShellPage.settingsGeneral) return 'Settings';
+
     if (sidebarGroups.any((group) => group.children.contains(activePage))) {
       final group =
       sidebarGroups.firstWhere((g) => g.children.contains(activePage));
       return '${group.title} • ${activePage.label}';
     }
+
     return activePage.label;
   }
 
   Widget _buildHeaderActionButton() {
+    final String label;
+    final IconData icon;
+
+    if (activePage == ShellPage.dashboard) {
+      label = 'Dashboard';
+      icon = Icons.dashboard_outlined;
+    } else if (activePage == ShellPage.settingsGeneral) {
+      label = 'Settings';
+      icon = Icons.settings_outlined;
+    } else if (_isImplementedPage(activePage)) {
+      label = 'Live';
+      icon = Icons.open_in_new;
+    } else {
+      label = 'Preview';
+      icon = Icons.remove_red_eye_outlined;
+    }
+
     return FilledButton.icon(
       style: FilledButton.styleFrom(
         backgroundColor: zBlue,
@@ -538,18 +558,9 @@ class _ZohoShellState extends State<ZohoShell> {
         ),
       ),
       onPressed: _openActivePage,
-      icon: Icon(
-        activePage == ShellPage.dashboard
-            ? Icons.dashboard_outlined
-            : Icons.open_in_new,
-        size: 18,
-      ),
+      icon: Icon(icon, size: 18),
       label: Text(
-        activePage == ShellPage.dashboard
-            ? 'Dashboard'
-            : _isImplementedPage(activePage)
-            ? 'Live'
-            : 'Preview',
+        label,
         style: const TextStyle(fontWeight: FontWeight.bold),
       ),
     );
@@ -656,9 +667,7 @@ class _ZohoShellState extends State<ZohoShell> {
                 ),
               ),
               const SizedBox(width: 12),
-              Flexible(
-                child: _buildEmailChip(),
-              ),
+              Flexible(child: _buildEmailChip()),
               const SizedBox(width: 12),
               _buildHeaderActionButton(),
             ],
@@ -951,8 +960,9 @@ class _ZohoShellState extends State<ZohoShell> {
               firstChild: Padding(
                 padding: const EdgeInsets.fromLTRB(8, 0, 8, 8),
                 child: Column(
-                  children:
-                  group.children.map((page) => _subNavItem(page, group)).toList(),
+                  children: group.children
+                      .map((page) => _subNavItem(page, group))
+                      .toList(),
                 ),
               ),
               secondChild: const SizedBox.shrink(),
@@ -1072,7 +1082,16 @@ class _ZohoShellState extends State<ZohoShell> {
         return const ScreenIotMonitoring();
 
       case ShellPage.settingsGeneral:
-        return const reg.RegisterScreenLocal();
+        return ScreenSettingsHome(
+          companyId: widget.companyId,
+          companyName: widget.companyName,
+          role: widget.role,
+          userEmail: widget.userEmail,
+          permissions: widget.permissions,
+          onOpenUsers: () => _selectPage(ShellPage.adminUsers),
+          onOpenCompanyProfile: () => _selectPage(ShellPage.adminCompanyProfile),
+          onOpenAuditLogs: () => _selectPage(ShellPage.adminAuditLogs),
+        );
 
       default:
         return _moduleLandingPage(activePage);
@@ -1201,7 +1220,8 @@ class _ZohoShellState extends State<ZohoShell> {
                       Row(
                         children: [
                           FilledButton.icon(
-                            onPressed: allowed ? () => _openActivePage() : _noAccess,
+                            onPressed:
+                            allowed ? () => _openActivePage() : _noAccess,
                             style: FilledButton.styleFrom(
                               backgroundColor: zBlue,
                               shape: RoundedRectangleBorder(
@@ -1286,6 +1306,8 @@ class _ZohoShellState extends State<ZohoShell> {
         return ['Access', 'Permissions', 'Roles', 'Team'];
       case ShellPage.iotMonitoring:
         return ['Machines', 'Live Data', 'Telemetry', 'Alerts'];
+      case ShellPage.settingsGeneral:
+        return ['Company', 'Security', 'Users', 'Audit'];
       default:
         return ['Professional', 'Scalable', 'Modular', 'SaaS'];
     }
@@ -1305,6 +1327,8 @@ class _ZohoShellState extends State<ZohoShell> {
         return 'Handle user management, role-based access, and team structure for each company workspace.';
       case ShellPage.iotMonitoring:
         return 'Monitor connected machines, see live telemetry, review alerts, and prepare your system for machine health, energy tracking, and predictive service features.';
+      case ShellPage.settingsGeneral:
+        return 'Manage workspace preferences, company controls, users, security, notifications, integrations, and audit-related options from one professional ERP settings hub.';
       default:
         return 'This module is part of the new professional QUIK SaaS structure. You can keep your current app working while gradually connecting this module to its own database, screens, and workflows.';
     }
@@ -1353,6 +1377,13 @@ class _ZohoShellState extends State<ZohoShell> {
           'Online / offline status',
           'Current and voltage readings',
           'Alarm and warning feed',
+        ];
+      case ShellPage.settingsGeneral:
+        return [
+          'Company profile',
+          'Users and permissions',
+          'Security and access',
+          'Audit and integrations',
         ];
       default:
         return [

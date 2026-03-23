@@ -18,6 +18,7 @@ dependencies:
   cloud_firestore: ^5.4.4
   firebase_auth: ^5.7.0
   firebase_storage: ^12.4.10
+  cloud_functions: ^5.0.0   # ✅ ADD THIS LINE
 
   # Local storage
   shared_preferences: ^2.1.1

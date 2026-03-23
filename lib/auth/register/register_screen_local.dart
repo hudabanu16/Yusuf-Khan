@@ -206,12 +206,13 @@ class _RegisterScreenLocalState extends State<RegisterScreenLocal> {
   }
 
   Widget _buildBody() {
-    final pageTitle = controller.isEditMode ? 'Edit Workspace' : 'Create Workspace';
+    final pageTitle =
+    controller.isEditMode ? 'My Profile' : 'Create Workspace';
     final cardTitle = controller.isEditMode
-        ? 'Update your business workspace'
+        ? 'Update workspace profile'
         : 'Create your business workspace';
     final cardSubtitle = controller.isEditMode
-        ? 'Keep your workspace profile accurate and ready for operations.'
+        ? 'Review and update the company information saved during registration.'
         : 'Set up your company profile to manage customers, inquiries, quotations and users.';
 
     return Scaffold(
@@ -296,7 +297,8 @@ class _RegisterScreenLocalState extends State<RegisterScreenLocal> {
                                     icon: Icons.account_balance_outlined,
                                     items: RegisterConstants.entityTypes,
                                     required: true,
-                                    onChanged: controller.setSelectedEntityType,
+                                    onChanged:
+                                    controller.setSelectedEntityType,
                                   ),
                                   RegisterWidgets.buildDropdownField<String>(
                                     value: controller.selectedIndustryType,
@@ -304,7 +306,8 @@ class _RegisterScreenLocalState extends State<RegisterScreenLocal> {
                                     icon: Icons.category_outlined,
                                     items: RegisterConstants.industryTypes,
                                     required: true,
-                                    onChanged: controller.setSelectedIndustryType,
+                                    onChanged:
+                                    controller.setSelectedIndustryType,
                                   ),
                                 ],
                               ),
@@ -315,7 +318,8 @@ class _RegisterScreenLocalState extends State<RegisterScreenLocal> {
                                 icon: Icons.account_tree_outlined,
                                 items: controller.availableSubIndustries,
                                 required: true,
-                                onChanged: controller.setSelectedSubIndustry,
+                                onChanged:
+                                controller.setSelectedSubIndustry,
                               ),
                               const SizedBox(height: 10),
                               RegisterWidgets.buildTextField(
@@ -375,7 +379,8 @@ class _RegisterScreenLocalState extends State<RegisterScreenLocal> {
                                 icon: Icons.groups_2_outlined,
                                 items: RegisterConstants.employeeRanges,
                                 required: true,
-                                onChanged: controller.setSelectedEmployeeRange,
+                                onChanged:
+                                controller.setSelectedEmployeeRange,
                               ),
                             ],
                           ),
@@ -406,7 +411,8 @@ class _RegisterScreenLocalState extends State<RegisterScreenLocal> {
                                     icon: Icons.map_outlined,
                                     items: RegisterConstants.indiaStates,
                                     required: true,
-                                    onChanged: controller.setSelectedStateValue,
+                                    onChanged:
+                                    controller.setSelectedStateValue,
                                   ),
                                 ],
                               ),
@@ -470,16 +476,19 @@ class _RegisterScreenLocalState extends State<RegisterScreenLocal> {
                                       color: regMuted,
                                       size: 19,
                                     ),
-                                    onPressed: controller.toggleObscurePassword,
+                                    onPressed:
+                                    controller.toggleObscurePassword,
                                   ),
                                 ),
                                 const SizedBox(height: 10),
                                 RegisterWidgets.buildTextField(
-                                  controller: controller.confirmPasswordController,
+                                  controller:
+                                  controller.confirmPasswordController,
                                   label: 'Confirm Password',
                                   icon: Icons.lock_outline,
                                   hint: 'Re-enter password',
-                                  obscureText: controller.obscureConfirmPassword,
+                                  obscureText:
+                                  controller.obscureConfirmPassword,
                                   required: true,
                                   suffixIcon: IconButton(
                                     icon: Icon(
@@ -489,7 +498,8 @@ class _RegisterScreenLocalState extends State<RegisterScreenLocal> {
                                       color: regMuted,
                                       size: 19,
                                     ),
-                                    onPressed: controller.toggleObscureConfirmPassword,
+                                    onPressed: controller
+                                        .toggleObscureConfirmPassword,
                                   ),
                                 ),
                                 const SizedBox(height: 10),
@@ -501,7 +511,8 @@ class _RegisterScreenLocalState extends State<RegisterScreenLocal> {
                                   ),
                                   decoration: BoxDecoration(
                                     color: regFieldBg,
-                                    borderRadius: BorderRadius.circular(14),
+                                    borderRadius:
+                                    BorderRadius.circular(14),
                                     border: Border.all(color: regBorder),
                                   ),
                                   child: const Row(
@@ -543,12 +554,13 @@ class _RegisterScreenLocalState extends State<RegisterScreenLocal> {
                                   style: OutlinedButton.styleFrom(
                                     side: const BorderSide(color: regBorder),
                                     shape: RoundedRectangleBorder(
-                                      borderRadius: BorderRadius.circular(16),
+                                      borderRadius:
+                                      BorderRadius.circular(16),
                                     ),
                                   ),
-                                  child: const Text(
-                                    'Back',
-                                    style: TextStyle(
+                                  child: Text(
+                                    controller.isEditMode ? 'Close' : 'Back',
+                                    style: const TextStyle(
                                       fontSize: 14.5,
                                       fontWeight: FontWeight.w700,
                                       color: regText,
@@ -570,7 +582,8 @@ class _RegisterScreenLocalState extends State<RegisterScreenLocal> {
                                   style: FilledButton.styleFrom(
                                     backgroundColor: regSidebarTone,
                                     shape: RoundedRectangleBorder(
-                                      borderRadius: BorderRadius.circular(16),
+                                      borderRadius:
+                                      BorderRadius.circular(16),
                                     ),
                                     elevation: 0,
                                   ),
@@ -600,7 +613,8 @@ class _RegisterScreenLocalState extends State<RegisterScreenLocal> {
                                   style: OutlinedButton.styleFrom(
                                     side: const BorderSide(color: regBorder),
                                     shape: RoundedRectangleBorder(
-                                      borderRadius: BorderRadius.circular(16),
+                                      borderRadius:
+                                      BorderRadius.circular(16),
                                     ),
                                   ),
                                   child: const Text(
@@ -623,23 +637,27 @@ class _RegisterScreenLocalState extends State<RegisterScreenLocal> {
                                       ? null
                                       : () async {
                                     final ok = await controller.saveProfile(
+                                      context: context,
                                       onError: _showError,
                                       onSuccess: _showSuccess,
                                     );
-                                    if (ok && mounted) {
+                                    if (ok &&
+                                        mounted &&
+                                        controller.isEditMode) {
                                       Navigator.pop(context);
                                     }
                                   },
                                   style: FilledButton.styleFrom(
                                     backgroundColor: regSidebarTone,
                                     shape: RoundedRectangleBorder(
-                                      borderRadius: BorderRadius.circular(16),
+                                      borderRadius:
+                                      BorderRadius.circular(16),
                                     ),
                                     elevation: 0,
                                   ),
                                   child: Text(
                                     controller.isEditMode
-                                        ? 'Save Changes'
+                                        ? 'Update Profile'
                                         : 'Create Workspace',
                                     style: const TextStyle(
                                       fontSize: 14.5,

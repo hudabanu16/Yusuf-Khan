@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 
 import 'register_constants.dart';
 import 'register_workspace_service.dart';
+import 'verify_workspace_otp_screen.dart';
 
 class RegisterController extends ChangeNotifier {
   RegisterController({RegisterWorkspaceService? service})
@@ -69,16 +70,20 @@ class RegisterController extends ChangeNotifier {
         selectedEntityType == 'Government Company';
   }
 
-  bool get needsLLPIN => selectedEntityType == 'Limited Liability Partnership (LLP)';
+  bool get needsLLPIN =>
+      selectedEntityType == 'Limited Liability Partnership (LLP)';
 
-  bool get needsFirmRegistration => selectedEntityType == 'Partnership Firm';
+  bool get needsFirmRegistration =>
+      selectedEntityType == 'Partnership Firm';
 
   bool get needsTrustRegistration =>
       selectedEntityType == 'Trust' || selectedEntityType == 'Society';
 
-  bool get needsProprietorName => selectedEntityType == 'Proprietorship';
+  bool get needsProprietorName =>
+      selectedEntityType == 'Proprietorship';
 
-  bool get needsKartaName => selectedEntityType == 'Hindu Undivided Family (HUF)';
+  bool get needsKartaName =>
+      selectedEntityType == 'Hindu Undivided Family (HUF)';
 
   bool get needsManagingPartner =>
       selectedEntityType == 'Partnership Firm' ||
@@ -165,10 +170,13 @@ class RegisterController extends ChangeNotifier {
 
     isEditMode = true;
 
-    entityNameController.text = (user['entityName'] ?? user['companyName'] ?? '').toString();
-    addressController.text = (user['address'] ?? user['streetAddress'] ?? '').toString();
+    entityNameController.text =
+        (user['entityName'] ?? user['companyName'] ?? '').toString();
+    addressController.text =
+        (user['address'] ?? user['streetAddress'] ?? '').toString();
     stateController.text = (user['state'] ?? '').toString();
-    cityController.text = (user['district'] ?? user['city'] ?? '').toString();
+    cityController.text =
+        (user['district'] ?? user['city'] ?? '').toString();
     pincodeController.text = (user['pincode'] ?? '').toString();
     emailController.text = (user['email'] ?? '').toString();
     phoneController.text = (user['phone'] ?? '').toString();
@@ -178,12 +186,17 @@ class RegisterController extends ChangeNotifier {
 
     cinController.text = (user['cin'] ?? '').toString();
     llpinController.text = (user['llpin'] ?? '').toString();
-    firmRegistrationController.text = (user['firmRegistrationNumber'] ?? '').toString();
-    trustRegistrationController.text = (user['trustRegistrationNumber'] ?? '').toString();
-    proprietorNameController.text = (user['proprietorName'] ?? '').toString();
+    firmRegistrationController.text =
+        (user['firmRegistrationNumber'] ?? '').toString();
+    trustRegistrationController.text =
+        (user['trustRegistrationNumber'] ?? '').toString();
+    proprietorNameController.text =
+        (user['proprietorName'] ?? '').toString();
     kartaNameController.text = (user['kartaName'] ?? '').toString();
-    managingPartnerController.text = (user['managingPartnerName'] ?? '').toString();
-    authorizedPersonController.text = (user['authorizedPersonName'] ?? '').toString();
+    managingPartnerController.text =
+        (user['managingPartnerName'] ?? '').toString();
+    authorizedPersonController.text =
+        (user['authorizedPersonName'] ?? '').toString();
 
     selectedEntityType = (user['entityType'] ?? '').toString().isEmpty
         ? null
@@ -194,7 +207,9 @@ class RegisterController extends ChangeNotifier {
         : user['employeeRange'].toString();
 
     selectedIndustryType =
-    (user['industryType'] ?? user['businessCategory'] ?? '').toString().isEmpty
+    (user['industryType'] ?? user['businessCategory'] ?? '')
+        .toString()
+        .isEmpty
         ? null
         : (user['industryType'] ?? user['businessCategory']).toString();
 
@@ -202,23 +217,28 @@ class RegisterController extends ChangeNotifier {
         ? null
         : user['subIndustry'].toString();
 
-    selectedListingStatus = (user['listingStatus'] ?? '').toString().isEmpty
+    selectedListingStatus =
+    (user['listingStatus'] ?? '').toString().isEmpty
         ? null
         : user['listingStatus'].toString();
 
-    selectedRegistrationStatus = (user['registrationStatus'] ?? '').toString().isEmpty
+    selectedRegistrationStatus =
+    (user['registrationStatus'] ?? '').toString().isEmpty
         ? null
         : user['registrationStatus'].toString();
 
     final savedState = stateController.text.trim();
-    selectedStateValue = RegisterConstants.indiaStates.contains(savedState) ? savedState : null;
+    selectedStateValue = RegisterConstants.indiaStates.contains(savedState)
+        ? savedState
+        : null;
 
     final dynamic logo = user['logoUrl'] ?? user['logoPath'];
     if (logo != null && logo.toString().isNotEmpty) {
       logoUrl = logo.toString();
     }
 
-    if (gstinController.text.trim().isNotEmpty || panController.text.trim().isNotEmpty) {
+    if (gstinController.text.trim().isNotEmpty ||
+        panController.text.trim().isNotEmpty) {
       showTaxInfo = true;
     }
   }
@@ -281,37 +301,31 @@ class RegisterController extends ChangeNotifier {
       onError('Please select entity type');
       return;
     }
-
     if (selectedIndustryType == null || selectedIndustryType!.trim().isEmpty) {
       onError('Please select industry type');
       return;
     }
-
     if (selectedSubIndustry == null || selectedSubIndustry!.trim().isEmpty) {
       onError('Please select sub industry');
       return;
     }
-
     if (entityNameController.text.trim().isEmpty) {
       onError('Please enter entity / firm name');
       return;
     }
-
     if (phoneController.text.trim().isEmpty) {
       onError('Please enter phone number');
       return;
     }
-
     if (emailController.text.trim().isEmpty) {
       onError('Please enter business email');
       return;
     }
-
-    if (selectedEmployeeRange == null || selectedEmployeeRange!.trim().isEmpty) {
+    if (selectedEmployeeRange == null ||
+        selectedEmployeeRange!.trim().isEmpty) {
       onError('Please select total employees');
       return;
     }
-
     if (selectedRegistrationStatus == null ||
         selectedRegistrationStatus!.trim().isEmpty) {
       onError('Please select registration status');
@@ -330,6 +344,7 @@ class RegisterController extends ChangeNotifier {
   }
 
   Future<bool> saveProfile({
+    required BuildContext context,
     required void Function(String) onError,
     required void Function(String) onSuccess,
   }) async {
@@ -339,27 +354,24 @@ class RegisterController extends ChangeNotifier {
       onError('Please select entity type');
       return false;
     }
-
-    if (selectedEmployeeRange == null || selectedEmployeeRange!.trim().isEmpty) {
+    if (selectedEmployeeRange == null ||
+        selectedEmployeeRange!.trim().isEmpty) {
       onError('Please select total employees');
       return false;
     }
-
     if (selectedIndustryType == null || selectedIndustryType!.trim().isEmpty) {
       onError('Please select industry type');
       return false;
     }
-
     if (selectedSubIndustry == null || selectedSubIndustry!.trim().isEmpty) {
       onError('Please select sub industry');
       return false;
     }
-
-    if (stateController.text.trim().isEmpty || cityController.text.trim().isEmpty) {
+    if (stateController.text.trim().isEmpty ||
+        cityController.text.trim().isEmpty) {
       onError('Please enter state and district/city');
       return false;
     }
-
     if (selectedRegistrationStatus == null ||
         selectedRegistrationStatus!.trim().isEmpty) {
       onError('Please select registration status');
@@ -393,7 +405,7 @@ class RegisterController extends ChangeNotifier {
         }
 
         final uid = current.uid;
-        final email = emailController.text.trim();
+        final email = emailController.text.trim().toLowerCase();
 
         final uploadedLogoUrl = await _service.uploadLogoIfNeeded(
           uid: uid,
@@ -431,35 +443,52 @@ class RegisterController extends ChangeNotifier {
         );
 
         onSuccess('Workspace updated successfully');
-      } else {
-        final email = emailController.text.trim();
-        final password = passwordController.text.trim();
-
-        final tempUid = DateTime.now().millisecondsSinceEpoch.toString();
-        final uploadedLogoUrl = await _service.uploadLogoIfNeeded(
-          uid: tempUid,
-          logoBytes: logoBytes,
-          existingLogoUrl: logoUrl,
-        );
-
-        logoUrl = uploadedLogoUrl;
-        logoBytes = null;
-
-        final companyData = buildCompanyPayload(logoUrlValue: uploadedLogoUrl);
-
-        await _service.createWorkspaceForNewUser(
-          email: email,
-          password: password,
-          displayName: resolvedDisplayName(),
-          logoUrl: uploadedLogoUrl,
-          companyData: companyData,
-          adminPermissions: adminPermissions(),
-        );
-
-        onSuccess('Workspace created successfully');
+        return true;
       }
 
-      return true;
+      final email = emailController.text.trim().toLowerCase();
+      final password = passwordController.text.trim();
+
+      final tempUid = DateTime.now().millisecondsSinceEpoch.toString();
+      final uploadedLogoUrl = await _service.uploadLogoIfNeeded(
+        uid: tempUid,
+        logoBytes: logoBytes,
+        existingLogoUrl: logoUrl,
+      );
+
+      logoUrl = uploadedLogoUrl;
+      logoBytes = null;
+
+      final companyData = buildCompanyPayload(logoUrlValue: uploadedLogoUrl);
+
+      final registrationId = await _service.createWorkspaceRegistrationDraft(
+        email: email,
+        password: password,
+        displayName: resolvedDisplayName(),
+        logoUrl: uploadedLogoUrl,
+        companyData: companyData,
+        adminPermissions: adminPermissions(),
+      );
+
+      if (!context.mounted) return false;
+
+      final verified = await Navigator.push<bool>(
+        context,
+        MaterialPageRoute(
+          builder: (_) => VerifyWorkspaceOtpScreen(
+            registrationId: registrationId,
+            businessEmail: email,
+            entityName: entityNameController.text.trim(),
+          ),
+        ),
+      );
+
+      if (verified == true) {
+        onSuccess('Business email verified and workspace created successfully');
+        return true;
+      }
+
+      return false;
     } on FirebaseAuthException catch (e) {
       String msg;
       switch (e.code) {
