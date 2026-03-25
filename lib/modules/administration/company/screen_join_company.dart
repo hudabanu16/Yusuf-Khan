@@ -1,6 +1,7 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+
+import 'package:QUIK/modules/administration/company/screen_join_company_otp.dart';
+import 'package:QUIK/modules/administration/company/services/join_company_service.dart';
 
 const Color primaryColor = Color(0xFF1A3A52);
 const Color accentColor = Color(0xFF2563EB);
@@ -18,6 +19,7 @@ class ScreenJoinCompany extends StatefulWidget {
 
 class _ScreenJoinCompanyState extends State<ScreenJoinCompany> {
   final _formKey = GlobalKey<FormState>();
+  final JoinCompanyService _joinService = JoinCompanyService();
 
   final TextEditingController inviteCodeController = TextEditingController();
   final TextEditingController nameController = TextEditingController();
@@ -68,245 +70,80 @@ class _ScreenJoinCompanyState extends State<ScreenJoinCompany> {
     );
   }
 
-  Future<QueryDocumentSnapshot<Map<String, dynamic>>> _getInviteDoc(
-      FirebaseFirestore firestore,
-      String code,
-      ) async {
-    final inviteQuery = await firestore
-        .collectionGroup('invites')
-        .where('code', isEqualTo: code)
-        .where('status', isEqualTo: 'pending')
-        .where('isActive', isEqualTo: true)
-        .limit(1)
-        .get();
-
-    if (inviteQuery.docs.isEmpty) {
-      throw Exception('Invalid, inactive, or already used invite code');
-    }
-
-    return inviteQuery.docs.first;
-  }
-
-  Future<User> _ensureAuthenticatedUser() async {
-    final existingUser = FirebaseAuth.instance.currentUser;
-    if (existingUser != null) return existingUser;
-
-    final enteredEmail = emailController.text.trim().toLowerCase();
-    final enteredPassword = passwordController.text.trim();
-    final enteredConfirmPassword = confirmPasswordController.text.trim();
-
-    if (enteredEmail.isEmpty) {
-      throw Exception('Email is required');
-    }
-    if (enteredPassword.isEmpty) {
-      throw Exception('Password is required');
-    }
-    if (enteredConfirmPassword.isEmpty) {
-      throw Exception('Please confirm password');
-    }
-    if (enteredPassword != enteredConfirmPassword) {
-      throw Exception('Passwords do not match');
-    }
-    if (enteredPassword.length < 6) {
-      throw Exception('Password must be at least 6 characters');
-    }
-
-    final cred = await FirebaseAuth.instance.createUserWithEmailAndPassword(
-      email: enteredEmail,
-      password: enteredPassword,
-    );
-
-    final user = cred.user;
-    if (user == null) {
-      throw Exception('Failed to create employee login');
-    }
-
-    return user;
-  }
-
-  Future<User> _refreshSignedInUser(User user) async {
-    await user.reload();
-
-    User? refreshedUser = FirebaseAuth.instance.currentUser;
-    refreshedUser ??= user;
-
-    await refreshedUser.getIdToken(true);
-    await Future.delayed(const Duration(milliseconds: 500));
-
-    return refreshedUser;
-  }
-
   Future<void> _joinCompany() async {
     if (!_formKey.currentState!.validate()) return;
 
-    final code = inviteCodeController.text.trim().toUpperCase();
-    if (code.isEmpty) {
+    final inviteCode = inviteCodeController.text.trim().toUpperCase();
+    final fullName = nameController.text.trim();
+    final email = emailController.text.trim().toLowerCase();
+    final password = passwordController.text.trim();
+    final confirmPassword = confirmPasswordController.text.trim();
+
+    if (inviteCode.isEmpty) {
       _showError('Please enter invite code');
+      return;
+    }
+
+    if (fullName.isEmpty) {
+      _showError('Full name is required');
+      return;
+    }
+
+    if (email.isEmpty) {
+      _showError('Email is required');
+      return;
+    }
+
+    if (password.isEmpty) {
+      _showError('Password is required');
+      return;
+    }
+
+    if (confirmPassword.isEmpty) {
+      _showError('Please confirm password');
+      return;
+    }
+
+    if (password != confirmPassword) {
+      _showError('Passwords do not match');
+      return;
+    }
+
+    if (password.length < 6) {
+      _showError('Password must be at least 6 characters');
       return;
     }
 
     setState(() => isLoading = true);
 
-    final firestore = FirebaseFirestore.instance;
-    final auth = FirebaseAuth.instance;
-
-    final authUserBeforeFlow = auth.currentUser;
-    User? currentUser;
-    bool createdNewUserInThisFlow = false;
-
     try {
-      if (authUserBeforeFlow == null) {
-        currentUser = await _ensureAuthenticatedUser();
-        createdNewUserInThisFlow = true;
-        currentUser = await _refreshSignedInUser(currentUser);
-      } else {
-        currentUser = await _refreshSignedInUser(authUserBeforeFlow);
-      }
-
-      final currentEmail = (currentUser.email ?? '').trim().toLowerCase();
-
-      final inviteDoc = await _getInviteDoc(firestore, code);
-      final inviteData = inviteDoc.data();
-
-      final companyRef = inviteDoc.reference.parent.parent;
-      if (companyRef == null) {
-        throw Exception('Company reference not found');
-      }
-
-      final companySnap = await companyRef.get();
-      if (!companySnap.exists) {
-        throw Exception('Company document not found');
-      }
-
-      final companyData = companySnap.data() as Map<String, dynamic>? ?? {};
-      final companyName =
-      (companyData['companyName'] ?? companyData['name'] ?? '')
-          .toString()
-          .trim();
-
-      final inviteEmail =
-      (inviteData['email'] ?? '').toString().trim().toLowerCase();
-
-      if (inviteEmail.isNotEmpty &&
-          currentEmail.isNotEmpty &&
-          inviteEmail != currentEmail) {
-        throw Exception('This invite belongs to another email');
-      }
-
-      final role = (inviteData['role'] ?? 'sales').toString().trim();
-      final isAdmin = role == 'admin';
-      final inviteName = (inviteData['name'] ?? '').toString().trim();
-      final invitePhone = (inviteData['phone'] ?? '').toString().trim();
-      final permissions =
-      Map<String, dynamic>.from(inviteData['permissions'] ?? {});
-
-      final enteredName = nameController.text.trim();
-      final finalName = inviteName.isNotEmpty
-          ? inviteName
-          : (enteredName.isNotEmpty
-          ? enteredName
-          : (currentEmail.isNotEmpty ? currentEmail : 'User'));
-
-      final rootUserRef = firestore.collection('users').doc(currentUser.uid);
-      final companyUserRef = companyRef.collection('users').doc(currentUser.uid);
-
-      final existingRootUserSnap = await rootUserRef.get();
-      if (existingRootUserSnap.exists) {
-        final existingData = existingRootUserSnap.data() ?? {};
-        final existingCompanyId =
-        (existingData['companyId'] ?? '').toString().trim();
-
-        if (existingCompanyId.isNotEmpty && existingCompanyId != companyRef.id) {
-          throw Exception(
-            'This login is already linked to another company workspace',
-          );
-        }
-      }
-
-      final batch = firestore.batch();
-
-      batch.set(
-        rootUserRef,
-        {
-          'uid': currentUser.uid,
-          'companyId': companyRef.id,
-          'companyName': companyName,
-          'role': role,
-          'isAdmin': isAdmin,
-          'isActive': true,
-          'email': currentUser.email ?? '',
-          'name': finalName,
-          'phone': invitePhone,
-          'permissions': permissions,
-          'joinedAt': FieldValue.serverTimestamp(),
-          'updatedAt': FieldValue.serverTimestamp(),
-        },
-        SetOptions(merge: true),
+      final draftId = await _joinService.createJoinRequestDraft(
+        inviteCode: inviteCode,
+        fullName: fullName,
+        email: email,
+        password: password,
       );
-
-      batch.set(
-        companyUserRef,
-        {
-          'uid': currentUser.uid,
-          'companyId': companyRef.id,
-          'companyName': companyName,
-          'name': finalName,
-          'email': currentUser.email ?? '',
-          'phone': invitePhone,
-          'role': role,
-          'isAdmin': isAdmin,
-          'isActive': true,
-          'permissions': permissions,
-          'joinedAt': FieldValue.serverTimestamp(),
-          'createdAt': FieldValue.serverTimestamp(),
-          'updatedAt': FieldValue.serverTimestamp(),
-        },
-        SetOptions(merge: true),
-      );
-
-      batch.update(inviteDoc.reference, {
-        'status': 'accepted',
-        'acceptedByUid': currentUser.uid,
-        'acceptedByEmail': currentUser.email ?? '',
-        'acceptedAt': FieldValue.serverTimestamp(),
-      });
-
-      await batch.commit();
-
-      await Future.delayed(const Duration(milliseconds: 800));
 
       if (!mounted) return;
 
-      _showSuccess('Joined company successfully');
-      Navigator.pop(context, true);
-    } on FirebaseAuthException catch (e) {
-      String msg;
-      switch (e.code) {
-        case 'email-already-in-use':
-          msg =
-          'This email is already registered. Please login first, then join company.';
-          break;
-        case 'invalid-email':
-          msg = 'Invalid email address.';
-          break;
-        case 'weak-password':
-          msg = 'Password is too weak.';
-          break;
-        default:
-          msg = e.message ?? e.code;
-      }
+      final verified = await Navigator.push<bool>(
+        context,
+        MaterialPageRoute(
+          builder: (_) => ScreenJoinCompanyOtp(
+            draftId: draftId,
+            email: email,
+            fullName: fullName,
+          ),
+        ),
+      );
 
-      _showError(msg);
+      if (verified == true) {
+        _showSuccess('Email verified and company joined successfully');
+        if (!mounted) return;
+        Navigator.pop(context, true);
+      }
     } catch (e) {
-      if (createdNewUserInThisFlow) {
-        try {
-          final user = auth.currentUser;
-          await user?.delete();
-        } catch (_) {}
-      }
-
       _showError(e.toString().replaceAll('Exception: ', ''));
-      debugPrint('JOIN COMPANY ERROR: $e');
     } finally {
       if (mounted) {
         setState(() => isLoading = false);
@@ -326,10 +163,6 @@ class _ScreenJoinCompanyState extends State<ScreenJoinCompany> {
 
   @override
   Widget build(BuildContext context) {
-    final currentUser = FirebaseAuth.instance.currentUser;
-    final currentEmail = currentUser?.email ?? '';
-    final isLoggedIn = currentUser != null;
-
     return Scaffold(
       backgroundColor: pageBgColor,
       appBar: AppBar(
@@ -391,11 +224,9 @@ class _ScreenJoinCompanyState extends State<ScreenJoinCompany> {
                           ),
                         ),
                         const SizedBox(height: 8),
-                        Text(
-                          isLoggedIn
-                              ? 'You are already logged in. Enter the invite code shared by your company admin to join the workspace.'
-                              : 'Create your employee login and use the invite code shared by your company admin to join an existing workspace.',
-                          style: const TextStyle(
+                        const Text(
+                          'This is a one-time company joining process. Verify your employee email by OTP, create your login, and then use only email and password for future sign-ins.',
+                          style: TextStyle(
                             fontSize: 14.5,
                             color: mutedTextColor,
                             height: 1.55,
@@ -427,184 +258,151 @@ class _ScreenJoinCompanyState extends State<ScreenJoinCompany> {
                                 ),
                               ),
                               const SizedBox(width: 14),
-                              Expanded(
+                              const Expanded(
                                 child: Column(
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
-                                    const Text(
-                                      'Employee / Team Member Access',
+                                    Text(
+                                      'One-Time Employee Onboarding',
                                       style: TextStyle(
                                         fontSize: 16,
                                         fontWeight: FontWeight.w800,
                                         color: primaryColor,
                                       ),
                                     ),
-                                    const SizedBox(height: 6),
-                                    const Text(
-                                      'Admins create the workspace. Team members create their own login and join it using invite codes.',
+                                    SizedBox(height: 6),
+                                    Text(
+                                      'Use the invite code shared by your company admin. OTP will be sent to your employee email before your account is created.',
                                       style: TextStyle(
                                         color: mutedTextColor,
                                         fontSize: 13,
                                         height: 1.45,
                                       ),
                                     ),
-                                    if (currentEmail.isNotEmpty) ...[
-                                      const SizedBox(height: 10),
-                                      Container(
-                                        padding: const EdgeInsets.symmetric(
-                                          horizontal: 10,
-                                          vertical: 8,
-                                        ),
-                                        decoration: BoxDecoration(
-                                          color: Colors.white,
-                                          borderRadius:
-                                          BorderRadius.circular(999),
-                                          border:
-                                          Border.all(color: borderColor),
-                                        ),
-                                        child: Row(
-                                          mainAxisSize: MainAxisSize.min,
-                                          children: [
-                                            const Icon(
-                                              Icons.person_outline,
-                                              size: 16,
-                                              color: accentColor,
-                                            ),
-                                            const SizedBox(width: 8),
-                                            Flexible(
-                                              child: Text(
-                                                currentEmail,
-                                                style: const TextStyle(
-                                                  color: mutedTextColor,
-                                                  fontWeight: FontWeight.w700,
-                                                ),
-                                                overflow: TextOverflow.ellipsis,
-                                              ),
-                                            ),
-                                          ],
-                                        ),
-                                      ),
-                                    ],
                                   ],
                                 ),
                               ),
                             ],
                           ),
                         ),
-                        if (!isLoggedIn) ...[
-                          const SizedBox(height: 28),
-                          const Text(
-                            'Create Employee Login',
-                            style: TextStyle(
-                              fontSize: 17,
-                              fontWeight: FontWeight.w800,
-                              color: primaryColor,
-                            ),
+                        const SizedBox(height: 28),
+                        const Text(
+                          'Employee Details',
+                          style: TextStyle(
+                            fontSize: 17,
+                            fontWeight: FontWeight.w800,
+                            color: primaryColor,
                           ),
-                          const SizedBox(height: 8),
-                          const Text(
-                            'These credentials will be your personal login for accessing the company workspace.',
-                            style: TextStyle(
-                              color: mutedTextColor,
-                              fontSize: 13,
-                            ),
+                        ),
+                        const SizedBox(height: 8),
+                        const Text(
+                          'These credentials will become your permanent login after successful OTP verification.',
+                          style: TextStyle(
+                            color: mutedTextColor,
+                            fontSize: 13,
                           ),
-                          const SizedBox(height: 14),
-                          TextFormField(
-                            controller: nameController,
-                            decoration: _inputDecoration(
-                              label: 'Full Name',
-                              hint: 'e.g. Bilal Khan',
-                              icon: Icons.badge_outlined,
-                            ),
-                            validator: (value) {
-                              if (value == null || value.trim().isEmpty) {
-                                return 'Full name is required';
-                              }
-                              return null;
-                            },
+                        ),
+                        const SizedBox(height: 14),
+                        TextFormField(
+                          controller: nameController,
+                          decoration: _inputDecoration(
+                            label: 'Full Name',
+                            hint: 'e.g. Bilal Khan',
+                            icon: Icons.badge_outlined,
                           ),
-                          const SizedBox(height: 14),
-                          TextFormField(
-                            controller: emailController,
-                            keyboardType: TextInputType.emailAddress,
-                            decoration: _inputDecoration(
-                              label: 'Email Address',
-                              hint: 'e.g. bilal@company.com',
-                              icon: Icons.email_outlined,
-                            ),
-                            validator: (value) {
-                              if (value == null || value.trim().isEmpty) {
-                                return 'Email is required';
-                              }
-                              return null;
-                            },
+                          validator: (value) {
+                            if (value == null || value.trim().isEmpty) {
+                              return 'Full name is required';
+                            }
+                            return null;
+                          },
+                        ),
+                        const SizedBox(height: 14),
+                        TextFormField(
+                          controller: emailController,
+                          keyboardType: TextInputType.emailAddress,
+                          decoration: _inputDecoration(
+                            label: 'Employee Email',
+                            hint: 'e.g. bilal@company.com',
+                            icon: Icons.email_outlined,
                           ),
-                          const SizedBox(height: 14),
-                          TextFormField(
-                            controller: passwordController,
-                            obscureText: obscurePassword,
-                            decoration: _inputDecoration(
-                              label: 'Password',
-                              hint: 'Minimum 6 characters',
-                              icon: Icons.lock_outline,
-                              suffixIcon: IconButton(
-                                onPressed: () {
-                                  setState(() {
-                                    obscurePassword = !obscurePassword;
-                                  });
-                                },
-                                icon: Icon(
-                                  obscurePassword
-                                      ? Icons.visibility_off_outlined
-                                      : Icons.visibility_outlined,
-                                ),
+                          validator: (value) {
+                            final email = (value ?? '').trim();
+                            if (email.isEmpty) {
+                              return 'Email is required';
+                            }
+                            final emailRegex =
+                            RegExp(r'^[^@\s]+@[^@\s]+\.[^@\s]+$');
+                            if (!emailRegex.hasMatch(email)) {
+                              return 'Enter a valid email';
+                            }
+                            return null;
+                          },
+                        ),
+                        const SizedBox(height: 14),
+                        TextFormField(
+                          controller: passwordController,
+                          obscureText: obscurePassword,
+                          decoration: _inputDecoration(
+                            label: 'Password',
+                            hint: 'Minimum 6 characters',
+                            icon: Icons.lock_outline,
+                            suffixIcon: IconButton(
+                              onPressed: () {
+                                setState(() {
+                                  obscurePassword = !obscurePassword;
+                                });
+                              },
+                              icon: Icon(
+                                obscurePassword
+                                    ? Icons.visibility_off_outlined
+                                    : Icons.visibility_outlined,
                               ),
                             ),
-                            validator: (value) {
-                              if (value == null || value.trim().isEmpty) {
-                                return 'Password is required';
-                              }
-                              if (value.trim().length < 6) {
-                                return 'Minimum 6 characters required';
-                              }
-                              return null;
-                            },
                           ),
-                          const SizedBox(height: 14),
-                          TextFormField(
-                            controller: confirmPasswordController,
-                            obscureText: obscureConfirmPassword,
-                            decoration: _inputDecoration(
-                              label: 'Confirm Password',
-                              hint: 'Re-enter password',
-                              icon: Icons.lock_outline,
-                              suffixIcon: IconButton(
-                                onPressed: () {
-                                  setState(() {
-                                    obscureConfirmPassword =
-                                    !obscureConfirmPassword;
-                                  });
-                                },
-                                icon: Icon(
-                                  obscureConfirmPassword
-                                      ? Icons.visibility_off_outlined
-                                      : Icons.visibility_outlined,
-                                ),
+                          validator: (value) {
+                            if (value == null || value.trim().isEmpty) {
+                              return 'Password is required';
+                            }
+                            if (value.trim().length < 6) {
+                              return 'Minimum 6 characters required';
+                            }
+                            return null;
+                          },
+                        ),
+                        const SizedBox(height: 14),
+                        TextFormField(
+                          controller: confirmPasswordController,
+                          obscureText: obscureConfirmPassword,
+                          decoration: _inputDecoration(
+                            label: 'Confirm Password',
+                            hint: 'Re-enter password',
+                            icon: Icons.lock_outline,
+                            suffixIcon: IconButton(
+                              onPressed: () {
+                                setState(() {
+                                  obscureConfirmPassword =
+                                  !obscureConfirmPassword;
+                                });
+                              },
+                              icon: Icon(
+                                obscureConfirmPassword
+                                    ? Icons.visibility_off_outlined
+                                    : Icons.visibility_outlined,
                               ),
                             ),
-                            validator: (value) {
-                              if (value == null || value.trim().isEmpty) {
-                                return 'Please confirm password';
-                              }
-                              if (value.trim() !=
-                                  passwordController.text.trim()) {
-                                return 'Passwords do not match';
-                              }
-                              return null;
-                            },
                           ),
-                        ],
+                          validator: (value) {
+                            if (value == null || value.trim().isEmpty) {
+                              return 'Please confirm password';
+                            }
+                            if (value.trim() !=
+                                passwordController.text.trim()) {
+                              return 'Passwords do not match';
+                            }
+                            return null;
+                          },
+                        ),
                         const SizedBox(height: 28),
                         const Text(
                           'Invite Code',
@@ -668,7 +466,7 @@ class _ScreenJoinCompanyState extends State<ScreenJoinCompany> {
                               SizedBox(width: 8),
                               Expanded(
                                 child: Text(
-                                  'If the invite was created for a specific email address, you must use that same email while creating your employee login or while joining the company.',
+                                  'OTP will be sent to the employee email entered above. After successful verification, your account will be created and attached to the company. Later, you will use only email and password to login.',
                                   style: TextStyle(
                                     color: mutedTextColor,
                                     fontSize: 12.5,
@@ -703,11 +501,9 @@ class _ScreenJoinCompanyState extends State<ScreenJoinCompany> {
                                 color: Colors.white,
                               ),
                             )
-                                : Text(
-                              isLoggedIn
-                                  ? 'Join Company'
-                                  : 'Create Login & Join Company',
-                              style: const TextStyle(
+                                : const Text(
+                              'Send OTP & Continue',
+                              style: TextStyle(
                                 fontSize: 16,
                                 fontWeight: FontWeight.w800,
                               ),

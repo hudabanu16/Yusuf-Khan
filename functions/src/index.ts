@@ -6,8 +6,20 @@ import {defineSecret} from "firebase-functions/params";
 admin.initializeApp();
 const db = admin.firestore();
 
+/* ===================== SECRETS ===================== */
+
 const gmailUser = defineSecret("QUIK_GMAIL_USER");
 const gmailPass = defineSecret("QUIK_GMAIL_APP_PASSWORD");
+
+/* ===================== HELPERS ===================== */
+
+/**
+ * Generates a 6-digit OTP.
+ * @return {string}
+ */
+function generateOtp(): string {
+  return Math.floor(100000 + Math.random() * 900000).toString();
+}
 
 /**
  * Builds the Gmail transporter for OTP emails.
@@ -23,23 +35,99 @@ function buildTransporter() {
   });
 }
 
-/**
- * Generates a 6-digit OTP code.
- * @return {string}
- */
-function generateOtp(): string {
-  return Math.floor(100000 + Math.random() * 900000).toString();
-}
+/* =========================================================
+   ================= WORKSPACE OTP ==========================
+   ========================================================= */
 
 export const sendWorkspaceOtp = onCall(
   {secrets: [gmailUser, gmailPass]},
   async (request) => {
-    const email = (request.data?.email ?? "").toString().trim().toLowerCase();
+    const email =
+      (request.data?.email ?? "").toString().trim().toLowerCase();
+
+    if (!email) {
+      throw new HttpsError("invalid-argument", "Email required");
+    }
+
+    const otp = generateOtp();
+    const draftRef = db.collection("workspace_requests").doc();
+
+    await draftRef.set({
+      draftId: draftRef.id,
+      email,
+      otp,
+      verified: false,
+      status: "pending",
+      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+    });
+
+    const transporter = buildTransporter();
+
+    await transporter.sendMail({
+      from: `"QUIK ERP" <${gmailUser.value()}>`,
+      to: email,
+      subject: "QUIK ERP - Workspace Verification OTP",
+      text: `Your OTP is: ${otp}`,
+    });
+
+    return {draftId: draftRef.id};
+  },
+);
+
+export const verifyWorkspaceOtpAndCreateWorkspace = onCall(
+  {secrets: [gmailUser, gmailPass]},
+  async (request) => {
+    const draftId = request.data?.draftId;
+    const otp = request.data?.otp;
+
+    if (!draftId || !otp) {
+      throw new HttpsError("invalid-argument", "Missing data");
+    }
+
+    const ref = db.collection("workspace_requests").doc(draftId);
+    const snap = await ref.get();
+
+    if (!snap.exists) {
+      throw new HttpsError("not-found", "Draft not found");
+    }
+
+    const data = snap.data() || {};
+
+    if (data.otp !== otp) {
+      throw new HttpsError("invalid-argument", "Invalid OTP");
+    }
+
+    await ref.update({
+      verified: true,
+      status: "verified",
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    });
+
+    return {success: true};
+  },
+);
+
+/* =========================================================
+   ================= JOIN COMPANY OTP =======================
+   ========================================================= */
+
+export const sendJoinCompanyOtp = onCall(
+  {secrets: [gmailUser, gmailPass]},
+  async (request) => {
+    const inviteCode =
+      (request.data?.inviteCode ?? "").toString().trim().toUpperCase();
+    const fullName = (request.data?.fullName ?? "").toString().trim();
+    const email =
+      (request.data?.email ?? "").toString().trim().toLowerCase();
     const password = (request.data?.password ?? "").toString();
-    const displayName = (request.data?.displayName ?? "").toString();
-    const logoUrl = (request.data?.logoUrl ?? "").toString();
-    const companyData = request.data?.companyData ?? {};
-    const adminPermissions = request.data?.adminPermissions ?? {};
+
+    if (!inviteCode) {
+      throw new HttpsError("invalid-argument", "Invite code required");
+    }
+
+    if (!fullName) {
+      throw new HttpsError("invalid-argument", "Full name required");
+    }
 
     if (!email) {
       throw new HttpsError("invalid-argument", "Email required");
@@ -49,23 +137,67 @@ export const sendWorkspaceOtp = onCall(
       throw new HttpsError("invalid-argument", "Password required");
     }
 
-    const registrationRef = db.collection("workspace_registrations").doc();
-    const otp = generateOtp();
+    const inviteQuery = await db
+      .collectionGroup("invites")
+      .where("code", "==", inviteCode)
+      .where("status", "==", "pending")
+      .where("isActive", "==", true)
+      .limit(1)
+      .get();
 
-    await registrationRef.set({
-      registrationId: registrationRef.id,
+    if (inviteQuery.empty) {
+      throw new HttpsError(
+        "not-found",
+        "Invalid or already used invite code",
+      );
+    }
+
+    const inviteDoc = inviteQuery.docs[0];
+    const inviteData = inviteDoc.data();
+    const companyRef = inviteDoc.ref.parent.parent;
+
+    if (!companyRef) {
+      throw new HttpsError("failed-precondition", "Company not found");
+    }
+
+    const companySnap = await companyRef.get();
+    const companyData = companySnap.data() || {};
+
+    const companyName =
+      (companyData.companyName ?? companyData.name ?? "")
+        .toString()
+        .trim();
+
+    const inviteEmail =
+      (inviteData.email ?? "").toString().trim().toLowerCase();
+
+    if (inviteEmail && inviteEmail !== email) {
+      throw new HttpsError(
+        "permission-denied",
+        "Invite is for another email",
+      );
+    }
+
+    const otp = generateOtp();
+    const draftRef = db.collection("join_company_requests").doc();
+
+    await draftRef.set({
+      draftId: draftRef.id,
+      inviteCode,
+      inviteId: inviteDoc.id,
+      companyId: companyRef.id,
+      companyName,
+      fullName,
       email,
       password,
-      displayName,
-      logoUrl,
-      companyData,
-      adminPermissions,
-      otp,
+      role: inviteData.role ?? "sales",
+      isAdmin: inviteData.role === "admin",
+      phone: inviteData.phone ?? "",
+      permissions: inviteData.permissions ?? {},
       verified: false,
-      status: "pending_email_verification",
-      otpSentCount: 1,
+      status: "pending",
+      otp,
       createdAt: admin.firestore.FieldValue.serverTimestamp(),
-      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
     });
 
     const transporter = buildTransporter();
@@ -73,48 +205,37 @@ export const sendWorkspaceOtp = onCall(
     await transporter.sendMail({
       from: `"QUIK ERP" <${gmailUser.value()}>`,
       to: email,
-      subject: "QUIK ERP - Email Verification OTP",
+      subject: "QUIK ERP - Join Company OTP",
       text: `Your OTP is: ${otp}`,
     });
 
-    return {
-      success: true,
-      registrationId: registrationRef.id,
-    };
+    return {draftId: draftRef.id};
   },
 );
 
-export const resendWorkspaceOtp = onCall(
+export const resendJoinCompanyOtp = onCall(
   {secrets: [gmailUser, gmailPass]},
   async (request) => {
-    const registrationId =
-      (request.data?.registrationId ?? "").toString().trim();
+    const draftId = request.data?.draftId;
 
-    if (!registrationId) {
-      throw new HttpsError("invalid-argument", "Registration ID required");
+    if (!draftId) {
+      throw new HttpsError("invalid-argument", "Draft ID required");
     }
 
-    const registrationRef = db
-      .collection("workspace_registrations")
-      .doc(registrationId);
-    const snap = await registrationRef.get();
+    const ref = db.collection("join_company_requests").doc(draftId);
+    const snap = await ref.get();
 
     if (!snap.exists) {
-      throw new HttpsError("not-found", "Registration not found");
+      throw new HttpsError("not-found", "Draft not found");
     }
 
     const data = snap.data() || {};
-    const email = (data.email ?? "").toString().trim().toLowerCase();
-
-    if (!email) {
-      throw new HttpsError("failed-precondition", "Email missing in draft");
-    }
+    const email = data.email;
 
     const otp = generateOtp();
 
-    await registrationRef.update({
+    await ref.update({
       otp,
-      otpSentCount: admin.firestore.FieldValue.increment(1),
       updatedAt: admin.firestore.FieldValue.serverTimestamp(),
     });
 
@@ -123,7 +244,7 @@ export const resendWorkspaceOtp = onCall(
     await transporter.sendMail({
       from: `"QUIK ERP" <${gmailUser.value()}>`,
       to: email,
-      subject: "QUIK ERP - Email Verification OTP",
+      subject: "QUIK ERP - Resend OTP",
       text: `Your OTP is: ${otp}`,
     });
 
@@ -131,56 +252,47 @@ export const resendWorkspaceOtp = onCall(
   },
 );
 
-export const verifyWorkspaceOtpAndCreateWorkspace = onCall(
+export const verifyJoinCompanyOtp = onCall(
   {secrets: [gmailUser, gmailPass]},
   async (request) => {
-    const registrationId =
-      (request.data?.registrationId ?? "").toString().trim();
-    const otp =
-      (request.data?.otp ?? "").toString().trim();
+    const draftId = request.data?.draftId;
+    const otp = request.data?.otp;
 
-    if (!registrationId) {
-      throw new HttpsError("invalid-argument", "Registration ID required");
+    if (!draftId || !otp) {
+      throw new HttpsError("invalid-argument", "Missing data");
     }
 
-    if (!otp) {
-      throw new HttpsError("invalid-argument", "OTP required");
-    }
-
-    const registrationRef = db
-      .collection("workspace_registrations")
-      .doc(registrationId);
-    const snap = await registrationRef.get();
+    const ref = db.collection("join_company_requests").doc(draftId);
+    const snap = await ref.get();
 
     if (!snap.exists) {
-      throw new HttpsError("not-found", "Registration not found");
+      throw new HttpsError("not-found", "Draft not found");
     }
 
     const data = snap.data() || {};
 
-    if ((data.otp ?? "").toString() !== otp) {
+    if (data.otp !== otp) {
       throw new HttpsError("invalid-argument", "Invalid OTP");
     }
 
-    const companyId = db.collection("companies").doc().id;
-
-    await registrationRef.update({
+    await ref.update({
       verified: true,
-      status: "otp_verified",
-      companyId,
-      verifiedAt: admin.firestore.FieldValue.serverTimestamp(),
+      status: "verified",
       updatedAt: admin.firestore.FieldValue.serverTimestamp(),
     });
 
     return {
       success: true,
-      email: data.email ?? "",
-      password: data.password ?? "",
-      displayName: data.displayName ?? "",
-      logoUrl: data.logoUrl ?? "",
-      companyData: data.companyData ?? {},
-      adminPermissions: data.adminPermissions ?? {},
-      companyId,
+      email: data.email,
+      password: data.password,
+      fullName: data.fullName,
+      companyId: data.companyId,
+      companyName: data.companyName,
+      inviteId: data.inviteId,
+      role: data.role,
+      isAdmin: data.isAdmin,
+      phone: data.phone,
+      permissions: data.permissions,
     };
   },
 );
