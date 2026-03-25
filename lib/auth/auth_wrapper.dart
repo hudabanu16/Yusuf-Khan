@@ -156,6 +156,14 @@ class _UserProfileGateState extends State<_UserProfileGate> {
 
     final permissions = Map<String, dynamic>.from(data['permissions'] ?? {});
 
+    final userDisplayName = (
+        data['fullName'] ??
+            data['name'] ??
+            data['employeeName'] ??
+            data['displayName'] ??
+            ''
+    ).toString();
+
     if (companyId.isEmpty) {
       return Scaffold(
         body: Center(
@@ -257,6 +265,7 @@ class _UserProfileGateState extends State<_UserProfileGate> {
       companyName: companyName,
       role: role,
       permissions: permissions,
+      userDisplayName: userDisplayName,
     );
   }
 }

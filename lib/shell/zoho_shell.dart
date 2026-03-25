@@ -6,7 +6,6 @@ import 'package:QUIK/core/theme/app_theme.dart';
 import 'package:QUIK/modules/administration/users/screen_user_management.dart';
 import 'package:QUIK/modules/crm/customers/screens_customer_list.dart';
 import 'package:QUIK/modules/inventory/products/screens_product_list.dart';
-import 'package:QUIK/modules/iot/screen_iot_monitoring.dart';
 import 'package:QUIK/modules/sales/inquiries/screens_inquiry_list.dart';
 import 'package:QUIK/modules/sales/quotations/quotation_screen_local.dart';
 import 'package:QUIK/modules/settings/screen_settings_home.dart';
@@ -37,8 +36,6 @@ enum ShellPage {
   inventoryStockOut,
   inventoryWarehouse,
   inventoryLowStock,
-
-  iotMonitoring,
 
   dispatchReady,
   dispatchChallans,
@@ -115,9 +112,6 @@ extension ShellPageX on ShellPage {
         return 'Warehouse';
       case ShellPage.inventoryLowStock:
         return 'Low Stock Alerts';
-
-      case ShellPage.iotMonitoring:
-        return 'IoT Monitoring';
 
       case ShellPage.dispatchReady:
         return 'Ready for Dispatch';
@@ -215,9 +209,6 @@ extension ShellPageX on ShellPage {
       case ShellPage.inventoryLowStock:
         return Icons.warning_amber_outlined;
 
-      case ShellPage.iotMonitoring:
-        return Icons.sensors_outlined;
-
       case ShellPage.dispatchReady:
         return Icons.inventory_2_outlined;
       case ShellPage.dispatchChallans:
@@ -287,6 +278,7 @@ class ZohoShell extends StatefulWidget {
   final String companyName;
   final String role;
   final Map<String, dynamic> permissions;
+  final String? userDisplayName;
 
   const ZohoShell({
     super.key,
@@ -296,6 +288,7 @@ class ZohoShell extends StatefulWidget {
     required this.companyName,
     required this.role,
     required this.permissions,
+    this.userDisplayName,
   });
 
   @override
@@ -309,11 +302,11 @@ class _ZohoShellState extends State<ZohoShell> {
     'sales',
     'crm',
     'inventory',
-    'iot',
   };
 
   bool get isAdminOrManager =>
-      widget.role == 'admin' || widget.role == 'manager';
+      widget.role.toLowerCase() == 'admin' ||
+          widget.role.toLowerCase() == 'manager';
 
   bool _canAccess(String module) {
     if (isAdminOrManager) return true;
@@ -325,7 +318,6 @@ class _ZohoShellState extends State<ZohoShell> {
   bool get canProducts => _canAccess('products');
   bool get canQuotations => _canAccess('quotations');
   bool get canUsers => isAdminOrManager || _canAccess('userManagement');
-  bool get canIotMonitoring => isAdminOrManager || _canAccess('iotMonitoring');
 
   List<SidebarGroup> get sidebarGroups => const [
     SidebarGroup(
@@ -374,14 +366,6 @@ class _ZohoShellState extends State<ZohoShell> {
         ShellPage.inventoryStockOut,
         ShellPage.inventoryWarehouse,
         ShellPage.inventoryLowStock,
-      ],
-    ),
-    SidebarGroup(
-      key: 'iot',
-      title: 'IoT Monitoring',
-      icon: Icons.sensors_outlined,
-      children: [
-        ShellPage.iotMonitoring,
       ],
     ),
     SidebarGroup(
@@ -441,14 +425,6 @@ class _ZohoShellState extends State<ZohoShell> {
     );
   }
 
-  void _comingSoon([String? label]) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('${label ?? activePage.label} will be added next'),
-      ),
-    );
-  }
-
   void _selectPage(ShellPage page) {
     if (!_canViewPage(page)) {
       _noAccess();
@@ -470,8 +446,6 @@ class _ZohoShellState extends State<ZohoShell> {
         return canQuotations;
       case ShellPage.adminUsers:
         return canUsers;
-      case ShellPage.iotMonitoring:
-        return canIotMonitoring;
       case ShellPage.adminRoles:
       case ShellPage.adminCompanyProfile:
       case ShellPage.adminBranches:
@@ -490,25 +464,11 @@ class _ZohoShellState extends State<ZohoShell> {
       case ShellPage.inventoryProducts:
       case ShellPage.salesQuotations:
       case ShellPage.adminUsers:
-      case ShellPage.iotMonitoring:
       case ShellPage.settingsGeneral:
         return true;
       default:
         return false;
     }
-  }
-
-  Future<void> _openActivePage() async {
-    if (!_canViewPage(activePage)) {
-      _noAccess();
-      return;
-    }
-
-    if (_isImplementedPage(activePage)) {
-      return;
-    }
-
-    _comingSoon(activePage.label);
   }
 
   Future<void> _logout() async {
@@ -532,78 +492,21 @@ class _ZohoShellState extends State<ZohoShell> {
     return activePage.label;
   }
 
-  Widget _buildHeaderActionButton() {
-    final String label;
-    final IconData icon;
+  String _resolvedEmployeeName() {
+    final fromDisplayName = (widget.userDisplayName ?? '').trim();
+    if (fromDisplayName.isNotEmpty) return fromDisplayName;
 
-    if (activePage == ShellPage.dashboard) {
-      label = 'Dashboard';
-      icon = Icons.dashboard_outlined;
-    } else if (activePage == ShellPage.settingsGeneral) {
-      label = 'Settings';
-      icon = Icons.settings_outlined;
-    } else if (_isImplementedPage(activePage)) {
-      label = 'Live';
-      icon = Icons.open_in_new;
-    } else {
-      label = 'Preview';
-      icon = Icons.remove_red_eye_outlined;
-    }
+    final emailPrefix = widget.userEmail.split('@').first.trim();
+    if (emailPrefix.isNotEmpty) return emailPrefix;
 
-    return FilledButton.icon(
-      style: FilledButton.styleFrom(
-        backgroundColor: zBlue,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(10),
-        ),
-      ),
-      onPressed: _openActivePage,
-      icon: Icon(icon, size: 18),
-      label: Text(
-        label,
-        style: const TextStyle(fontWeight: FontWeight.bold),
-      ),
-    );
+    return 'User';
   }
 
-  Widget _buildEmailChip() {
-    return Container(
-      padding: const EdgeInsets.symmetric(
-        horizontal: 12,
-        vertical: 8,
-      ),
-      decoration: BoxDecoration(
-        color: const Color(0xFFF8FAFC),
-        borderRadius: BorderRadius.circular(999),
-        border: Border.all(color: zBorder),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          const CircleAvatar(
-            radius: 12,
-            backgroundColor: Color(0xFFEFF6FF),
-            child: Icon(
-              Icons.person_outline,
-              size: 14,
-              color: zBlue,
-            ),
-          ),
-          const SizedBox(width: 8),
-          Flexible(
-            child: Text(
-              widget.userEmail,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(
-                color: zMuted,
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
+  String _dashboardWelcomeText() {
+    if (isAdminOrManager) {
+      return 'Welcome ${widget.companyName}';
+    }
+    return 'Welcome ${_resolvedEmployeeName()}';
   }
 
   Widget _buildTopHeader() {
@@ -616,63 +519,21 @@ class _ZohoShellState extends State<ZohoShell> {
           bottom: BorderSide(color: zBorder),
         ),
       ),
-      child: LayoutBuilder(
-        builder: (context, constraints) {
-          final bool compact = constraints.maxWidth < 760;
-
-          if (compact) {
-            return Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Row(
-                  children: [
-                    Expanded(
-                      child: Text(
-                        _activeSectionTitle(),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.w900,
-                          color: zText,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 10),
-                Row(
-                  children: [
-                    Expanded(child: _buildEmailChip()),
-                    const SizedBox(width: 12),
-                    _buildHeaderActionButton(),
-                  ],
-                ),
-              ],
-            );
-          }
-
-          return Row(
-            children: [
-              Expanded(
-                child: Text(
-                  _activeSectionTitle(),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.w900,
-                    color: zText,
-                  ),
-                ),
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(
+              _activeSectionTitle(),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.w900,
+                color: zText,
               ),
-              const SizedBox(width: 12),
-              Flexible(child: _buildEmailChip()),
-              const SizedBox(width: 12),
-              _buildHeaderActionButton(),
-            ],
-          );
-        },
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -696,7 +557,7 @@ class _ZohoShellState extends State<ZohoShell> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         const Text(
-                          '$kAppName $kAppTagline',
+                          'QUIK ERP',
                           style: TextStyle(
                             color: Colors.white,
                             fontWeight: FontWeight.w900,
@@ -960,9 +821,7 @@ class _ZohoShellState extends State<ZohoShell> {
               firstChild: Padding(
                 padding: const EdgeInsets.fromLTRB(8, 0, 8, 8),
                 child: Column(
-                  children: group.children
-                      .map((page) => _subNavItem(page, group))
-                      .toList(),
+                  children: group.children.map((page) => _subNavItem(page)).toList(),
                 ),
               ),
               secondChild: const SizedBox.shrink(),
@@ -973,7 +832,7 @@ class _ZohoShellState extends State<ZohoShell> {
     );
   }
 
-  Widget _subNavItem(ShellPage page, SidebarGroup group) {
+  Widget _subNavItem(ShellPage page) {
     final bool selected = activePage == page;
     final bool allowed = _canViewPage(page);
 
@@ -1077,9 +936,6 @@ class _ZohoShellState extends State<ZohoShell> {
           companyId: widget.companyId,
           currentUid: widget.userUid,
         );
-
-      case ShellPage.iotMonitoring:
-        return const ScreenIotMonitoring();
 
       case ShellPage.settingsGeneral:
         return ScreenSettingsHome(
@@ -1217,41 +1073,6 @@ class _ZohoShellState extends State<ZohoShell> {
                         _moduleTags(page).map((e) => _moduleTag(e)).toList(),
                       ),
                       const Spacer(),
-                      Row(
-                        children: [
-                          FilledButton.icon(
-                            onPressed:
-                            allowed ? () => _openActivePage() : _noAccess,
-                            style: FilledButton.styleFrom(
-                              backgroundColor: zBlue,
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(12),
-                              ),
-                            ),
-                            icon: Icon(
-                              implemented
-                                  ? Icons.open_in_new
-                                  : Icons.visibility_outlined,
-                              size: 18,
-                            ),
-                            label: Text(implemented ? 'Open Module' : 'Preview'),
-                          ),
-                          const SizedBox(width: 10),
-                          OutlinedButton.icon(
-                            onPressed: () {
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                SnackBar(
-                                  content: Text(
-                                    'You can build ${page.label} next without disturbing existing features',
-                                  ),
-                                ),
-                              );
-                            },
-                            icon: const Icon(Icons.lightbulb_outline, size: 18),
-                            label: const Text('Build Next'),
-                          ),
-                        ],
-                      ),
                     ],
                   ),
                 ),
@@ -1304,8 +1125,6 @@ class _ZohoShellState extends State<ZohoShell> {
         return ['Catalog', 'Stock', 'SKU', 'Pricing'];
       case ShellPage.adminUsers:
         return ['Access', 'Permissions', 'Roles', 'Team'];
-      case ShellPage.iotMonitoring:
-        return ['Machines', 'Live Data', 'Telemetry', 'Alerts'];
       case ShellPage.settingsGeneral:
         return ['Company', 'Security', 'Users', 'Audit'];
       default:
@@ -1325,8 +1144,6 @@ class _ZohoShellState extends State<ZohoShell> {
         return 'Manage your product master, stock-facing items, and future inventory movements through a clean inventory module.';
       case ShellPage.adminUsers:
         return 'Handle user management, role-based access, and team structure for each company workspace.';
-      case ShellPage.iotMonitoring:
-        return 'Monitor connected machines, see live telemetry, review alerts, and prepare your system for machine health, energy tracking, and predictive service features.';
       case ShellPage.settingsGeneral:
         return 'Manage workspace preferences, company controls, users, security, notifications, integrations, and audit-related options from one professional ERP settings hub.';
       default:
@@ -1370,13 +1187,6 @@ class _ZohoShellState extends State<ZohoShell> {
           'Address and branches',
           'Branding',
           'Default numbering formats',
-        ];
-      case ShellPage.iotMonitoring:
-        return [
-          'Connected machine list',
-          'Online / offline status',
-          'Current and voltage readings',
-          'Alarm and warning feed',
         ];
       case ShellPage.settingsGeneral:
         return [
@@ -1543,12 +1353,11 @@ class _ZohoShellState extends State<ZohoShell> {
   }
 
   Widget _homeDashboardLive() {
-    final username = widget.userEmail.split('@').first;
-
     DateTime dateOnly(DateTime d) => DateTime(d.year, d.month, d.day);
     final today = dateOnly(DateTime.now());
 
     final canShowInquiryDashboard = canInquiries;
+    final welcomeText = _dashboardWelcomeText();
 
     final inquiryStream = canShowInquiryDashboard
         ? FirebaseFirestore.instance
@@ -1564,20 +1373,11 @@ class _ZohoShellState extends State<ZohoShell> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            'Welcome ${username.isEmpty ? "User" : username}',
+            welcomeText,
             style: const TextStyle(
               fontSize: 18,
               fontWeight: FontWeight.w900,
               color: zText,
-            ),
-          ),
-          const SizedBox(height: 6),
-          Text(
-            widget.companyName,
-            style: const TextStyle(
-              fontSize: 13,
-              color: zMuted,
-              fontWeight: FontWeight.w600,
             ),
           ),
           const SizedBox(height: 20),
@@ -1688,20 +1488,11 @@ class _ZohoShellState extends State<ZohoShell> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              'Welcome ${username.isEmpty ? "User" : username}',
+              welcomeText,
               style: const TextStyle(
                 fontSize: 18,
                 fontWeight: FontWeight.w900,
                 color: zText,
-              ),
-            ),
-            const SizedBox(height: 6),
-            Text(
-              widget.companyName,
-              style: const TextStyle(
-                fontSize: 13,
-                color: zMuted,
-                fontWeight: FontWeight.w600,
               ),
             ),
             const SizedBox(height: 14),
