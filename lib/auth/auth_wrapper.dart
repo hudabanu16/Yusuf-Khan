@@ -3,10 +3,9 @@ import 'dart:async';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
-
+import 'package:QUIK/shell/zoho_shell.dart';
 import 'package:QUIK/core/theme/app_theme.dart';
 import 'package:QUIK/auth/login/login_screen.dart';
-import 'package:QUIK/shell/zoho_shell.dart';
 import 'package:QUIK/modules/administration/company/screen_join_company.dart';
 
 class AuthWrapper extends StatelessWidget {

@@ -7,7 +7,7 @@ import 'package:QUIK/modules/administration/users/screen_user_management.dart';
 import 'package:QUIK/modules/crm/customers/screens_customer_list.dart';
 import 'package:QUIK/modules/inventory/products/screens_product_list.dart';
 import 'package:QUIK/modules/sales/inquiries/screens_inquiry_list.dart';
-import 'package:QUIK/modules/sales/quotations/quotation_screen_local.dart';
+import 'package:QUIK/modules/sales/quotations/screens_quotation_list.dart';
 import 'package:QUIK/modules/settings/screen_settings_home.dart';
 
 enum ShellPage {
@@ -306,7 +306,7 @@ class _ZohoShellState extends State<ZohoShell> {
 
   bool get isAdminOrManager =>
       widget.role.toLowerCase() == 'admin' ||
-          widget.role.toLowerCase() == 'manager';
+      widget.role.toLowerCase() == 'manager';
 
   bool _canAccess(String module) {
     if (isAdminOrManager) return true;
@@ -485,7 +485,7 @@ class _ZohoShellState extends State<ZohoShell> {
 
     if (sidebarGroups.any((group) => group.children.contains(activePage))) {
       final group =
-      sidebarGroups.firstWhere((g) => g.children.contains(activePage));
+          sidebarGroups.firstWhere((g) => g.children.contains(activePage));
       return '${group.title} • ${activePage.label}';
     }
 
@@ -676,7 +676,7 @@ class _ZohoShellState extends State<ZohoShell> {
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(14),
             color:
-            selected ? Colors.white.withOpacity(0.10) : Colors.transparent,
+                selected ? Colors.white.withOpacity(0.10) : Colors.transparent,
             border: Border.all(
               color: selected
                   ? Colors.white.withOpacity(0.16)
@@ -720,7 +720,7 @@ class _ZohoShellState extends State<ZohoShell> {
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(14),
             color:
-            selected ? Colors.white.withOpacity(0.10) : Colors.transparent,
+                selected ? Colors.white.withOpacity(0.10) : Colors.transparent,
             border: Border.all(
               color: selected
                   ? Colors.white.withOpacity(0.16)
@@ -784,7 +784,7 @@ class _ZohoShellState extends State<ZohoShell> {
               },
               child: Padding(
                 padding:
-                const EdgeInsets.symmetric(horizontal: 12, vertical: 13),
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 13),
                 child: Row(
                   children: [
                     Icon(
@@ -799,7 +799,7 @@ class _ZohoShellState extends State<ZohoShell> {
                         style: TextStyle(
                           color: hasActiveChild ? Colors.white : Colors.white70,
                           fontWeight:
-                          hasActiveChild ? FontWeight.w900 : FontWeight.w700,
+                              hasActiveChild ? FontWeight.w900 : FontWeight.w700,
                         ),
                       ),
                     ),
@@ -821,7 +821,8 @@ class _ZohoShellState extends State<ZohoShell> {
               firstChild: Padding(
                 padding: const EdgeInsets.fromLTRB(8, 0, 8, 8),
                 child: Column(
-                  children: group.children.map((page) => _subNavItem(page)).toList(),
+                  children:
+                      group.children.map((page) => _subNavItem(page)).toList(),
                 ),
               ),
               secondChild: const SizedBox.shrink(),
@@ -927,7 +928,7 @@ class _ZohoShellState extends State<ZohoShell> {
         return const ScreensProductList();
 
       case ShellPage.salesQuotations:
-        return QuotationScreenLocal(
+        return ScreensQuotationList(
           userId: (widget.userUid.hashCode).abs() % 1000000,
         );
 
@@ -997,14 +998,14 @@ class _ZohoShellState extends State<ZohoShell> {
                     : 'Restricted',
                 icon: allowed
                     ? (implemented
-                    ? Icons.check_circle_outline
-                    : Icons.construction_outlined)
+                        ? Icons.check_circle_outline
+                        : Icons.construction_outlined)
                     : Icons.lock_outline,
                 tint: allowed
                     ? (implemented ? zSuccessSoft : zBlueSoft)
                     : const Color(0xFFFFF1F2),
                 iconColor:
-                allowed ? (implemented ? zSuccess : zBlue) : Colors.redAccent,
+                    allowed ? (implemented ? zSuccess : zBlue) : Colors.redAccent,
               ),
             ),
             const SizedBox(width: 12),
@@ -1012,9 +1013,8 @@ class _ZohoShellState extends State<ZohoShell> {
               child: _overviewCard(
                 title: 'Action',
                 value: implemented ? 'Open module' : 'Coming soon',
-                icon: implemented
-                    ? Icons.open_in_new
-                    : Icons.rocket_launch_outlined,
+                icon:
+                    implemented ? Icons.open_in_new : Icons.rocket_launch_outlined,
                 tint: zOrangeSoft,
                 iconColor: zOrange,
               ),
@@ -1070,7 +1070,7 @@ class _ZohoShellState extends State<ZohoShell> {
                         spacing: 10,
                         runSpacing: 10,
                         children:
-                        _moduleTags(page).map((e) => _moduleTag(e)).toList(),
+                            _moduleTags(page).map((e) => _moduleTag(e)).toList(),
                       ),
                       const Spacer(),
                     ],
@@ -1316,34 +1316,34 @@ class _ZohoShellState extends State<ZohoShell> {
               children: lines
                   .map(
                     (e) => Padding(
-                  padding: const EdgeInsets.only(bottom: 10),
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Padding(
-                        padding: EdgeInsets.only(top: 5),
-                        child: Icon(
-                          Icons.circle,
-                          size: 6,
-                          color: zBlue,
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: Text(
-                          e,
-                          style: const TextStyle(
-                            color: zMuted,
-                            fontSize: 13.2,
-                            height: 1.45,
-                            fontWeight: FontWeight.w600,
+                      padding: const EdgeInsets.only(bottom: 10),
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Padding(
+                            padding: EdgeInsets.only(top: 5),
+                            child: Icon(
+                              Icons.circle,
+                              size: 6,
+                              color: zBlue,
+                            ),
                           ),
-                        ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              e,
+                              style: const TextStyle(
+                                color: zMuted,
+                                fontSize: 13.2,
+                                height: 1.45,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ),
+                        ],
                       ),
-                    ],
-                  ),
-                ),
-              )
+                    ),
+                  )
                   .toList(),
             ),
           ),
@@ -1361,11 +1361,11 @@ class _ZohoShellState extends State<ZohoShell> {
 
     final inquiryStream = canShowInquiryDashboard
         ? FirebaseFirestore.instance
-        .collection('companies')
-        .doc(widget.companyId)
-        .collection('inquiries')
-        .where('assignedToUid', isEqualTo: widget.userUid)
-        .snapshots()
+            .collection('companies')
+            .doc(widget.companyId)
+            .collection('inquiries')
+            .where('assignedToUid', isEqualTo: widget.userUid)
+            .snapshots()
         : null;
 
     if (!canShowInquiryDashboard) {
@@ -1424,7 +1424,7 @@ class _ZohoShellState extends State<ZohoShell> {
                   child: _Panel(
                     title: 'Workspace Structure',
                     emptyText:
-                    'Professional SaaS modules are ready in sidebar',
+                        'Professional SaaS modules are ready in sidebar',
                     emptyIcon: Icons.dashboard_customize_outlined,
                   ),
                 ),
@@ -1433,7 +1433,7 @@ class _ZohoShellState extends State<ZohoShell> {
                   child: _Panel(
                     title: 'Next Build Suggestion',
                     emptyText:
-                    'Start with Follow-ups, Stock Summary and Vendors',
+                        'Start with Follow-ups, Stock Summary and Vendors',
                     emptyIcon: Icons.rocket_launch_outlined,
                   ),
                 ),

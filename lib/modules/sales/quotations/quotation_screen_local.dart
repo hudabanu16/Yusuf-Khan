@@ -5,7 +5,6 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
-
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
@@ -18,7 +17,10 @@ const Color accentColor = Color(0xFF3B82F6);
 class QuotationScreenLocal extends StatefulWidget {
   final int userId;
 
-  const QuotationScreenLocal({super.key, required this.userId});
+  const QuotationScreenLocal({
+    super.key,
+    required this.userId,
+  });
 
   @override
   State<QuotationScreenLocal> createState() => _QuotationScreenLocalState();
@@ -27,7 +29,10 @@ class QuotationScreenLocal extends StatefulWidget {
 class _QuotationScreenLocalState extends State<QuotationScreenLocal> {
   final _formKey = GlobalKey<FormState>();
 
-  // --- Customer / Company details ---
+  // Customer
+  String? _selectedCustomerId;
+  Map<String, dynamic>? _selectedCustomerSnapshot;
+
   final _companyNameController = TextEditingController();
   final _addressController = TextEditingController();
   final _emailController = TextEditingController();
@@ -35,11 +40,11 @@ class _QuotationScreenLocalState extends State<QuotationScreenLocal> {
   final _contactPersonController = TextEditingController();
   final _gstController = TextEditingController();
 
-  // --- Inquiry & quotation details ---
+  // Inquiry and quotation
   final _quoteNumberController = TextEditingController();
   final _inquiryRefNoteController = TextEditingController();
 
-  final List<String> _inquirySources = [
+  final List<String> _inquirySources = const [
     'Verbal',
     'Phone Call',
     'In Visit',
@@ -52,12 +57,12 @@ class _QuotationScreenLocalState extends State<QuotationScreenLocal> {
   DateTime _inquiryDate = DateTime.now();
   DateTime _quoteDate = DateTime.now();
 
-  // --- Items / Pricing ---
+  // Items and pricing
   List<Item> _items = [];
   double _taxRate = 18.0;
   double _discount = 0.0;
 
-  // --- Terms & Conditions ---
+  // Terms
   final _deliveryTimeController = TextEditingController();
   final _validityController = TextEditingController();
   final _priceBasisController = TextEditingController();
@@ -67,38 +72,41 @@ class _QuotationScreenLocalState extends State<QuotationScreenLocal> {
   final _extraTermController = TextEditingController();
   final List<String> _extraTerms = [];
 
-  // --- Letterhead ---
+  // Letterhead
   String? _letterheadUrl;
   Uint8List? _letterheadBytes;
   bool _isUploadingLetterhead = false;
 
-  // --- Signature block ---
+  // Signature
   final _signCompanyController = TextEditingController();
   final _signNameController = TextEditingController();
   final _signPhoneController = TextEditingController();
 
-  // --- User / company context ---
+  // User and company context
   String? _companyId;
   String? _currentUserUid;
   String _currentUserRole = 'sales';
   String _currentCompanyName = '';
 
+  bool _isLoading = false;
+  String? _errorMessage;
+
   bool get _isAdminOrManager =>
       _currentUserRole == 'admin' || _currentUserRole == 'manager';
 
-  // --- State flags ---
-  bool _isLoading = false;
-  String? _errorMessage;
+  bool get _hasSavedLetterhead =>
+      (_letterheadUrl != null && _letterheadUrl!.trim().isNotEmpty) ||
+      (_letterheadBytes != null && _letterheadBytes!.length > 0);
 
   @override
   void initState() {
     super.initState();
-    _quoteNumberController.text = _generateQuoteNumber();
 
-    _deliveryTimeController.text = 'Within 4–6 weeks from PO and advance.';
+    _deliveryTimeController.text = 'Within 4-6 weeks from PO and advance.';
     _validityController.text = '30 days from date of quotation.';
     _priceBasisController.text = 'Ex-works Mumbai, packing extra.';
-    _paymentTermsController.text = '50% advance with PO, balance against PI.';
+    _paymentTermsController.text =
+        '50% advance with PO, balance against PI.';
 
     _initializeScreen();
   }
@@ -106,6 +114,16 @@ class _QuotationScreenLocalState extends State<QuotationScreenLocal> {
   Future<void> _initializeScreen() async {
     await _loadUserContext();
     await _loadUserSettings();
+    await _initQuoteNumber();
+  }
+
+  Future<void> _initQuoteNumber() async {
+    final number = await _generateQuoteNumber();
+    if (mounted) {
+      setState(() {
+        _quoteNumberController.text = number;
+      });
+    }
   }
 
   @override
@@ -118,24 +136,24 @@ class _QuotationScreenLocalState extends State<QuotationScreenLocal> {
     _gstController.dispose();
     _quoteNumberController.dispose();
     _inquiryRefNoteController.dispose();
-
     _deliveryTimeController.dispose();
     _validityController.dispose();
     _priceBasisController.dispose();
     _paymentTermsController.dispose();
     _extraTermController.dispose();
-
     _signCompanyController.dispose();
     _signNameController.dispose();
     _signPhoneController.dispose();
-
     super.dispose();
   }
 
   Future<void> _loadUserContext() async {
     try {
       final user = FirebaseAuth.instance.currentUser;
-      if (user == null) return;
+      if (user == null) {
+        _setError('No logged in user found.');
+        return;
+      }
 
       final rootUserDoc = await FirebaseFirestore.instance
           .collection('users')
@@ -145,9 +163,9 @@ class _QuotationScreenLocalState extends State<QuotationScreenLocal> {
       final data = rootUserDoc.data() ?? {};
 
       _currentUserUid = user.uid;
-      _companyId = (data['companyId'] ?? '').toString();
-      _currentUserRole = (data['role'] ?? 'sales').toString();
-      _currentCompanyName = (data['companyName'] ?? '').toString();
+      _companyId = (data['companyId'] ?? '').toString().trim();
+      _currentUserRole = (data['role'] ?? 'sales').toString().trim();
+      _currentCompanyName = (data['companyName'] ?? '').toString().trim();
 
       if (_signCompanyController.text.trim().isEmpty &&
           _currentCompanyName.isNotEmpty) {
@@ -157,10 +175,10 @@ class _QuotationScreenLocalState extends State<QuotationScreenLocal> {
       if (mounted) {
         setState(() {});
       }
-    } catch (_) {}
+    } catch (e) {
+      _setError('Failed to load user context: $e');
+    }
   }
-
-  // ========= SETTINGS LOAD / SAVE =========
 
   Future<void> _loadUserSettings() async {
     try {
@@ -183,45 +201,41 @@ class _QuotationScreenLocalState extends State<QuotationScreenLocal> {
       final data = doc.data() ?? {};
 
       setState(() {
-        _letterheadUrl = (data['letterheadUrl'] ?? '') as String?;
+        _letterheadUrl = (data['letterheadUrl'] ?? '').toString().trim().isEmpty
+            ? null
+            : data['letterheadUrl'].toString().trim();
 
         _taxRate = (data['taxRate'] as num?)?.toDouble() ?? _taxRate;
         _packingChargesExtra =
             data['packingChargesExtra'] as bool? ?? _packingChargesExtra;
 
-        final delivery = data['deliveryTime']?.toString();
-        final validity = data['validity']?.toString();
-        final priceBasis = data['priceBasis']?.toString();
-        final payment = data['paymentTerms']?.toString();
+        final delivery = data['deliveryTime']?.toString() ?? '';
+        final validity = data['validity']?.toString() ?? '';
+        final priceBasis = data['priceBasis']?.toString() ?? '';
+        final payment = data['paymentTerms']?.toString() ?? '';
 
-        if (delivery != null && delivery.isNotEmpty) {
-          _deliveryTimeController.text = delivery;
-        }
-        if (validity != null && validity.isNotEmpty) {
-          _validityController.text = validity;
-        }
-        if (priceBasis != null && priceBasis.isNotEmpty) {
-          _priceBasisController.text = priceBasis;
-        }
-        if (payment != null && payment.isNotEmpty) {
-          _paymentTermsController.text = payment;
-        }
+        if (delivery.isNotEmpty) _deliveryTimeController.text = delivery;
+        if (validity.isNotEmpty) _validityController.text = validity;
+        if (priceBasis.isNotEmpty) _priceBasisController.text = priceBasis;
+        if (payment.isNotEmpty) _paymentTermsController.text = payment;
 
-        final signCompany = data['signatureCompany']?.toString();
-        final signName = data['signatureName']?.toString();
-        final signPhone = data['signaturePhone']?.toString();
+        final signCompany = data['signatureCompany']?.toString() ?? '';
+        final signName = data['signatureName']?.toString() ?? '';
+        final signPhone = data['signaturePhone']?.toString() ?? '';
 
-        if (signCompany != null && signCompany.isNotEmpty) {
+        if (signCompany.isNotEmpty) {
           _signCompanyController.text = signCompany;
         } else if (_currentCompanyName.isNotEmpty &&
             _signCompanyController.text.trim().isEmpty) {
           _signCompanyController.text = _currentCompanyName;
         }
 
-        if (signName != null) _signNameController.text = signName;
-        if (signPhone != null) _signPhoneController.text = signPhone;
+        _signNameController.text = signName;
+        _signPhoneController.text = signPhone;
       });
-    } catch (_) {}
+    } catch (e) {
+      _setError('Failed to load quotation settings: $e');
+    }
   }
 
   Future<void> _saveUserSettings() async {
@@ -246,17 +260,47 @@ class _QuotationScreenLocalState extends State<QuotationScreenLocal> {
         'signaturePhone': _signPhoneController.text.trim(),
         'updatedAt': FieldValue.serverTimestamp(),
       }, SetOptions(merge: true));
-    } catch (_) {}
+    } catch (e) {
+      _setError('Failed to save settings: $e');
+    }
   }
 
-  // ========= BASIC HELPERS =========
+  void _setError(String message) {
+    if (!mounted) return;
+    setState(() {
+      _errorMessage = message;
+    });
+  }
 
-  String _generateQuoteNumber() {
+  void _clearError() {
+    if (!mounted) return;
+    setState(() {
+      _errorMessage = null;
+    });
+  }
+
+  Future<String> _generateQuoteNumber() async {
+    if (_companyId == null || _companyId!.isEmpty) {
+      return 'MEM/0001/26-27';
+    }
+
     final now = DateTime.now();
-    final y = now.year;
-    final m = now.month.toString().padLeft(2, '0');
-    final d = now.day.toString().padLeft(2, '0');
-    return 'QTE-$y$m$d-001';
+    final startYear = now.month >= 4 ? now.year : now.year - 1;
+    final endYear = startYear + 1;
+    final fyShort =
+        '${startYear.toString().substring(2)}-${endYear.toString().substring(2)}';
+
+    final snapshot = await FirebaseFirestore.instance
+        .collection('companies')
+        .doc(_companyId)
+        .collection('quotations')
+        .where('financialYear', isEqualTo: fyShort)
+        .get();
+
+    final nextNumber = snapshot.docs.length + 1;
+    final number = nextNumber.toString().padLeft(4, '0');
+
+    return 'MEM/$number/$fyShort';
   }
 
   String _formatDate(DateTime d) =>
@@ -264,56 +308,55 @@ class _QuotationScreenLocalState extends State<QuotationScreenLocal> {
 
   double get _subtotal =>
       _items.fold(0.0, (sum, item) => sum + (item.quantity * item.unitPrice));
+
   double get _discountAmount => _subtotal * (_discount / 100);
   double get _taxableAmount => _subtotal - _discountAmount;
   double get _taxAmount => _taxableAmount * (_taxRate / 100);
   double get _grandTotal => _taxableAmount + _taxAmount;
 
-  // ================== PRODUCT PICKER ==================
+  Query<Map<String, dynamic>> _customerQuery() {
+    Query<Map<String, dynamic>> query = FirebaseFirestore.instance
+        .collection('companies')
+        .doc(_companyId)
+        .collection('customers');
 
-  Future<Map<String, dynamic>?> _selectProductDialog() async {
+    if (!_isAdminOrManager && _currentUserUid != null) {
+      query = query.where('createdBy', isEqualTo: _currentUserUid);
+    }
+    return query;
+  }
+
+  Future<Map<String, dynamic>?> _selectCustomerDialog() async {
     if (_companyId == null || _companyId!.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Company not linked. Cannot load products.'),
-          backgroundColor: Colors.red,
-        ),
-      );
+      _showSnack('Company not linked. Cannot load customers.', isError: true);
       return null;
     }
 
-    final TextEditingController searchController = TextEditingController();
+    final searchController = TextEditingController();
     String searchText = '';
-
-    Query<Map<String, dynamic>> productQuery = FirebaseFirestore.instance
-        .collection('companies')
-        .doc(_companyId)
-        .collection('products');
-
-    if (!_isAdminOrManager && _currentUserUid != null) {
-      productQuery = productQuery.where('createdBy', isEqualTo: _currentUserUid);
-    }
 
     return showDialog<Map<String, dynamic>>(
       context: context,
       builder: (ctx) {
         return StatefulBuilder(
-          builder: (context, setStateDialog) {
+          builder: (context, setDialogState) {
             return AlertDialog(
-              title: const Text('Select Product'),
+              title: const Text('Select Customer'),
               content: SizedBox(
-                width: 500,
+                width: 550,
                 height: 500,
                 child: Column(
                   children: [
                     TextField(
                       controller: searchController,
                       decoration: const InputDecoration(
+                        hintText:
+                            'Search customer by company, person, phone, email',
                         prefixIcon: Icon(Icons.search),
-                        hintText: 'Search by name or code',
+                        border: OutlineInputBorder(),
                       ),
                       onChanged: (value) {
-                        setStateDialog(() {
+                        setDialogState(() {
                           searchText = value.trim().toLowerCase();
                         });
                       },
@@ -321,13 +364,14 @@ class _QuotationScreenLocalState extends State<QuotationScreenLocal> {
                     const SizedBox(height: 12),
                     Expanded(
                       child: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-                        stream: productQuery.snapshots(),
+                        stream: _customerQuery().snapshots(),
                         builder: (context, snapshot) {
                           if (snapshot.hasError) {
                             return const Center(
-                              child: Text('Error loading products'),
+                              child: Text('Error loading customers'),
                             );
                           }
+
                           if (snapshot.connectionState ==
                               ConnectionState.waiting) {
                             return const Center(
@@ -336,74 +380,89 @@ class _QuotationScreenLocalState extends State<QuotationScreenLocal> {
                           }
 
                           final docs = snapshot.data?.docs ?? [];
+
                           final filtered = docs.where((doc) {
                             final data = doc.data();
-                            final name =
-                            (data['name'] ?? '').toString().toLowerCase();
-                            final itemCode = (data['itemCode'] ?? '')
+
+                            final companyName =
+                                (data['companyName'] ?? data['name'] ?? '')
+                                    .toString()
+                                    .toLowerCase();
+
+                            final contactPerson =
+                                (data['contactPerson'] ?? '')
+                                    .toString()
+                                    .toLowerCase();
+
+                            final phone = (data['mobile'] ?? data['phone'] ?? '')
                                 .toString()
                                 .toLowerCase();
+
+                            final email =
+                                (data['email'] ?? '').toString().toLowerCase();
+
                             if (searchText.isEmpty) return true;
-                            return name.contains(searchText) ||
-                                itemCode.contains(searchText);
+
+                            return companyName.contains(searchText) ||
+                                contactPerson.contains(searchText) ||
+                                phone.contains(searchText) ||
+                                email.contains(searchText);
                           }).toList();
 
                           if (filtered.isEmpty) {
                             return const Center(
-                              child: Text(
-                                'No matching products found.\nTry a different search.',
-                                textAlign: TextAlign.center,
-                              ),
+                              child: Text('No customers found'),
                             );
                           }
 
                           return ListView.separated(
                             itemCount: filtered.length,
                             separatorBuilder: (_, __) =>
-                            const Divider(height: 1),
+                                const Divider(height: 1),
                             itemBuilder: (context, index) {
                               final doc = filtered[index];
                               final data = doc.data();
 
-                              final name = (data['name'] ?? '').toString();
-                              final hsnCode =
-                              (data['hsnCode'] ?? '').toString();
-                              final itemCode =
-                              (data['itemCode'] ?? '').toString();
-                              final uom = (data['uom'] ?? '').toString();
-                              final unitPrice =
-                              (data['unitPrice'] ?? 0).toString();
-                              final gst =
-                              (data['gstPercentage'] ?? 0).toString();
+                              final companyName =
+                                  (data['companyName'] ?? data['name'] ?? '')
+                                      .toString();
+                              final contactPerson =
+                                  (data['contactPerson'] ?? '').toString();
+                              final mobile =
+                                  (data['mobile'] ?? data['phone'] ?? '')
+                                      .toString();
+                              final email = (data['email'] ?? '').toString();
+                              final gst = (data['gstNo'] ?? data['gst'] ?? '')
+                                  .toString();
 
-                              final subtitleLines = <String>[];
-                              if (itemCode.isNotEmpty) {
-                                subtitleLines.add('Code: $itemCode');
+                              final subtitle = <String>[];
+                              if (contactPerson.isNotEmpty) {
+                                subtitle.add('Contact: $contactPerson');
                               }
-                              if (hsnCode.isNotEmpty) {
-                                subtitleLines.add('HSN: $hsnCode');
+                              if (mobile.isNotEmpty) {
+                                subtitle.add('Mobile: $mobile');
                               }
-                              if (uom.isNotEmpty) {
-                                subtitleLines.add('UOM: $uom');
+                              if (email.isNotEmpty) {
+                                subtitle.add('Email: $email');
                               }
-                              subtitleLines
-                                  .add('Price: Rs $unitPrice | GST: $gst%');
+                              if (gst.isNotEmpty) {
+                                subtitle.add('GST: $gst');
+                              }
 
                               return ListTile(
                                 title: Text(
-                                  name,
+                                  companyName.isEmpty
+                                      ? 'Unnamed Customer'
+                                      : companyName,
                                   style: const TextStyle(
                                     fontWeight: FontWeight.w600,
                                   ),
                                 ),
-                                subtitle: Text(subtitleLines.join(' • ')),
+                                subtitle: Text(subtitle.join(' | ')),
                                 onTap: () {
                                   Navigator.pop<Map<String, dynamic>>(
                                     context,
-                                    {
-                                      'id': doc.id,
-                                      ...data,
-                                    },
+                                    {'id': doc.id, ...data},
                                   );
                                 },
                               );
@@ -428,16 +487,196 @@ class _QuotationScreenLocalState extends State<QuotationScreenLocal> {
     );
   }
 
-  // ================== ADD / EDIT ITEM ==================
+  void _applyCustomer(Map<String, dynamic> customer) {
+    setState(() {
+      _selectedCustomerId = (customer['id'] ?? '').toString();
+      _selectedCustomerSnapshot = Map<String, dynamic>.from(customer);
+
+      _companyNameController.text =
+          (customer['companyName'] ?? customer['name'] ?? '').toString();
+      _addressController.text =
+          (customer['address'] ?? customer['billingAddress'] ?? '').toString();
+      _emailController.text = (customer['email'] ?? '').toString();
+      _mobileController.text =
+          (customer['mobile'] ?? customer['phone'] ?? '').toString();
+      _contactPersonController.text =
+          (customer['contactPerson'] ?? '').toString();
+      _gstController.text =
+          (customer['gstNo'] ?? customer['gst'] ?? '').toString();
+    });
+  }
+
+  void _clearSelectedCustomer() {
+    setState(() {
+      _selectedCustomerId = null;
+      _selectedCustomerSnapshot = null;
+      _companyNameController.clear();
+      _addressController.clear();
+      _emailController.clear();
+      _mobileController.clear();
+      _contactPersonController.clear();
+      _gstController.clear();
+    });
+  }
+
+  Future<Map<String, dynamic>?> _selectProductDialog() async {
+    if (_companyId == null || _companyId!.isEmpty) {
+      _showSnack('Company not linked. Cannot load products.', isError: true);
+      return null;
+    }
+
+    final searchController = TextEditingController();
+    String searchText = '';
+
+    Query<Map<String, dynamic>> productQuery = FirebaseFirestore.instance
+        .collection('companies')
+        .doc(_companyId)
+        .collection('products');
+
+    if (!_isAdminOrManager && _currentUserUid != null) {
+      productQuery = productQuery.where('createdBy', isEqualTo: _currentUserUid);
+    }
+
+    return showDialog<Map<String, dynamic>>(
+      context: context,
+      builder: (ctx) {
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            return AlertDialog(
+              title: const Text('Select Product'),
+              content: SizedBox(
+                width: 500,
+                height: 500,
+                child: Column(
+                  children: [
+                    TextField(
+                      controller: searchController,
+                      decoration: const InputDecoration(
+                        prefixIcon: Icon(Icons.search),
+                        hintText: 'Search by name or code',
+                        border: OutlineInputBorder(),
+                      ),
+                      onChanged: (value) {
+                        setDialogState(() {
+                          searchText = value.trim().toLowerCase();
+                        });
+                      },
+                    ),
+                    const SizedBox(height: 12),
+                    Expanded(
+                      child: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+                        stream: productQuery.snapshots(),
+                        builder: (context, snapshot) {
+                          if (snapshot.hasError) {
+                            return const Center(
+                              child: Text('Error loading products'),
+                            );
+                          }
+
+                          if (snapshot.connectionState ==
+                              ConnectionState.waiting) {
+                            return const Center(
+                              child: CircularProgressIndicator(),
+                            );
+                          }
+
+                          final docs = snapshot.data?.docs ?? [];
+                          final filtered = docs.where((doc) {
+                            final data = doc.data();
+                            final name =
+                                (data['name'] ?? '').toString().toLowerCase();
+                            final itemCode =
+                                (data['itemCode'] ?? '').toString().toLowerCase();
+
+                            if (searchText.isEmpty) return true;
+
+                            return name.contains(searchText) ||
+                                itemCode.contains(searchText);
+                          }).toList();
+
+                          if (filtered.isEmpty) {
+                            return const Center(
+                              child: Text('No matching products found'),
+                            );
+                          }
+
+                          return ListView.separated(
+                            itemCount: filtered.length,
+                            separatorBuilder: (_, __) =>
+                                const Divider(height: 1),
+                            itemBuilder: (context, index) {
+                              final doc = filtered[index];
+                              final data = doc.data();
+
+                              final name = (data['name'] ?? '').toString();
+                              final hsnCode =
+                                  (data['hsnCode'] ?? '').toString();
+                              final itemCode =
+                                  (data['itemCode'] ?? '').toString();
+                              final uom = (data['uom'] ?? '').toString();
+                              final unitPrice =
+                                  (data['unitPrice'] ?? 0).toString();
+                              final gst =
+                                  (data['gstPercentage'] ?? 0).toString();
+
+                              final subtitleLines = <String>[];
+                              if (itemCode.isNotEmpty) {
+                                subtitleLines.add('Code: $itemCode');
+                              }
+                              if (hsnCode.isNotEmpty) {
+                                subtitleLines.add('HSN: $hsnCode');
+                              }
+                              if (uom.isNotEmpty) {
+                                subtitleLines.add('UOM: $uom');
+                              }
+                              subtitleLines.add(
+                                'Price: Rs $unitPrice | GST: $gst%',
+                              );
+
+                              return ListTile(
+                                title: Text(
+                                  name,
+                                  style: const TextStyle(
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                                subtitle: Text(subtitleLines.join(' | ')),
+                                onTap: () {
+                                  Navigator.pop<Map<String, dynamic>>(
+                                    context,
+                                    {'id': doc.id, ...data},
+                                  );
+                                },
+                              );
+                            },
+                          );
+                        },
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(ctx),
+                  child: const Text('Close'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
 
   void _showAddItemModal([Item? itemToEdit, int? index]) {
     final nameController = TextEditingController(text: itemToEdit?.name);
     final descriptionController =
-    TextEditingController(text: itemToEdit?.description);
+        TextEditingController(text: itemToEdit?.description);
     final quantityController =
-    TextEditingController(text: itemToEdit?.quantity.toString());
+        TextEditingController(text: itemToEdit?.quantity.toString());
     final priceController =
-    TextEditingController(text: itemToEdit?.unitPrice.toString());
+        TextEditingController(text: itemToEdit?.unitPrice.toString());
     final modalFormKey = GlobalKey<FormState>();
 
     showModalBottomSheet(
@@ -446,7 +685,7 @@ class _QuotationScreenLocalState extends State<QuotationScreenLocal> {
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
-      builder: (context) {
+      builder: (_) {
         return Padding(
           padding: EdgeInsets.only(
             bottom: MediaQuery.of(context).viewInsets.bottom,
@@ -458,8 +697,8 @@ class _QuotationScreenLocalState extends State<QuotationScreenLocal> {
             key: modalFormKey,
             child: SingleChildScrollView(
               child: Column(
-                mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.stretch,
+                mainAxisSize: MainAxisSize.min,
                 children: [
                   Row(
                     children: [
@@ -476,21 +715,21 @@ class _QuotationScreenLocalState extends State<QuotationScreenLocal> {
                       TextButton.icon(
                         onPressed: () async {
                           final productData = await _selectProductDialog();
-                          if (productData != null) {
-                            nameController.text =
-                                (productData['name'] ?? '').toString();
-                            descriptionController.text =
-                                (productData['description'] ?? '').toString();
-                            priceController.text =
-                                (productData['unitPrice'] ?? 0).toString();
-                            quantityController.text = '1';
+                          if (productData == null) return;
 
-                            final gst = productData['gstPercentage'];
-                            if (gst != null) {
-                              setState(() {
-                                _taxRate = (gst as num).toDouble();
-                              });
-                            }
+                          nameController.text =
+                              (productData['name'] ?? '').toString();
+                          descriptionController.text =
+                              (productData['description'] ?? '').toString();
+                          priceController.text =
+                              (productData['unitPrice'] ?? 0).toString();
+                          quantityController.text = '1';
+
+                          final gst = productData['gstPercentage'];
+                          if (gst != null) {
+                            setState(() {
+                              _taxRate = (gst as num).toDouble();
+                            });
                           }
                         },
                         icon: const Icon(Icons.inventory_2_outlined),
@@ -503,7 +742,7 @@ class _QuotationScreenLocalState extends State<QuotationScreenLocal> {
                     nameController,
                     'Item Name',
                     validator: (v) =>
-                    v == null || v.trim().isEmpty ? 'Name required' : null,
+                        v == null || v.trim().isEmpty ? 'Name required' : null,
                   ),
                   _buildItemTextField(
                     descriptionController,
@@ -518,9 +757,9 @@ class _QuotationScreenLocalState extends State<QuotationScreenLocal> {
                           'Quantity',
                           keyboardType: TextInputType.number,
                           validator: (v) => v == null ||
-                              v.trim().isEmpty ||
-                              double.tryParse(v) == null
-                              ? 'Valid number required'
+                                  v.trim().isEmpty ||
+                                  double.tryParse(v) == null
+                              ? 'Valid quantity required'
                               : null,
                         ),
                       ),
@@ -531,8 +770,8 @@ class _QuotationScreenLocalState extends State<QuotationScreenLocal> {
                           'Unit Price',
                           keyboardType: TextInputType.number,
                           validator: (v) => v == null ||
-                              v.trim().isEmpty ||
-                              double.tryParse(v) == null
+                                  v.trim().isEmpty ||
+                                  double.tryParse(v) == null
                               ? 'Valid price required'
                               : null,
                         ),
@@ -542,35 +781,32 @@ class _QuotationScreenLocalState extends State<QuotationScreenLocal> {
                   const SizedBox(height: 10),
                   ElevatedButton(
                     onPressed: () {
-                      if (modalFormKey.currentState!.validate()) {
-                        final newItem = Item(
-                          name: nameController.text.trim(),
-                          description: descriptionController.text.trim(),
-                          quantity: double.parse(quantityController.text),
-                          unitPrice: double.parse(priceController.text),
-                        );
+                      if (!modalFormKey.currentState!.validate()) return;
 
-                        setState(() {
-                          if (index != null) {
-                            _items[index] = newItem;
-                          } else {
-                            _items.add(newItem);
-                          }
-                        });
-                        Navigator.pop(context);
-                      }
+                      final newItem = Item(
+                        name: nameController.text.trim(),
+                        description: descriptionController.text.trim(),
+                        quantity: double.parse(quantityController.text.trim()),
+                        unitPrice: double.parse(priceController.text.trim()),
+                      );
+
+                      setState(() {
+                        if (index != null) {
+                          _items[index] = newItem;
+                        } else {
+                          _items.add(newItem);
+                        }
+                      });
+
+                      Navigator.pop(context);
                     },
                     style: ElevatedButton.styleFrom(
                       backgroundColor: accentColor,
                       foregroundColor: Colors.white,
                       padding: const EdgeInsets.symmetric(vertical: 15),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(10),
-                      ),
                     ),
-                    child: Text(
-                      itemToEdit == null ? 'Add Item' : 'Save Changes',
-                    ),
+                    child:
+                        Text(itemToEdit == null ? 'Add Item' : 'Save Changes'),
                   ),
                   const SizedBox(height: 20),
                 ],
@@ -583,46 +819,53 @@ class _QuotationScreenLocalState extends State<QuotationScreenLocal> {
   }
 
   Widget _buildItemTextField(
-      TextEditingController controller,
-      String label, {
-        TextInputType keyboardType = TextInputType.text,
-        String? Function(String?)? validator,
-        int maxLines = 1,
-      }) {
+    TextEditingController controller,
+    String label, {
+    TextInputType keyboardType = TextInputType.text,
+    String? Function(String?)? validator,
+    int maxLines = 1,
+  }) {
     return Padding(
-      padding: const EdgeInsets.only(bottom: 12.0),
+      padding: const EdgeInsets.only(bottom: 12),
       child: TextFormField(
         controller: controller,
         keyboardType: keyboardType,
         validator: validator,
         maxLines: maxLines,
-        decoration: InputDecoration(
-          labelText: label,
-          border: const OutlineInputBorder(),
+        decoration: const InputDecoration(
+          border: OutlineInputBorder(),
           isDense: true,
-        ),
+        ).copyWith(labelText: label),
       ),
     );
   }
 
-  // ================== SETTINGS SHEET ==================
+  void _showSnack(String message, {bool isError = false}) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        backgroundColor: isError ? Colors.red : Colors.green,
+      ),
+    );
+  }
 
   void _openSettings() {
     final deliveryController =
-    TextEditingController(text: _deliveryTimeController.text);
+        TextEditingController(text: _deliveryTimeController.text);
     final validityController =
-    TextEditingController(text: _validityController.text);
+        TextEditingController(text: _validityController.text);
     final priceBasisController =
-    TextEditingController(text: _priceBasisController.text);
+        TextEditingController(text: _priceBasisController.text);
     final paymentController =
-    TextEditingController(text: _paymentTermsController.text);
+        TextEditingController(text: _paymentTermsController.text);
 
     final signCompanyController =
-    TextEditingController(text: _signCompanyController.text);
+        TextEditingController(text: _signCompanyController.text);
     final signNameController =
-    TextEditingController(text: _signNameController.text);
+        TextEditingController(text: _signNameController.text);
     final signPhoneController =
-    TextEditingController(text: _signPhoneController.text);
+        TextEditingController(text: _signPhoneController.text);
 
     double tempTaxRate = _taxRate;
     bool tempPackingExtra = _packingChargesExtra;
@@ -647,11 +890,9 @@ class _QuotationScreenLocalState extends State<QuotationScreenLocal> {
               Future<void> pickLetterhead() async {
                 final user = FirebaseAuth.instance.currentUser;
                 if (user == null) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text('Please login before uploading letterhead'),
-                      backgroundColor: Colors.red,
-                    ),
+                  _showSnack(
+                    'Please login before uploading letterhead',
+                    isError: true,
                   );
                   return;
                 }
@@ -662,24 +903,11 @@ class _QuotationScreenLocalState extends State<QuotationScreenLocal> {
                   withData: true,
                 );
 
-                if (result == null || result.files.isEmpty) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text('No file selected'),
-                      backgroundColor: Colors.orange,
-                    ),
-                  );
-                  return;
-                }
+                if (result == null || result.files.isEmpty) return;
 
                 final file = result.files.first;
                 if (file.bytes == null) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text('Unable to read file bytes'),
-                      backgroundColor: Colors.red,
-                    ),
-                  );
+                  _showSnack('Unable to read file bytes', isError: true);
                   return;
                 }
 
@@ -687,14 +915,6 @@ class _QuotationScreenLocalState extends State<QuotationScreenLocal> {
                   _letterheadBytes = file.bytes!;
                 });
                 setModalState(() {});
-
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text(
-                        'Letterhead loaded. Uploading to cloud in background...'),
-                    backgroundColor: Colors.green,
-                  ),
-                );
 
                 setModalState(() {
                   _isUploadingLetterhead = true;
@@ -719,15 +939,12 @@ class _QuotationScreenLocalState extends State<QuotationScreenLocal> {
                   setState(() {
                     _letterheadUrl = url;
                   });
+
                   setModalState(() {});
                   await _saveUserSettings();
+                  _showSnack('Letterhead uploaded successfully');
                 } catch (e) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text('Cloud upload failed: $e'),
-                      backgroundColor: Colors.red,
-                    ),
-                  );
+                  _showSnack('Cloud upload failed: $e', isError: true);
                 } finally {
                   setModalState(() {
                     _isUploadingLetterhead = false;
@@ -763,65 +980,44 @@ class _QuotationScreenLocalState extends State<QuotationScreenLocal> {
                       ],
                     ),
                     const SizedBox(height: 16),
-                    Align(
-                      alignment: Alignment.centerLeft,
-                      child: Text(
-                        'Letterhead',
-                        style: TextStyle(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w600,
-                          color: Colors.grey.shade800,
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 8),
                     ListTile(
                       contentPadding: EdgeInsets.zero,
-                      leading: const Icon(Icons.image_outlined,
-                          color: primaryColor),
-                      title: Text(
-                        _letterheadBytes == null && _letterheadUrl == null
-                            ? 'No letterhead selected'
-                            : 'Letterhead ready for preview & print',
-                        style: const TextStyle(fontSize: 14),
+                      leading: Icon(
+                        _hasSavedLetterhead
+                            ? Icons.verified
+                            : Icons.image_outlined,
+                        color: _hasSavedLetterhead
+                            ? Colors.green
+                            : primaryColor,
                       ),
-                      subtitle: const Text(
-                        'Upload a PNG or JPG letterhead image (full page or header+footer).',
-                        style: TextStyle(fontSize: 12),
+                      title: Text(
+                        _hasSavedLetterhead
+                            ? 'Letterhead already saved'
+                            : 'No letterhead selected',
+                      ),
+                      subtitle: Text(
+                        _hasSavedLetterhead
+                            ? 'Saved letterhead will be used automatically in every quotation.'
+                            : 'Upload a PNG or JPG letterhead image once.',
                       ),
                       trailing: _isUploadingLetterhead
                           ? const SizedBox(
-                        width: 24,
-                        height: 24,
-                        child: CircularProgressIndicator(strokeWidth: 2.0),
-                      )
+                              width: 24,
+                              height: 24,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
                           : OutlinedButton(
-                        onPressed: pickLetterhead,
-                        child: const Text('Upload / Change'),
-                      ),
+                              onPressed: pickLetterhead,
+                              child: Text(
+                                _hasSavedLetterhead ? 'Change' : 'Upload',
+                              ),
+                            ),
                     ),
-                    const SizedBox(height: 16),
-                    Divider(color: Colors.grey.shade300),
-                    const SizedBox(height: 8),
-                    Align(
-                      alignment: Alignment.centerLeft,
-                      child: Text(
-                        'Quotation Defaults',
-                        style: TextStyle(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w600,
-                          color: Colors.grey.shade800,
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 8),
+                    const SizedBox(height: 12),
                     Row(
                       children: [
                         const Expanded(
-                          child: Text(
-                            'Default GST (%)',
-                            style: TextStyle(fontSize: 14),
-                          ),
+                          child: Text('Default GST (%)'),
                         ),
                         SizedBox(
                           width: 180,
@@ -844,9 +1040,8 @@ class _QuotationScreenLocalState extends State<QuotationScreenLocal> {
                       contentPadding: EdgeInsets.zero,
                       value: tempPackingExtra,
                       title: const Text(
-                          'Packing & Forwarding charges EXTRA by default'),
-                      subtitle: const Text(
-                          'Turn OFF if packing is usually included in quoted prices.'),
+                        'Packing and Forwarding charges EXTRA by default',
+                      ),
                       onChanged: (v) {
                         setModalState(() {
                           tempPackingExtra = v;
@@ -854,26 +1049,11 @@ class _QuotationScreenLocalState extends State<QuotationScreenLocal> {
                       },
                     ),
                     const SizedBox(height: 8),
-                    Divider(color: Colors.grey.shade300),
-                    const SizedBox(height: 8),
-                    Align(
-                      alignment: Alignment.centerLeft,
-                      child: Text(
-                        'Default Terms & Conditions',
-                        style: TextStyle(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w600,
-                          color: Colors.grey.shade800,
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 8),
                     TextField(
                       controller: deliveryController,
                       decoration: const InputDecoration(
                         labelText: 'Delivery Time',
                         border: OutlineInputBorder(),
-                        isDense: true,
                       ),
                     ),
                     const SizedBox(height: 8),
@@ -882,40 +1062,22 @@ class _QuotationScreenLocalState extends State<QuotationScreenLocal> {
                       decoration: const InputDecoration(
                         labelText: 'Quotation Validity',
                         border: OutlineInputBorder(),
-                        isDense: true,
                       ),
                     ),
                     const SizedBox(height: 8),
                     TextField(
                       controller: priceBasisController,
                       decoration: const InputDecoration(
-                        labelText: 'Price Basis (Ex-Works / FOR etc.)',
+                        labelText: 'Price Basis',
                         border: OutlineInputBorder(),
-                        isDense: true,
                       ),
                     ),
                     const SizedBox(height: 8),
                     TextField(
                       controller: paymentController,
                       decoration: const InputDecoration(
-                        labelText:
-                        'Payment Terms (Advance %, Against PI / PDC / Credit)',
+                        labelText: 'Payment Terms',
                         border: OutlineInputBorder(),
-                        isDense: true,
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-                    Divider(color: Colors.grey.shade300),
-                    const SizedBox(height: 8),
-                    Align(
-                      alignment: Alignment.centerLeft,
-                      child: Text(
-                        'Signature Block',
-                        style: TextStyle(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w600,
-                          color: Colors.grey.shade800,
-                        ),
                       ),
                     ),
                     const SizedBox(height: 8),
@@ -924,7 +1086,6 @@ class _QuotationScreenLocalState extends State<QuotationScreenLocal> {
                       decoration: const InputDecoration(
                         labelText: 'Company / Brand Name',
                         border: OutlineInputBorder(),
-                        isDense: true,
                       ),
                     ),
                     const SizedBox(height: 8),
@@ -933,7 +1094,6 @@ class _QuotationScreenLocalState extends State<QuotationScreenLocal> {
                       decoration: const InputDecoration(
                         labelText: 'Signatory Name & Designation',
                         border: OutlineInputBorder(),
-                        isDense: true,
                       ),
                     ),
                     const SizedBox(height: 8),
@@ -942,7 +1102,6 @@ class _QuotationScreenLocalState extends State<QuotationScreenLocal> {
                       decoration: const InputDecoration(
                         labelText: 'Contact Number',
                         border: OutlineInputBorder(),
-                        isDense: true,
                       ),
                     ),
                     const SizedBox(height: 16),
@@ -961,7 +1120,6 @@ class _QuotationScreenLocalState extends State<QuotationScreenLocal> {
                                 priceBasisController.text.trim();
                             _paymentTermsController.text =
                                 paymentController.text.trim();
-
                             _signCompanyController.text =
                                 signCompanyController.text.trim();
                             _signNameController.text =
@@ -969,22 +1127,19 @@ class _QuotationScreenLocalState extends State<QuotationScreenLocal> {
                             _signPhoneController.text =
                                 signPhoneController.text.trim();
                           });
+
                           await _saveUserSettings();
-                          if (ctx.mounted) Navigator.of(ctx).pop();
+
+                          if (ctx.mounted) {
+                            Navigator.of(ctx).pop();
+                          }
                         },
                         style: ElevatedButton.styleFrom(
                           backgroundColor: accentColor,
                           foregroundColor: Colors.white,
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(10),
-                          ),
-                          padding: const EdgeInsets.symmetric(vertical: 12),
                         ),
                         icon: const Icon(Icons.check),
-                        label: const Text(
-                          'Save Settings',
-                          style: TextStyle(fontSize: 16),
-                        ),
+                        label: const Text('Save Settings'),
                       ),
                     ),
                   ],
@@ -997,28 +1152,43 @@ class _QuotationScreenLocalState extends State<QuotationScreenLocal> {
     );
   }
 
-  // ================== SAVE QUOTATION ==================
+  Map<String, dynamic> _customerSnapshotForSave() {
+    return {
+      'customerId': _selectedCustomerId,
+      'companyName': _companyNameController.text.trim(),
+      'address': _addressController.text.trim(),
+      'email': _emailController.text.trim(),
+      'mobile': _mobileController.text.trim(),
+      'contactPerson': _contactPersonController.text.trim(),
+      'gstNo': _gstController.text.trim(),
+    };
+  }
 
   Future<void> _saveQuotation() async {
-    if (!_formKey.currentState!.validate()) return;
+    _clearError();
+
+    if (!_formKey.currentState!.validate()) {
+      _setError('Please complete the required fields.');
+      return;
+    }
 
     if (_items.isEmpty) {
-      setState(() {
-        _errorMessage = 'Please add at least one item to the quotation.';
-      });
+      _setError('Please add at least one item to the quotation.');
       return;
     }
 
     if (_companyId == null || _companyId!.isEmpty || _currentUserUid == null) {
-      setState(() {
-        _errorMessage = 'User/company context not loaded properly.';
-      });
+      _setError('User or company context not loaded properly.');
+      return;
+    }
+
+    if (_selectedCustomerId == null || _selectedCustomerId!.isEmpty) {
+      _setError('Please select an existing customer from customer master.');
       return;
     }
 
     setState(() {
       _isLoading = true;
-      _errorMessage = null;
     });
 
     try {
@@ -1033,21 +1203,20 @@ class _QuotationScreenLocalState extends State<QuotationScreenLocal> {
         'companyId': _companyId,
         'userId': widget.userId,
         'firebaseUserId': user?.uid,
-
         'quoteNumber': _quoteNumberController.text.trim(),
+        'financialYear': _quoteNumberController.text.split('/').last,
         'quoteDate': Timestamp.fromDate(_quoteDate),
-
+        'customerId': _selectedCustomerId,
+        'customerSnapshot': _customerSnapshotForSave(),
         'clientName': _companyNameController.text.trim(),
         'clientAddress': _addressController.text.trim(),
         'clientEmail': _emailController.text.trim(),
         'clientMobile': _mobileController.text.trim(),
         'contactPerson': _contactPersonController.text.trim(),
         'gstNo': _gstController.text.trim(),
-
         'inquirySource': _selectedInquirySource,
         'inquiryDate': Timestamp.fromDate(_inquiryDate),
         'inquiryReference': _inquiryRefNoteController.text.trim(),
-
         'taxRate': _taxRate,
         'discountPercentage': _discount,
         'subtotal': _subtotal,
@@ -1055,70 +1224,43 @@ class _QuotationScreenLocalState extends State<QuotationScreenLocal> {
         'taxableAmount': _taxableAmount,
         'taxAmount': _taxAmount,
         'grandTotal': _grandTotal,
-
         'deliveryTime': _deliveryTimeController.text.trim(),
         'validity': _validityController.text.trim(),
         'priceBasis': _priceBasisController.text.trim(),
         'paymentTerms': _paymentTermsController.text.trim(),
         'packingChargesExtra': _packingChargesExtra,
         'extraTerms': _extraTerms,
-
         'letterheadUrl': _letterheadUrl,
         'signatureCompany': _signCompanyController.text.trim(),
         'signatureName': _signNameController.text.trim(),
         'signaturePhone': _signPhoneController.text.trim(),
-
         'items': itemsData,
         'status': 'Draft',
-
         'assignedToUid': _currentUserUid,
         'assignedByUid': _currentUserUid,
-
         'createdBy': _currentUserUid,
         'createdByUid': _currentUserUid,
         'createdAt': FieldValue.serverTimestamp(),
-
         'updatedBy': _currentUserUid,
         'updatedByUid': _currentUserUid,
         'updatedAt': FieldValue.serverTimestamp(),
       });
 
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Row(
-              children: [
-                Icon(Icons.check_circle, color: Colors.white),
-                SizedBox(width: 12),
-                Text('Quotation saved to cloud successfully!'),
-              ],
-            ),
-            backgroundColor: Colors.green,
-          ),
-        );
-        Navigator.of(context).pop();
-      }
+      if (!mounted) return;
+      _showSnack('Quotation saved successfully');
     } catch (e) {
-      setState(() {
-        _errorMessage = 'Failed to save quotation: $e';
-      });
+      _setError('Failed to save quotation: $e');
     } finally {
-      if (mounted) {
-        setState(() => _isLoading = false);
-      }
+      if (!mounted) return;
+      setState(() {
+        _isLoading = false;
+      });
     }
   }
 
-  // ================== PREVIEW & PRINT ==================
-
   void _onPreviewPressed() {
     if (_items.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Add at least one item before preview.'),
-          backgroundColor: Colors.red,
-        ),
-      );
+      _showSnack('Add at least one item before preview.', isError: true);
       return;
     }
 
@@ -1165,144 +1307,64 @@ class _QuotationScreenLocalState extends State<QuotationScreenLocal> {
     );
   }
 
-  // ================== UI BUILD ==================
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Create New Quotation'),
-        backgroundColor: primaryColor,
-        foregroundColor: Colors.white,
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.settings),
-            tooltip: 'Quotation Settings',
-            onPressed: _openSettings,
-          ),
-          IconButton(
-            icon: const Icon(Icons.print_outlined),
-            tooltip: 'Preview on Letterhead & Print',
-            onPressed: _onPreviewPressed,
-          ),
-        ],
-      ),
-      body: SafeArea(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.all(16.0),
-          child: Form(
-            key: _formKey,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                if (_companyId == null || _companyId!.isEmpty)
-                  Padding(
-                    padding: const EdgeInsets.only(bottom: 12),
-                    child: Container(
-                      width: double.infinity,
-                      padding: const EdgeInsets.all(12),
-                      decoration: BoxDecoration(
-                        color: Colors.orange.shade50,
-                        border: Border.all(color: Colors.orange.shade300),
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                      child: const Text(
-                        'Company context is not loaded yet. Quotation save and product picker may not work correctly.',
-                        style: TextStyle(fontWeight: FontWeight.w600),
-                      ),
-                    ),
-                  ),
-                _buildCustomerSection(),
-                const SizedBox(height: 16),
-                _buildInquirySection(),
-                const SizedBox(height: 16),
-                _buildItemsSection(),
-                const SizedBox(height: 16),
-                _buildSummarySection(),
-                const SizedBox(height: 16),
-                _buildTermsSection(),
-                const SizedBox(height: 20),
-                if (_errorMessage != null)
-                  Padding(
-                    padding: const EdgeInsets.only(bottom: 10),
-                    child: Text(
-                      'Error: $_errorMessage',
-                      style: const TextStyle(
-                        color: Colors.red,
-                        fontWeight: FontWeight.bold,
-                      ),
-                      textAlign: TextAlign.center,
-                    ),
-                  ),
-                SizedBox(
-                  width: double.infinity,
-                  child: OutlinedButton.icon(
-                    onPressed: _onPreviewPressed,
-                    icon: const Icon(Icons.picture_as_pdf_outlined),
-                    label: const Text('Preview on Letterhead & Print'),
-                  ),
-                ),
-                const SizedBox(height: 10),
-                SizedBox(
-                  width: double.infinity,
-                  child: ElevatedButton.icon(
-                    onPressed: _isLoading ? null : _saveQuotation,
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: accentColor,
-                      foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(vertical: 16),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                    ),
-                    icon: _isLoading
-                        ? const SizedBox(
-                      width: 20,
-                      height: 20,
-                      child: CircularProgressIndicator(
-                        color: Colors.white,
-                        strokeWidth: 2.5,
-                      ),
-                    )
-                        : const Icon(Icons.save),
-                    label: Text(
-                      _isLoading ? 'Saving...' : 'Save Quotation',
-                      style: const TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 20),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  // ========== SECTIONS UI ==========
-
   Widget _buildCustomerSection() {
     return Card(
       elevation: 3,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
       child: Padding(
-        padding: const EdgeInsets.all(16.0),
+        padding: const EdgeInsets.all(16),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text(
-              'Customer Details',
-              style: TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
-                color: primaryColor,
-              ),
+            Row(
+              children: [
+                const Text(
+                  'Customer Details',
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                    color: primaryColor,
+                  ),
+                ),
+                const Spacer(),
+                OutlinedButton.icon(
+                  onPressed: () async {
+                    final customer = await _selectCustomerDialog();
+                    if (customer != null) {
+                      _applyCustomer(customer);
+                    }
+                  },
+                  icon: const Icon(Icons.search),
+                  label: const Text('Select Customer'),
+                ),
+                const SizedBox(width: 8),
+                if (_selectedCustomerId != null)
+                  TextButton.icon(
+                    onPressed: _clearSelectedCustomer,
+                    icon: const Icon(Icons.clear),
+                    label: const Text('Clear'),
+                  ),
+              ],
             ),
             const Divider(),
+            if (_selectedCustomerId != null)
+              Container(
+                width: double.infinity,
+                margin: const EdgeInsets.only(bottom: 12),
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: Colors.green.shade50,
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: Colors.green.shade300),
+                ),
+                child: Text(
+                  'Linked customer ID: $_selectedCustomerId',
+                  style: TextStyle(
+                    color: Colors.green.shade900,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
             _buildCustomTextField(
               _companyNameController,
               'Company Name *',
@@ -1365,12 +1427,12 @@ class _QuotationScreenLocalState extends State<QuotationScreenLocal> {
       elevation: 3,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
       child: Padding(
-        padding: const EdgeInsets.all(16.0),
+        padding: const EdgeInsets.all(16),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             const Text(
-              'Inquiry & Quotation Details',
+              'Inquiry and Quotation Details',
               style: TextStyle(
                 fontSize: 18,
                 fontWeight: FontWeight.bold,
@@ -1388,7 +1450,9 @@ class _QuotationScreenLocalState extends State<QuotationScreenLocal> {
                     icon: Icons.record_voice_over_outlined,
                     onChanged: (value) {
                       if (value != null) {
-                        setState(() => _selectedInquirySource = value);
+                        setState(() {
+                          _selectedInquirySource = value;
+                        });
                       }
                     },
                   ),
@@ -1407,7 +1471,9 @@ class _QuotationScreenLocalState extends State<QuotationScreenLocal> {
                         lastDate: DateTime(2100),
                       );
                       if (picked != null) {
-                        setState(() => _inquiryDate = picked);
+                        setState(() {
+                          _inquiryDate = picked;
+                        });
                       }
                     },
                   ),
@@ -1438,7 +1504,9 @@ class _QuotationScreenLocalState extends State<QuotationScreenLocal> {
                         lastDate: DateTime(2100),
                       );
                       if (picked != null) {
-                        setState(() => _quoteDate = picked);
+                        setState(() {
+                          _quoteDate = picked;
+                        });
                       }
                     },
                   ),
@@ -1463,12 +1531,11 @@ class _QuotationScreenLocalState extends State<QuotationScreenLocal> {
       elevation: 3,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
       child: Padding(
-        padding: const EdgeInsets.all(16.0),
+        padding: const EdgeInsets.all(16),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 const Text(
                   'Line Items',
@@ -1478,29 +1545,29 @@ class _QuotationScreenLocalState extends State<QuotationScreenLocal> {
                     color: primaryColor,
                   ),
                 ),
+                const Spacer(),
                 IconButton(
-                  icon: const Icon(Icons.add_circle, color: accentColor),
                   onPressed: () => _showAddItemModal(),
+                  icon: const Icon(Icons.add_circle, color: accentColor),
                 ),
               ],
             ),
             const Divider(),
             if (_items.isEmpty)
               const Padding(
-                padding: EdgeInsets.symmetric(vertical: 20.0),
+                padding: EdgeInsets.symmetric(vertical: 20),
                 child: Center(
                   child: Text(
-                    'Click "+" to add a product or service.\nYou can pick from Products master.',
-                    textAlign: TextAlign.center,
+                    'Click + to add a product or service.',
                     style: TextStyle(color: Colors.grey),
                   ),
                 ),
               )
             else
               ListView.builder(
+                itemCount: _items.length,
                 shrinkWrap: true,
                 physics: const NeverScrollableScrollPhysics(),
-                itemCount: _items.length,
                 itemBuilder: (context, index) {
                   final item = _items[index];
                   return ListTile(
@@ -1512,8 +1579,9 @@ class _QuotationScreenLocalState extends State<QuotationScreenLocal> {
                     subtitle: Text(
                       '${item.quantity} x Rs ${item.unitPrice.toStringAsFixed(2)}',
                     ),
-                    trailing: Row(
-                      mainAxisSize: MainAxisSize.min,
+                    trailing: Wrap(
+                      crossAxisAlignment: WrapCrossAlignment.center,
+                      spacing: 4,
                       children: [
                         Text(
                           'Rs ${(item.quantity * item.unitPrice).toStringAsFixed(2)}',
@@ -1523,22 +1591,16 @@ class _QuotationScreenLocalState extends State<QuotationScreenLocal> {
                           ),
                         ),
                         IconButton(
-                          icon: const Icon(
-                            Icons.edit,
-                            size: 20,
-                            color: Colors.blueGrey,
-                          ),
                           onPressed: () => _showAddItemModal(item, index),
+                          icon: const Icon(Icons.edit, color: Colors.blueGrey),
                         ),
                         IconButton(
-                          icon: const Icon(
-                            Icons.delete,
-                            size: 20,
-                            color: Colors.red,
-                          ),
                           onPressed: () {
-                            setState(() => _items.removeAt(index));
+                            setState(() {
+                              _items.removeAt(index);
+                            });
                           },
+                          icon: const Icon(Icons.delete, color: Colors.red),
                         ),
                       ],
                     ),
@@ -1556,21 +1618,20 @@ class _QuotationScreenLocalState extends State<QuotationScreenLocal> {
       elevation: 3,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
       child: Padding(
-        padding: const EdgeInsets.all(16.0),
+        padding: const EdgeInsets.all(16),
         child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             _buildSummaryRow('Subtotal', _subtotal),
             const Divider(),
             Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 Text(
                   'GST Rate (${_taxRate.toStringAsFixed(1)}%)',
                   style: const TextStyle(fontWeight: FontWeight.w500),
                 ),
+                const Spacer(),
                 SizedBox(
-                  width: 170,
+                  width: 180,
                   child: Slider(
                     value: _taxRate,
                     min: 0,
@@ -1578,7 +1639,9 @@ class _QuotationScreenLocalState extends State<QuotationScreenLocal> {
                     divisions: 28,
                     label: _taxRate.toStringAsFixed(1),
                     onChanged: (value) {
-                      setState(() => _taxRate = value);
+                      setState(() {
+                        _taxRate = value;
+                      });
                     },
                   ),
                 ),
@@ -1586,14 +1649,14 @@ class _QuotationScreenLocalState extends State<QuotationScreenLocal> {
             ),
             _buildSummaryRow('GST Amount', _taxAmount, isTax: true),
             Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 Text(
                   'Discount (${_discount.toStringAsFixed(1)}%)',
                   style: const TextStyle(fontWeight: FontWeight.w500),
                 ),
+                const Spacer(),
                 SizedBox(
-                  width: 170,
+                  width: 180,
                   child: Slider(
                     value: _discount,
                     min: 0,
@@ -1601,15 +1664,20 @@ class _QuotationScreenLocalState extends State<QuotationScreenLocal> {
                     divisions: 50,
                     label: _discount.toStringAsFixed(1),
                     onChanged: (value) {
-                      setState(() => _discount = value);
+                      setState(() {
+                        _discount = value;
+                      });
                     },
                   ),
                 ),
               ],
             ),
-            _buildSummaryRow('Discount Amount', _discountAmount,
-                isNegative: true),
-            const Divider(thickness: 2, height: 20),
+            _buildSummaryRow(
+              'Discount Amount',
+              _discountAmount,
+              isNegative: true,
+            ),
+            const Divider(thickness: 2),
             _buildSummaryRow('GRAND TOTAL', _grandTotal, isTotal: true),
           ],
         ),
@@ -1622,12 +1690,12 @@ class _QuotationScreenLocalState extends State<QuotationScreenLocal> {
       elevation: 3,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
       child: Padding(
-        padding: const EdgeInsets.all(16.0),
+        padding: const EdgeInsets.all(16),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             const Text(
-              'Terms & Conditions',
+              'Terms and Conditions',
               style: TextStyle(
                 fontSize: 18,
                 fontWeight: FontWeight.bold,
@@ -1647,26 +1715,23 @@ class _QuotationScreenLocalState extends State<QuotationScreenLocal> {
             ),
             _buildCustomTextField(
               _priceBasisController,
-              'Price Basis (Ex-Works / FOR etc.)',
+              'Price Basis',
               Icons.place_outlined,
             ),
             _buildCustomTextField(
               _paymentTermsController,
-              'Payment Terms (Advance %, Against PI / PDC / Credit)',
+              'Payment Terms',
               Icons.payments_outlined,
             ),
             SwitchListTile(
               value: _packingChargesExtra,
-              title: const Text('Packing & Forwarding charges EXTRA'),
-              subtitle:
-              const Text('Turn OFF if packing is included in quoted prices'),
+              title: const Text('Packing and Forwarding charges EXTRA'),
               onChanged: (v) {
                 setState(() {
                   _packingChargesExtra = v;
                 });
               },
             ),
-            const SizedBox(height: 8),
             Row(
               children: [
                 Expanded(
@@ -1677,22 +1742,20 @@ class _QuotationScreenLocalState extends State<QuotationScreenLocal> {
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(10),
                       ),
-                      isDense: true,
                     ),
                   ),
                 ),
                 const SizedBox(width: 8),
                 IconButton(
-                  icon: const Icon(Icons.add_circle, color: accentColor),
                   onPressed: () {
                     final t = _extraTermController.text.trim();
-                    if (t.isNotEmpty) {
-                      setState(() {
-                        _extraTerms.add(t);
-                        _extraTermController.clear();
-                      });
-                    }
+                    if (t.isEmpty) return;
+                    setState(() {
+                      _extraTerms.add(t);
+                      _extraTermController.clear();
+                    });
                   },
+                  icon: const Icon(Icons.add_circle, color: accentColor),
                 ),
               ],
             ),
@@ -1701,20 +1764,20 @@ class _QuotationScreenLocalState extends State<QuotationScreenLocal> {
               Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: _extraTerms.asMap().entries.map((entry) {
-                  final idx = entry.key;
-                  final t = entry.value;
+                  final index = entry.key;
+                  final value = entry.value;
                   return ListTile(
                     dense: true,
                     contentPadding: EdgeInsets.zero,
-                    leading: Text('${idx + 1}.'),
-                    title: Text(t),
+                    leading: Text('${index + 1}.'),
+                    title: Text(value),
                     trailing: IconButton(
-                      icon: const Icon(Icons.delete, color: Colors.red),
                       onPressed: () {
                         setState(() {
-                          _extraTerms.removeAt(idx);
+                          _extraTerms.removeAt(index);
                         });
                       },
+                      icon: const Icon(Icons.delete, color: Colors.red),
                     ),
                   );
                 }).toList(),
@@ -1725,39 +1788,43 @@ class _QuotationScreenLocalState extends State<QuotationScreenLocal> {
     );
   }
 
-  // ========== SMALL HELPERS ==========
-
   Widget _buildSummaryRow(
-      String label,
-      double amount, {
-        bool isTotal = false,
-        bool isNegative = false,
-        bool isTax = false,
-      }) {
-    final Color color = isNegative
+    String label,
+    double amount, {
+    bool isTotal = false,
+    bool isNegative = false,
+    bool isTax = false,
+  }) {
+    final color = isNegative
         ? Colors.red.shade700
         : (isTotal ? primaryColor : Colors.black87);
-    final FontWeight weight = isTotal ? FontWeight.bold : FontWeight.normal;
-    final double fontSize = isTotal ? 20 : 16;
+    final weight = isTotal ? FontWeight.bold : FontWeight.normal;
+    final fontSize = isTotal ? 20.0 : 16.0;
 
     String sign = '';
     if (isNegative) sign = '-';
     if (isTax) sign = '+';
 
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4.0),
+      padding: const EdgeInsets.symmetric(vertical: 4),
       child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
           Text(
             label,
-            style:
-            TextStyle(fontSize: fontSize, fontWeight: weight, color: color),
+            style: TextStyle(
+              fontSize: fontSize,
+              fontWeight: weight,
+              color: color,
+            ),
           ),
+          const Spacer(),
           Text(
             '$sign Rs ${amount.toStringAsFixed(2)}',
-            style:
-            TextStyle(fontSize: fontSize, fontWeight: weight, color: color),
+            style: TextStyle(
+              fontSize: fontSize,
+              fontWeight: weight,
+              color: color,
+            ),
           ),
         ],
       ),
@@ -1765,15 +1832,15 @@ class _QuotationScreenLocalState extends State<QuotationScreenLocal> {
   }
 
   Widget _buildCustomTextField(
-      TextEditingController controller,
-      String label,
-      IconData icon, {
-        bool required = false,
-        TextInputType keyboardType = TextInputType.text,
-        int maxLines = 1,
-      }) {
+    TextEditingController controller,
+    String label,
+    IconData icon, {
+    bool required = false,
+    TextInputType keyboardType = TextInputType.text,
+    int maxLines = 1,
+  }) {
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 6.0),
+      padding: const EdgeInsets.symmetric(vertical: 6),
       child: TextFormField(
         controller: controller,
         maxLines: maxLines,
@@ -1783,7 +1850,6 @@ class _QuotationScreenLocalState extends State<QuotationScreenLocal> {
           prefixIcon: Icon(icon, color: primaryColor.withOpacity(0.7)),
           border: OutlineInputBorder(
             borderRadius: BorderRadius.circular(10),
-            borderSide: BorderSide(color: Colors.grey.shade300),
           ),
           filled: true,
           fillColor: Colors.white,
@@ -1823,11 +1889,11 @@ class _QuotationScreenLocalState extends State<QuotationScreenLocal> {
           onChanged: onChanged,
           items: items
               .map(
-                (e) => DropdownMenuItem(
-              value: e,
-              child: Text(e),
-            ),
-          )
+                (e) => DropdownMenuItem<String>(
+                  value: e,
+                  child: Text(e),
+                ),
+              )
               .toList(),
         ),
       ),
@@ -1878,9 +1944,127 @@ class _QuotationScreenLocalState extends State<QuotationScreenLocal> {
       ),
     );
   }
-}
 
-// ================== PREVIEW SCREEN ==================
+  @override
+  Widget build(BuildContext context) {
+    final companyContextMissing = _companyId == null || _companyId!.isEmpty;
+
+    return Scaffold(
+      appBar: AppBar(
+        backgroundColor: primaryColor,
+        foregroundColor: Colors.white,
+        elevation: 0,
+        iconTheme: const IconThemeData(color: Colors.white),
+        actionsIconTheme: const IconThemeData(color: Colors.white),
+        title: const Text(
+          'Create New Quotation',
+          style: TextStyle(
+            color: Colors.white,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+        actions: [
+          IconButton(
+            onPressed: _openSettings,
+            icon: const Icon(Icons.settings, color: Colors.white),
+            tooltip: 'Settings',
+          ),
+          IconButton(
+            onPressed: _onPreviewPressed,
+            icon: const Icon(Icons.print_outlined, color: Colors.white),
+            tooltip: 'Preview / Print',
+          ),
+        ],
+      ),
+      body: SafeArea(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(16),
+          child: Form(
+            key: _formKey,
+            child: Column(
+              children: [
+                if (companyContextMissing)
+                  Container(
+                    width: double.infinity,
+                    margin: const EdgeInsets.only(bottom: 12),
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: Colors.orange.shade50,
+                      border: Border.all(color: Colors.orange.shade300),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: const Text(
+                      'Company context is not loaded yet. Save and picker may not work correctly.',
+                      style: TextStyle(fontWeight: FontWeight.w600),
+                    ),
+                  ),
+                _buildCustomerSection(),
+                const SizedBox(height: 16),
+                _buildInquirySection(),
+                const SizedBox(height: 16),
+                _buildItemsSection(),
+                const SizedBox(height: 16),
+                _buildSummarySection(),
+                const SizedBox(height: 16),
+                _buildTermsSection(),
+                const SizedBox(height: 20),
+                if (_errorMessage != null)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 10),
+                    child: Text(
+                      _errorMessage!,
+                      style: const TextStyle(
+                        color: Colors.red,
+                        fontWeight: FontWeight.bold,
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                  ),
+                SizedBox(
+                  width: double.infinity,
+                  child: OutlinedButton.icon(
+                    onPressed: _onPreviewPressed,
+                    icon: const Icon(Icons.picture_as_pdf_outlined),
+                    label: const Text('Preview on Letterhead and Print'),
+                  ),
+                ),
+                const SizedBox(height: 10),
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton.icon(
+                    onPressed: _isLoading ? null : _saveQuotation,
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: accentColor,
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 16),
+                    ),
+                    icon: _isLoading
+                        ? const SizedBox(
+                            width: 18,
+                            height: 18,
+                            child: CircularProgressIndicator(
+                              color: Colors.white,
+                              strokeWidth: 2.5,
+                            ),
+                          )
+                        : const Icon(Icons.save),
+                    label: Text(
+                      _isLoading ? 'Saving...' : 'Save Quotation',
+                      style: const TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
 
 class QuotationPreviewScreen extends StatelessWidget {
   final Map<String, dynamic> quotation;
@@ -1892,7 +2076,7 @@ class QuotationPreviewScreen extends StatelessWidget {
     required this.items,
   });
 
-  String _currency(double v) => 'Rs ${v.toStringAsFixed(2)}';
+  String _currency(double value) => 'Rs ${value.toStringAsFixed(2)}';
 
   pw.Widget _metaRow(String label, String? value) {
     return pw.Row(
@@ -1917,33 +2101,33 @@ class QuotationPreviewScreen extends StatelessWidget {
   }
 
   pw.Widget _cellCenter(String text) => pw.Padding(
-    padding: const pw.EdgeInsets.all(4),
-    child: pw.Center(
-      child: pw.Text(
-        text,
-        style: const pw.TextStyle(fontSize: 9),
-      ),
-    ),
-  );
+        padding: const pw.EdgeInsets.all(4),
+        child: pw.Center(
+          child: pw.Text(
+            text,
+            style: const pw.TextStyle(fontSize: 9),
+          ),
+        ),
+      );
 
   pw.Widget _cellLeft(String text) => pw.Padding(
-    padding: const pw.EdgeInsets.all(4),
-    child: pw.Text(
-      text,
-      style: const pw.TextStyle(fontSize: 9),
-    ),
-  );
+        padding: const pw.EdgeInsets.all(4),
+        child: pw.Text(
+          text,
+          style: const pw.TextStyle(fontSize: 9),
+        ),
+      );
 
   pw.Widget _cellRight(String text) => pw.Padding(
-    padding: const pw.EdgeInsets.all(4),
-    child: pw.Align(
-      alignment: pw.Alignment.centerRight,
-      child: pw.Text(
-        text,
-        style: const pw.TextStyle(fontSize: 9),
-      ),
-    ),
-  );
+        padding: const pw.EdgeInsets.all(4),
+        child: pw.Align(
+          alignment: pw.Alignment.centerRight,
+          child: pw.Text(
+            text,
+            style: const pw.TextStyle(fontSize: 9),
+          ),
+        ),
+      );
 
   pw.Widget _buildItemsTable() {
     final headers = [
@@ -1952,7 +2136,7 @@ class QuotationPreviewScreen extends StatelessWidget {
       'Qty',
       'UOM',
       'Unit Price',
-      'Amount'
+      'Amount',
     ];
 
     return pw.Table(
@@ -1973,20 +2157,20 @@ class QuotationPreviewScreen extends StatelessWidget {
           children: headers
               .map(
                 (h) => pw.Padding(
-              padding: const pw.EdgeInsets.all(4),
-              child: pw.Center(
-                child: pw.Text(
-                  h,
-                  textAlign: pw.TextAlign.center,
-                  style: pw.TextStyle(
-                    color: PdfColors.white,
-                    fontSize: 9,
-                    fontWeight: pw.FontWeight.bold,
+                  padding: const pw.EdgeInsets.all(4),
+                  child: pw.Center(
+                    child: pw.Text(
+                      h,
+                      textAlign: pw.TextAlign.center,
+                      style: pw.TextStyle(
+                        color: PdfColors.white,
+                        fontSize: 9,
+                        fontWeight: pw.FontWeight.bold,
+                      ),
+                    ),
                   ),
                 ),
-              ),
-            ),
-          )
+              )
               .toList(),
         ),
         ...List.generate(items.length, (index) {
@@ -2012,10 +2196,10 @@ class QuotationPreviewScreen extends StatelessWidget {
   }
 
   pw.Widget _summaryRow(
-      String label,
-      double value, {
-        bool isBold = false,
-      }) {
+    String label,
+    double value, {
+    bool isBold = false,
+  }) {
     return pw.Row(
       mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
       children: [
@@ -2073,7 +2257,7 @@ class QuotationPreviewScreen extends StatelessWidget {
   }
 
   pw.Widget _buildTermsAndConditions() {
-    final List<String> terms = [];
+    final terms = <String>[];
 
     final delivery = (quotation['deliveryTime'] ?? '').toString();
     final validity = (quotation['validity'] ?? '').toString();
@@ -2089,7 +2273,7 @@ class QuotationPreviewScreen extends StatelessWidget {
     if (priceBasis.isNotEmpty) terms.add('Price Basis: $priceBasis');
     if (payment.isNotEmpty) terms.add('Payment: $payment');
     if (packingExtra) {
-      terms.add('Packing & Forwarding charges will be extra as applicable.');
+      terms.add('Packing and Forwarding charges will be extra as applicable.');
     }
     terms.addAll(extraTerms);
 
@@ -2099,37 +2283,35 @@ class QuotationPreviewScreen extends StatelessWidget {
       crossAxisAlignment: pw.CrossAxisAlignment.start,
       children: [
         pw.Text(
-          'Terms & Conditions',
+          'Terms and Conditions',
           style: pw.TextStyle(
             fontSize: 12,
             fontWeight: pw.FontWeight.bold,
           ),
         ),
         pw.SizedBox(height: 6),
-        ...terms.asMap().entries.map(
-              (entry) {
-            final idx = entry.key + 1;
-            final text = entry.value;
-            return pw.Padding(
-              padding: const pw.EdgeInsets.only(bottom: 2),
-              child: pw.Row(
-                crossAxisAlignment: pw.CrossAxisAlignment.start,
-                children: [
-                  pw.Text(
-                    '$idx. ',
+        ...terms.asMap().entries.map((entry) {
+          final idx = entry.key + 1;
+          final text = entry.value;
+          return pw.Padding(
+            padding: const pw.EdgeInsets.only(bottom: 2),
+            child: pw.Row(
+              crossAxisAlignment: pw.CrossAxisAlignment.start,
+              children: [
+                pw.Text(
+                  '$idx. ',
+                  style: const pw.TextStyle(fontSize: 10),
+                ),
+                pw.Expanded(
+                  child: pw.Text(
+                    text,
                     style: const pw.TextStyle(fontSize: 10),
                   ),
-                  pw.Expanded(
-                    child: pw.Text(
-                      text,
-                      style: const pw.TextStyle(fontSize: 10),
-                    ),
-                  ),
-                ],
-              ),
-            );
-          },
-        ),
+                ),
+              ],
+            ),
+          );
+        }),
       ],
     );
   }
@@ -2207,8 +2389,8 @@ class QuotationPreviewScreen extends StatelessWidget {
       },
     );
 
-    const double topGap = 110;
-    const double bottomGap = 60;
+    const topGap = 110.0;
+    const bottomGap = 60.0;
 
     doc.addPage(
       pw.MultiPage(
@@ -2310,9 +2492,17 @@ class QuotationPreviewScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Quotation Preview'),
         backgroundColor: primaryColor,
         foregroundColor: Colors.white,
+        elevation: 0,
+        iconTheme: const IconThemeData(color: Colors.white),
+        title: const Text(
+          'Quotation Preview',
+          style: TextStyle(
+            color: Colors.white,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
       ),
       body: PdfPreview(
         build: _buildPdf,
