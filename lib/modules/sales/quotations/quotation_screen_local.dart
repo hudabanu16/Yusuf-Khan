@@ -27,22 +27,57 @@ class QuotationScreenLocal extends StatefulWidget {
 }
 
 class _QuotationScreenLocalState extends State<QuotationScreenLocal> {
-  final _formKey = GlobalKey<FormState>();
+  final GlobalKey<FormState> _formKey = GlobalKey<FormState>();
 
-  // Customer
+  String? _letterheadUrl;
+  Uint8List? _letterheadBytes;
+  bool _isUploadingLetterhead = false;
+
+  String? _companyId;
+  String? _currentUserUid;
+  String _currentUserRole = 'sales';
+  String _currentCompanyName = '';
+
+  bool _isLoading = false;
+  String? _errorMessage;
+
+  bool get _isAdminOrManager {
+    final role = _currentUserRole.trim().toLowerCase();
+    return role == 'admin' ||
+        role == 'manager' ||
+        role == 'director' ||
+        role == 'md' ||
+        role == 'ceo' ||
+        role == 'super_admin';
+  }
+
+  bool get _canEditQuotationNumber {
+    final role = _currentUserRole.trim().toLowerCase();
+    return role == 'super_admin' ||
+        role == 'ceo' ||
+        role == 'md' ||
+        role == 'director';
+  }
+
+  bool get _hasSavedLetterhead {
+    return (_letterheadUrl != null && _letterheadUrl!.trim().isNotEmpty) ||
+        (_letterheadBytes != null && _letterheadBytes!.isNotEmpty);
+  }
+
   String? _selectedCustomerId;
   Map<String, dynamic>? _selectedCustomerSnapshot;
 
-  final _companyNameController = TextEditingController();
-  final _addressController = TextEditingController();
-  final _emailController = TextEditingController();
-  final _mobileController = TextEditingController();
-  final _contactPersonController = TextEditingController();
-  final _gstController = TextEditingController();
+  final TextEditingController _companyNameController = TextEditingController();
+  final TextEditingController _addressController = TextEditingController();
+  final TextEditingController _emailController = TextEditingController();
+  final TextEditingController _mobileController = TextEditingController();
+  final TextEditingController _contactPersonController =
+      TextEditingController();
+  final TextEditingController _gstController = TextEditingController();
 
-  // Inquiry and quotation
-  final _quoteNumberController = TextEditingController();
-  final _inquiryRefNoteController = TextEditingController();
+  final TextEditingController _quoteNumberController = TextEditingController();
+  final TextEditingController _inquiryRefNoteController =
+      TextEditingController();
 
   final List<String> _inquirySources = const [
     'Verbal',
@@ -57,57 +92,33 @@ class _QuotationScreenLocalState extends State<QuotationScreenLocal> {
   DateTime _inquiryDate = DateTime.now();
   DateTime _quoteDate = DateTime.now();
 
-  // Items and pricing
   List<Item> _items = [];
   double _taxRate = 18.0;
   double _discount = 0.0;
 
-  // Terms
-  final _deliveryTimeController = TextEditingController();
-  final _validityController = TextEditingController();
-  final _priceBasisController = TextEditingController();
-  final _paymentTermsController = TextEditingController();
+  final TextEditingController _deliveryTimeController =
+      TextEditingController();
+  final TextEditingController _validityController = TextEditingController();
+  final TextEditingController _priceBasisController = TextEditingController();
+  final TextEditingController _paymentTermsController =
+      TextEditingController();
   bool _packingChargesExtra = true;
 
-  final _extraTermController = TextEditingController();
+  final TextEditingController _extraTermController = TextEditingController();
   final List<String> _extraTerms = [];
 
-  // Letterhead
-  String? _letterheadUrl;
-  Uint8List? _letterheadBytes;
-  bool _isUploadingLetterhead = false;
-
-  // Signature
-  final _signCompanyController = TextEditingController();
-  final _signNameController = TextEditingController();
-  final _signPhoneController = TextEditingController();
-
-  // User and company context
-  String? _companyId;
-  String? _currentUserUid;
-  String _currentUserRole = 'sales';
-  String _currentCompanyName = '';
-
-  bool _isLoading = false;
-  String? _errorMessage;
-
-  bool get _isAdminOrManager =>
-      _currentUserRole == 'admin' || _currentUserRole == 'manager';
-
-  bool get _hasSavedLetterhead =>
-      (_letterheadUrl != null && _letterheadUrl!.trim().isNotEmpty) ||
-      (_letterheadBytes != null && _letterheadBytes!.length > 0);
+  final TextEditingController _signCompanyController = TextEditingController();
+  final TextEditingController _signNameController = TextEditingController();
+  final TextEditingController _signPhoneController = TextEditingController();
 
   @override
   void initState() {
     super.initState();
-
     _deliveryTimeController.text = 'Within 4-6 weeks from PO and advance.';
     _validityController.text = '30 days from date of quotation.';
     _priceBasisController.text = 'Ex-works Mumbai, packing extra.';
     _paymentTermsController.text =
         '50% advance with PO, balance against PI.';
-
     _initializeScreen();
   }
 
@@ -119,11 +130,10 @@ class _QuotationScreenLocalState extends State<QuotationScreenLocal> {
 
   Future<void> _initQuoteNumber() async {
     final number = await _generateQuoteNumber();
-    if (mounted) {
-      setState(() {
-        _quoteNumberController.text = number;
-      });
-    }
+    if (!mounted) return;
+    setState(() {
+      _quoteNumberController.text = number;
+    });
   }
 
   @override
@@ -136,11 +146,13 @@ class _QuotationScreenLocalState extends State<QuotationScreenLocal> {
     _gstController.dispose();
     _quoteNumberController.dispose();
     _inquiryRefNoteController.dispose();
+
     _deliveryTimeController.dispose();
     _validityController.dispose();
     _priceBasisController.dispose();
     _paymentTermsController.dispose();
     _extraTermController.dispose();
+
     _signCompanyController.dispose();
     _signNameController.dispose();
     _signPhoneController.dispose();
@@ -160,7 +172,7 @@ class _QuotationScreenLocalState extends State<QuotationScreenLocal> {
           .doc(user.uid)
           .get();
 
-      final data = rootUserDoc.data() ?? {};
+      final data = rootUserDoc.data() ?? <String, dynamic>{};
 
       _currentUserUid = user.uid;
       _companyId = (data['companyId'] ?? '').toString().trim();
@@ -198,30 +210,31 @@ class _QuotationScreenLocalState extends State<QuotationScreenLocal> {
         return;
       }
 
-      final data = doc.data() ?? {};
+      final data = doc.data() ?? <String, dynamic>{};
+
+      if (!mounted) return;
 
       setState(() {
-        _letterheadUrl = (data['letterheadUrl'] ?? '').toString().trim().isEmpty
-            ? null
-            : data['letterheadUrl'].toString().trim();
+        final url = (data['letterheadUrl'] ?? '').toString().trim();
+        _letterheadUrl = url.isEmpty ? null : url;
 
         _taxRate = (data['taxRate'] as num?)?.toDouble() ?? _taxRate;
         _packingChargesExtra =
             data['packingChargesExtra'] as bool? ?? _packingChargesExtra;
 
-        final delivery = data['deliveryTime']?.toString() ?? '';
-        final validity = data['validity']?.toString() ?? '';
-        final priceBasis = data['priceBasis']?.toString() ?? '';
-        final payment = data['paymentTerms']?.toString() ?? '';
+        final delivery = (data['deliveryTime'] ?? '').toString();
+        final validity = (data['validity'] ?? '').toString();
+        final priceBasis = (data['priceBasis'] ?? '').toString();
+        final payment = (data['paymentTerms'] ?? '').toString();
 
         if (delivery.isNotEmpty) _deliveryTimeController.text = delivery;
         if (validity.isNotEmpty) _validityController.text = validity;
         if (priceBasis.isNotEmpty) _priceBasisController.text = priceBasis;
         if (payment.isNotEmpty) _paymentTermsController.text = payment;
 
-        final signCompany = data['signatureCompany']?.toString() ?? '';
-        final signName = data['signatureName']?.toString() ?? '';
-        final signPhone = data['signaturePhone']?.toString() ?? '';
+        final signCompany = (data['signatureCompany'] ?? '').toString();
+        final signName = (data['signatureName'] ?? '').toString();
+        final signPhone = (data['signaturePhone'] ?? '').toString();
 
         if (signCompany.isNotEmpty) {
           _signCompanyController.text = signCompany;
@@ -285,9 +298,9 @@ class _QuotationScreenLocalState extends State<QuotationScreenLocal> {
     }
 
     final now = DateTime.now();
-    final startYear = now.month >= 4 ? now.year : now.year - 1;
-    final endYear = startYear + 1;
-    final fyShort =
+    final int startYear = now.month >= 4 ? now.year : now.year - 1;
+    final int endYear = startYear + 1;
+    final String fyShort =
         '${startYear.toString().substring(2)}-${endYear.toString().substring(2)}';
 
     final snapshot = await FirebaseFirestore.instance
@@ -297,8 +310,8 @@ class _QuotationScreenLocalState extends State<QuotationScreenLocal> {
         .where('financialYear', isEqualTo: fyShort)
         .get();
 
-    final nextNumber = snapshot.docs.length + 1;
-    final number = nextNumber.toString().padLeft(4, '0');
+    final int nextNumber = snapshot.docs.length + 1;
+    final String number = nextNumber.toString().padLeft(4, '0');
 
     return 'MEM/$number/$fyShort';
   }
@@ -323,6 +336,7 @@ class _QuotationScreenLocalState extends State<QuotationScreenLocal> {
     if (!_isAdminOrManager && _currentUserUid != null) {
       query = query.where('createdBy', isEqualTo: _currentUserUid);
     }
+
     return query;
   }
 
@@ -390,7 +404,7 @@ class _QuotationScreenLocalState extends State<QuotationScreenLocal> {
                                     .toLowerCase();
 
                             final contactPerson =
-                                (data['contactPerson'] ?? '')
+                                (data['contactPerson'] ?? data['contactName'] ?? '')
                                     .toString()
                                     .toLowerCase();
 
@@ -427,13 +441,16 @@ class _QuotationScreenLocalState extends State<QuotationScreenLocal> {
                                   (data['companyName'] ?? data['name'] ?? '')
                                       .toString();
                               final contactPerson =
-                                  (data['contactPerson'] ?? '').toString();
+                                  (data['contactPerson'] ?? data['contactName'] ?? '')
+                                      .toString();
                               final mobile =
                                   (data['mobile'] ?? data['phone'] ?? '')
                                       .toString();
-                              final email = (data['email'] ?? '').toString();
-                              final gst = (data['gstNo'] ?? data['gst'] ?? '')
-                                  .toString();
+                              final email =
+                                  (data['email'] ?? '').toString();
+                              final gst =
+                                  (data['gstNo'] ?? data['gst'] ?? '')
+                                      .toString();
 
                               final subtitle = <String>[];
                               if (contactPerson.isNotEmpty) {
@@ -462,7 +479,10 @@ class _QuotationScreenLocalState extends State<QuotationScreenLocal> {
                                 onTap: () {
                                   Navigator.pop<Map<String, dynamic>>(
                                     context,
-                                    {'id': doc.id, ...data},
+                                    {
+                                      'id': doc.id,
+                                      ...data,
+                                    },
                                   );
                                 },
                               );
@@ -500,7 +520,7 @@ class _QuotationScreenLocalState extends State<QuotationScreenLocal> {
       _mobileController.text =
           (customer['mobile'] ?? customer['phone'] ?? '').toString();
       _contactPersonController.text =
-          (customer['contactPerson'] ?? '').toString();
+          (customer['contactPerson'] ?? customer['contactName'] ?? '').toString();
       _gstController.text =
           (customer['gstNo'] ?? customer['gst'] ?? '').toString();
     });
@@ -534,6 +554,7 @@ class _QuotationScreenLocalState extends State<QuotationScreenLocal> {
         .collection('products');
 
     if (!_isAdminOrManager && _currentUserUid != null) {
+      query:
       productQuery = productQuery.where('createdBy', isEqualTo: _currentUserUid);
     }
 
@@ -629,9 +650,8 @@ class _QuotationScreenLocalState extends State<QuotationScreenLocal> {
                               if (uom.isNotEmpty) {
                                 subtitleLines.add('UOM: $uom');
                               }
-                              subtitleLines.add(
-                                'Price: Rs $unitPrice | GST: $gst%',
-                              );
+                              subtitleLines
+                                  .add('Price: Rs $unitPrice | GST: $gst%');
 
                               return ListTile(
                                 title: Text(
@@ -644,7 +664,10 @@ class _QuotationScreenLocalState extends State<QuotationScreenLocal> {
                                 onTap: () {
                                   Navigator.pop<Map<String, dynamic>>(
                                     context,
-                                    {'id': doc.id, ...data},
+                                    {
+                                      'id': doc.id,
+                                      ...data,
+                                    },
                                   );
                                 },
                               );
@@ -670,13 +693,15 @@ class _QuotationScreenLocalState extends State<QuotationScreenLocal> {
   }
 
   void _showAddItemModal([Item? itemToEdit, int? index]) {
-    final nameController = TextEditingController(text: itemToEdit?.name);
+    final nameController = TextEditingController(text: itemToEdit?.name ?? '');
     final descriptionController =
-        TextEditingController(text: itemToEdit?.description);
-    final quantityController =
-        TextEditingController(text: itemToEdit?.quantity.toString());
-    final priceController =
-        TextEditingController(text: itemToEdit?.unitPrice.toString());
+        TextEditingController(text: itemToEdit?.description ?? '');
+    final quantityController = TextEditingController(
+      text: itemToEdit != null ? itemToEdit.quantity.toString() : '',
+    );
+    final priceController = TextEditingController(
+      text: itemToEdit != null ? itemToEdit.unitPrice.toString() : '',
+    );
     final modalFormKey = GlobalKey<FormState>();
 
     showModalBottomSheet(
@@ -805,8 +830,7 @@ class _QuotationScreenLocalState extends State<QuotationScreenLocal> {
                       foregroundColor: Colors.white,
                       padding: const EdgeInsets.symmetric(vertical: 15),
                     ),
-                    child:
-                        Text(itemToEdit == null ? 'Add Item' : 'Save Changes'),
+                    child: Text(itemToEdit == null ? 'Add Item' : 'Save Changes'),
                   ),
                   const SizedBox(height: 20),
                 ],
@@ -832,10 +856,11 @@ class _QuotationScreenLocalState extends State<QuotationScreenLocal> {
         keyboardType: keyboardType,
         validator: validator,
         maxLines: maxLines,
-        decoration: const InputDecoration(
-          border: OutlineInputBorder(),
+        decoration: InputDecoration(
+          labelText: label,
+          border: const OutlineInputBorder(),
           isDense: true,
-        ).copyWith(labelText: label),
+        ),
       ),
     );
   }
@@ -911,6 +936,7 @@ class _QuotationScreenLocalState extends State<QuotationScreenLocal> {
                   return;
                 }
 
+                if (!mounted) return;
                 setState(() {
                   _letterheadBytes = file.bytes!;
                 });
@@ -936,6 +962,7 @@ class _QuotationScreenLocalState extends State<QuotationScreenLocal> {
 
                   final url = await ref.getDownloadURL();
 
+                  if (!mounted) return;
                   setState(() {
                     _letterheadUrl = url;
                   });
@@ -982,23 +1009,17 @@ class _QuotationScreenLocalState extends State<QuotationScreenLocal> {
                     const SizedBox(height: 16),
                     ListTile(
                       contentPadding: EdgeInsets.zero,
-                      leading: Icon(
-                        _hasSavedLetterhead
-                            ? Icons.verified
-                            : Icons.image_outlined,
-                        color: _hasSavedLetterhead
-                            ? Colors.green
-                            : primaryColor,
+                      leading: const Icon(
+                        Icons.image_outlined,
+                        color: primaryColor,
                       ),
                       title: Text(
-                        _hasSavedLetterhead
-                            ? 'Letterhead already saved'
-                            : 'No letterhead selected',
+                        !_hasSavedLetterhead
+                            ? 'No letterhead selected'
+                            : 'Letterhead ready for preview and print',
                       ),
-                      subtitle: Text(
-                        _hasSavedLetterhead
-                            ? 'Saved letterhead will be used automatically in every quotation.'
-                            : 'Upload a PNG or JPG letterhead image once.',
+                      subtitle: const Text(
+                        'Upload a PNG or JPG letterhead image.',
                       ),
                       trailing: _isUploadingLetterhead
                           ? const SizedBox(
@@ -1008,9 +1029,7 @@ class _QuotationScreenLocalState extends State<QuotationScreenLocal> {
                             )
                           : OutlinedButton(
                               onPressed: pickLetterhead,
-                              child: Text(
-                                _hasSavedLetterhead ? 'Change' : 'Upload',
-                              ),
+                              child: const Text('Upload / Change'),
                             ),
                     ),
                     const SizedBox(height: 12),
@@ -1422,6 +1441,33 @@ class _QuotationScreenLocalState extends State<QuotationScreenLocal> {
     );
   }
 
+  Widget _buildQuotationNumberField() {
+    return TextFormField(
+      controller: _quoteNumberController,
+      readOnly: !_canEditQuotationNumber,
+      enabled: true,
+      decoration: InputDecoration(
+        labelText: 'Quotation No.',
+        prefixIcon: Icon(
+          Icons.confirmation_number_outlined,
+          color: primaryColor.withOpacity(0.7),
+        ),
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(10),
+        ),
+        filled: true,
+        fillColor: Colors.white,
+        isDense: true,
+      ),
+      validator: (value) {
+        if (value == null || value.trim().isEmpty) {
+          return 'Quotation number required';
+        }
+        return null;
+      },
+    );
+  }
+
   Widget _buildInquirySection() {
     return Card(
       elevation: 3,
@@ -1484,11 +1530,7 @@ class _QuotationScreenLocalState extends State<QuotationScreenLocal> {
             Row(
               children: [
                 Expanded(
-                  child: _buildReadOnlyField(
-                    controller: _quoteNumberController,
-                    label: 'Quotation No.',
-                    icon: Icons.confirmation_number_outlined,
-                  ),
+                  child: _buildQuotationNumberField(),
                 ),
                 const SizedBox(width: 10),
                 Expanded(
@@ -1811,20 +1853,12 @@ class _QuotationScreenLocalState extends State<QuotationScreenLocal> {
         children: [
           Text(
             label,
-            style: TextStyle(
-              fontSize: fontSize,
-              fontWeight: weight,
-              color: color,
-            ),
+            style: TextStyle(fontSize: fontSize, fontWeight: weight, color: color),
           ),
           const Spacer(),
           Text(
             '$sign Rs ${amount.toStringAsFixed(2)}',
-            style: TextStyle(
-              fontSize: fontSize,
-              fontWeight: weight,
-              color: color,
-            ),
+            style: TextStyle(fontSize: fontSize, fontWeight: weight, color: color),
           ),
         ],
       ),
@@ -1924,43 +1958,22 @@ class _QuotationScreenLocalState extends State<QuotationScreenLocal> {
     );
   }
 
-  Widget _buildReadOnlyField({
-    required TextEditingController controller,
-    required String label,
-    required IconData icon,
-  }) {
-    return TextFormField(
-      controller: controller,
-      enabled: false,
-      decoration: InputDecoration(
-        labelText: label,
-        prefixIcon: Icon(icon, color: primaryColor.withOpacity(0.7)),
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(10),
-        ),
-        filled: true,
-        fillColor: Colors.grey.shade100,
-        isDense: true,
-      ),
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     final companyContextMissing = _companyId == null || _companyId!.isEmpty;
 
     return Scaffold(
       appBar: AppBar(
-        backgroundColor: primaryColor,
-        foregroundColor: Colors.white,
+        backgroundColor: const Color(0xFF0F2A3D),
         elevation: 0,
+        foregroundColor: Colors.white,
         iconTheme: const IconThemeData(color: Colors.white),
-        actionsIconTheme: const IconThemeData(color: Colors.white),
         title: const Text(
-          'Create New Quotation',
+          'New Quotation',
           style: TextStyle(
+            fontSize: 20,
+            fontWeight: FontWeight.w700,
             color: Colors.white,
-            fontWeight: FontWeight.bold,
           ),
         ),
         actions: [
@@ -2136,7 +2149,7 @@ class QuotationPreviewScreen extends StatelessWidget {
       'Qty',
       'UOM',
       'Unit Price',
-      'Amount',
+      'Amount'
     ];
 
     return pw.Table(
@@ -2257,7 +2270,7 @@ class QuotationPreviewScreen extends StatelessWidget {
   }
 
   pw.Widget _buildTermsAndConditions() {
-    final terms = <String>[];
+    final List<String> terms = [];
 
     final delivery = (quotation['deliveryTime'] ?? '').toString();
     final validity = (quotation['validity'] ?? '').toString();
@@ -2389,8 +2402,8 @@ class QuotationPreviewScreen extends StatelessWidget {
       },
     );
 
-    const topGap = 110.0;
-    const bottomGap = 60.0;
+    const double topGap = 110;
+    const double bottomGap = 60;
 
     doc.addPage(
       pw.MultiPage(
@@ -2407,7 +2420,7 @@ class QuotationPreviewScreen extends StatelessWidget {
                     crossAxisAlignment: pw.CrossAxisAlignment.start,
                     children: [
                       pw.Text(
-                        quotation['clientName'] ?? '',
+                        (quotation['clientName'] ?? '').toString(),
                         style: pw.TextStyle(
                           fontSize: 14,
                           fontWeight: pw.FontWeight.bold,
@@ -2417,7 +2430,7 @@ class QuotationPreviewScreen extends StatelessWidget {
                           .toString()
                           .isNotEmpty)
                         pw.Text(
-                          quotation['clientAddress'],
+                          quotation['clientAddress'].toString(),
                           style: const pw.TextStyle(fontSize: 10),
                         ),
                       if ((quotation['contactPerson'] ?? '')
@@ -2463,10 +2476,13 @@ class QuotationPreviewScreen extends StatelessWidget {
                         ),
                       ),
                       pw.SizedBox(height: 8),
-                      _metaRow('No:', quotation['quoteNumber']),
-                      _metaRow('Date:', quotation['quoteDateStr']),
-                      _metaRow('Inquiry:', quotation['inquirySource']),
-                      _metaRow('Inquiry Date:', quotation['inquiryDateStr']),
+                      _metaRow('No:', quotation['quoteNumber']?.toString()),
+                      _metaRow('Date:', quotation['quoteDateStr']?.toString()),
+                      _metaRow('Inquiry:', quotation['inquirySource']?.toString()),
+                      _metaRow(
+                        'Inquiry Date:',
+                        quotation['inquiryDateStr']?.toString(),
+                      ),
                     ],
                   ),
                 ),

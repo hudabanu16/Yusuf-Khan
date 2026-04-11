@@ -43,10 +43,11 @@ class _ScreenUserManagementState extends State<ScreenUserManagement> {
 
   int? _sortColumnIndex;
 
-  bool get _hasActiveFilters =>
-      _filterState.selectedRole != 'all' ||
-          _filterState.selectedStatus != 'all' ||
-          _filterState.selectedDepartment != 'all';
+  bool get _hasActiveFilters {
+    return _filterState.selectedRole != 'all' ||
+        _filterState.selectedStatus != 'all' ||
+        _filterState.selectedDepartment != 'all';
+  }
 
   Stream<QuerySnapshot<Map<String, dynamic>>> get _usersStream {
     return _userManagementService.watchUsersBase(
@@ -79,168 +80,9 @@ class _ScreenUserManagementState extends State<ScreenUserManagement> {
     );
   }
 
-  Future<void> _confirmDeleteUser(
-      BuildContext context,
-      QueryDocumentSnapshot<Map<String, dynamic>> doc,
-      ) async {
-    final data = doc.data();
-    final name = (data['displayName'] ?? data['name'] ?? 'User').toString();
-
-    final confirm = await showDialog<bool>(
-      context: context,
-      builder: (dialogContext) {
-        return AlertDialog(
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(18),
-          ),
-          title: const Text('Delete User'),
-          content: Text(
-            'Do you want to delete $name?\n\n'
-                'This will remove the user from active operations and mark the record as deleted.',
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(dialogContext, false),
-              child: const Text('Cancel'),
-            ),
-            ElevatedButton(
-              style: ElevatedButton.styleFrom(
-                backgroundColor: dangerColor,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(10),
-                ),
-              ),
-              onPressed: () => Navigator.pop(dialogContext, true),
-              child: const Text(
-                'Delete',
-                style: TextStyle(color: Colors.white),
-              ),
-            ),
-          ],
-        );
-      },
-    );
-
-    if (confirm == true) {
-      await _userManagementService.deleteUser(
-        companyId: widget.companyId,
-        userUid: doc.id,
-        deletedByUid: widget.currentUid,
-      );
-
-      if (!mounted) return;
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('User deleted successfully'),
-          backgroundColor: successColor,
-        ),
-      );
-    }
-  }
-
-  Future<void> _confirmCancelInvite(
-      BuildContext context,
-      QueryDocumentSnapshot<Map<String, dynamic>> doc,
-      ) async {
-    final data = doc.data();
-    final email = (data['email'] ?? '').toString().trim();
-    final name = (data['name'] ?? '').toString().trim();
-    final target =
-    name.isNotEmpty ? name : (email.isNotEmpty ? email : 'this invite');
-
-    final confirm = await showDialog<bool>(
-      context: context,
-      builder: (dialogContext) {
-        return AlertDialog(
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(16),
-          ),
-          title: const Text('Cancel Invite'),
-          content: Text('Do you want to cancel invite for $target?'),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(dialogContext, false),
-              child: const Text('No'),
-            ),
-            ElevatedButton(
-              style: ElevatedButton.styleFrom(
-                backgroundColor: dangerColor,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(10),
-                ),
-              ),
-              onPressed: () => Navigator.pop(dialogContext, true),
-              child: const Text(
-                'Cancel Invite',
-                style: TextStyle(color: Colors.white),
-              ),
-            ),
-          ],
-        );
-      },
-    );
-
-    if (confirm == true) {
-      await _userManagementService.cancelInvite(
-        companyId: widget.companyId,
-        inviteId: doc.id,
-        cancelledByUid: widget.currentUid,
-      );
-
-      if (!mounted) return;
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Invite cancelled successfully'),
-          backgroundColor: successColor,
-        ),
-      );
-    }
-  }
-
-  void _onSearchChanged(String value) {
-    setState(() {
-      _filterState = _filterState.copyWith(
-        searchQuery: value.trim(),
-      );
-    });
-  }
-
-  void _onSort({
-    required int columnIndex,
-    required String field,
-  }) {
-    setState(() {
-      final sameField = _filterState.sortField == field;
-      _filterState = _filterState.copyWith(
-        sortField: field,
-        sortAscending: sameField ? !_filterState.sortAscending : true,
-      );
-      _sortColumnIndex = columnIndex;
-    });
-  }
-
-  void _resetFilters() {
-    _searchController.clear();
-
-    setState(() {
-      _filterState = UserFilterState(
-        searchQuery: '',
-        selectedRole: 'all',
-        selectedStatus: 'all',
-        selectedDepartment: 'all',
-        sortField: 'createdAt',
-        sortAscending: false,
-        limit: _filterState.limit,
-      );
-      _sortColumnIndex = null;
-    });
-  }
-
   Future<void> _handleViewUser(
-      QueryDocumentSnapshot<Map<String, dynamic>> doc,
-      ) async {
+    QueryDocumentSnapshot<Map<String, dynamic>> doc,
+  ) async {
     await showViewUserDialog(
       context: context,
       doc: doc,
@@ -248,8 +90,8 @@ class _ScreenUserManagementState extends State<ScreenUserManagement> {
   }
 
   Future<void> _handleEditUser(
-      QueryDocumentSnapshot<Map<String, dynamic>> doc,
-      ) async {
+    QueryDocumentSnapshot<Map<String, dynamic>> doc,
+  ) async {
     await showEditUserDialog(
       context: context,
       doc: doc,
@@ -290,6 +132,168 @@ class _ScreenUserManagementState extends State<ScreenUserManagement> {
       userUid: doc.id,
       updatedByUid: widget.currentUid,
     );
+  }
+
+  Future<void> _confirmDeleteUser(
+    BuildContext context,
+    QueryDocumentSnapshot<Map<String, dynamic>> doc,
+  ) async {
+    final data = doc.data();
+    final String name =
+        (data['displayName'] ?? data['name'] ?? 'User').toString();
+
+    final bool? confirm = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) {
+        return AlertDialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(18),
+          ),
+          title: const Text('Delete User'),
+          content: Text(
+            'Do you want to delete $name?\n\n'
+            'This will remove the user from active operations and mark the record as deleted.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext, false),
+              child: const Text('Cancel'),
+            ),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: dangerColor,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(10),
+                ),
+              ),
+              onPressed: () => Navigator.pop(dialogContext, true),
+              child: const Text(
+                'Delete',
+                style: TextStyle(color: Colors.white),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (confirm != true) return;
+
+    await _userManagementService.deleteUser(
+      companyId: widget.companyId,
+      userUid: doc.id,
+      deletedByUid: widget.currentUid,
+    );
+
+    if (!mounted) return;
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('User deleted successfully'),
+        backgroundColor: successColor,
+      ),
+    );
+  }
+
+  Future<void> _confirmCancelInvite(
+    BuildContext context,
+    QueryDocumentSnapshot<Map<String, dynamic>> doc,
+  ) async {
+    final data = doc.data();
+    final String email = (data['email'] ?? '').toString().trim();
+    final String name = (data['name'] ?? '').toString().trim();
+    final String target =
+        name.isNotEmpty ? name : (email.isNotEmpty ? email : 'this invite');
+
+    final bool? confirm = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) {
+        return AlertDialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
+          title: const Text('Cancel Invite'),
+          content: Text('Do you want to cancel invite for $target?'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext, false),
+              child: const Text('No'),
+            ),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: dangerColor,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(10),
+                ),
+              ),
+              onPressed: () => Navigator.pop(dialogContext, true),
+              child: const Text(
+                'Cancel Invite',
+                style: TextStyle(color: Colors.white),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (confirm != true) return;
+
+    await _userManagementService.cancelInvite(
+      companyId: widget.companyId,
+      inviteId: doc.id,
+      cancelledByUid: widget.currentUid,
+    );
+
+    if (!mounted) return;
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Invite cancelled successfully'),
+        backgroundColor: successColor,
+      ),
+    );
+  }
+
+  void _onSearchChanged(String value) {
+    setState(() {
+      _filterState = _filterState.copyWith(
+        searchQuery: value.trim(),
+      );
+    });
+  }
+
+  void _onSort({
+    required int columnIndex,
+    required String field,
+  }) {
+    setState(() {
+      final bool sameField = _filterState.sortField == field;
+
+      _filterState = _filterState.copyWith(
+        sortField: field,
+        sortAscending: sameField ? !_filterState.sortAscending : true,
+      );
+
+      _sortColumnIndex = columnIndex;
+    });
+  }
+
+  void _resetFilters() {
+    _searchController.clear();
+
+    setState(() {
+      _filterState = UserFilterState(
+        searchQuery: '',
+        selectedRole: 'all',
+        selectedStatus: 'all',
+        selectedDepartment: 'all',
+        sortField: 'createdAt',
+        sortAscending: false,
+        limit: _filterState.limit,
+      );
+      _sortColumnIndex = null;
+    });
   }
 
   Widget _buildMiniStat({
@@ -484,6 +488,177 @@ class _ScreenUserManagementState extends State<ScreenUserManagement> {
             ),
           ),
       ],
+    );
+  }
+
+  List<DropdownMenuItem<String>> _buildRoleFilterItems() {
+    return [
+      const DropdownMenuItem<String>(
+        value: 'all',
+        child: Text('All Roles'),
+      ),
+      ...userRolesList.map(
+        (role) => DropdownMenuItem<String>(
+          value: role,
+          child: Text(formatRole(role)),
+        ),
+      ),
+    ];
+  }
+
+  void _openFilterSheet(List<String> departments) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(22)),
+      ),
+      builder: (_) {
+        return StatefulBuilder(
+          builder: (context, modalSetState) {
+            return SafeArea(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(18, 18, 18, 24),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'User Filters',
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w800,
+                        color: primaryColor,
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    const Text(
+                      'Refine user records by role, department, and account status.',
+                      style: TextStyle(
+                        fontSize: 13,
+                        color: mutedTextColor,
+                      ),
+                    ),
+                    const SizedBox(height: 18),
+                    FilterDropdown(
+                      label: 'Role',
+                      value: _filterState.selectedRole,
+                      width: double.infinity,
+                      items: _buildRoleFilterItems(),
+                      onChanged: (value) {
+                        if (value == null) return;
+                        modalSetState(() {});
+                        setState(() {
+                          _filterState =
+                              _filterState.copyWith(selectedRole: value);
+                        });
+                      },
+                    ),
+                    const SizedBox(height: 12),
+                    FilterDropdown(
+                      label: 'Department',
+                      value: _filterState.selectedDepartment,
+                      width: double.infinity,
+                      items: [
+                        const DropdownMenuItem<String>(
+                          value: 'all',
+                          child: Text('All Departments'),
+                        ),
+                        ...departments.map(
+                          (dept) => DropdownMenuItem<String>(
+                            value: dept.toLowerCase(),
+                            child: Text(dept),
+                          ),
+                        ),
+                      ],
+                      onChanged: (value) {
+                        if (value == null) return;
+                        modalSetState(() {});
+                        setState(() {
+                          _filterState =
+                              _filterState.copyWith(selectedDepartment: value);
+                        });
+                      },
+                    ),
+                    const SizedBox(height: 12),
+                    FilterDropdown(
+                      label: 'Status',
+                      value: _filterState.selectedStatus,
+                      width: double.infinity,
+                      items: const [
+                        DropdownMenuItem<String>(
+                          value: 'all',
+                          child: Text('All Status'),
+                        ),
+                        DropdownMenuItem<String>(
+                          value: 'active',
+                          child: Text('Active'),
+                        ),
+                        DropdownMenuItem<String>(
+                          value: 'inactive',
+                          child: Text('Inactive'),
+                        ),
+                        DropdownMenuItem<String>(
+                          value: 'archived',
+                          child: Text('Archived'),
+                        ),
+                      ],
+                      onChanged: (value) {
+                        if (value == null) return;
+                        modalSetState(() {});
+                        setState(() {
+                          _filterState =
+                              _filterState.copyWith(selectedStatus: value);
+                        });
+                      },
+                    ),
+                    const SizedBox(height: 18),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: OutlinedButton(
+                            onPressed: () {
+                              _resetFilters();
+                              Navigator.pop(context);
+                            },
+                            style: OutlinedButton.styleFrom(
+                              foregroundColor: primaryColor,
+                              side: const BorderSide(color: cardBorderColor),
+                              padding: const EdgeInsets.symmetric(vertical: 14),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(14),
+                              ),
+                            ),
+                            child: const Text('Reset'),
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: ElevatedButton(
+                            onPressed: () => Navigator.pop(context),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: primaryColor,
+                              padding: const EdgeInsets.symmetric(vertical: 14),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(14),
+                              ),
+                            ),
+                            child: const Text(
+                              'Apply',
+                              style: TextStyle(color: Colors.white),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            );
+          },
+        );
+      },
     );
   }
 
@@ -727,52 +902,33 @@ class _ScreenUserManagementState extends State<ScreenUserManagement> {
                 sortAscending: _filterState.sortAscending,
                 sortColumnIndex: _sortColumnIndex,
                 onSort: (columnIndex, field) {
-                  _onSort(
-                    columnIndex: columnIndex,
-                    field: field,
-                  );
+                  _onSort(columnIndex: columnIndex, field: field);
                 },
-                onView: (doc) async {
-                  await _handleViewUser(doc);
-                },
-                onEdit: (doc) async {
-                  await _handleEditUser(doc);
-                },
-                onToggle: (doc) {
-                  return _handleToggleUser(doc: doc);
-                },
-                onDelete: (doc) async {
-                  await _confirmDeleteUser(context, doc);
-                },
+                onView: (doc) async => _handleViewUser(doc),
+                onEdit: (doc) async => _handleEditUser(doc),
+                onToggle: (doc) => _handleToggleUser(doc: doc),
+                onDelete: (doc) async => _confirmDeleteUser(context, doc),
               )
             else
               Column(
                 children: pageDocs.map((doc) {
                   final data = doc.data();
-                  final isSelfUser = doc.id == widget.currentUid;
-                  final isDeleted = (data['isDeleted'] ?? false) == true;
+                  final bool isSelfUser = doc.id == widget.currentUid;
+                  final bool isDeleted = (data['isDeleted'] ?? false) == true;
 
                   return Padding(
                     padding: const EdgeInsets.only(bottom: 10),
                     child: UserCard(
                       doc: doc,
                       currentUid: widget.currentUid,
-                      onView: () async {
-                        await _handleViewUser(doc);
-                      },
-                      onEdit: () async {
-                        await _handleEditUser(doc);
-                      },
+                      onView: () async => _handleViewUser(doc),
+                      onEdit: () async => _handleEditUser(doc),
                       onToggle: (isSelfUser || isDeleted)
                           ? null
-                          : () async {
-                        await _handleToggleUser(doc: doc);
-                      },
+                          : () async => _handleToggleUser(doc: doc),
                       onDelete: (isSelfUser || isDeleted)
                           ? null
-                          : () async {
-                        await _confirmDeleteUser(context, doc);
-                      },
+                          : () async => _confirmDeleteUser(context, doc),
                     ),
                   );
                 }).toList(),
@@ -848,177 +1004,6 @@ class _ScreenUserManagementState extends State<ScreenUserManagement> {
             ),
         ],
       ),
-    );
-  }
-
-  List<DropdownMenuItem<String>> _buildRoleFilterItems() {
-    return [
-      const DropdownMenuItem(
-        value: 'all',
-        child: Text('All Roles'),
-      ),
-      ...userRolesList.map(
-            (role) => DropdownMenuItem(
-          value: role,
-          child: Text(formatRole(role)),
-        ),
-      ),
-    ];
-  }
-
-  void _openFilterSheet(List<String> departments) {
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.white,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(22)),
-      ),
-      builder: (_) {
-        return StatefulBuilder(
-          builder: (context, modalSetState) {
-            return SafeArea(
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(18, 18, 18, 24),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text(
-                      'User Filters',
-                      style: TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.w800,
-                        color: primaryColor,
-                      ),
-                    ),
-                    const SizedBox(height: 6),
-                    const Text(
-                      'Refine user records by role, department, and account status.',
-                      style: TextStyle(
-                        fontSize: 13,
-                        color: mutedTextColor,
-                      ),
-                    ),
-                    const SizedBox(height: 18),
-                    FilterDropdown(
-                      label: 'Role',
-                      value: _filterState.selectedRole,
-                      width: double.infinity,
-                      items: _buildRoleFilterItems(),
-                      onChanged: (value) {
-                        if (value == null) return;
-                        modalSetState(() {});
-                        setState(() {
-                          _filterState =
-                              _filterState.copyWith(selectedRole: value);
-                        });
-                      },
-                    ),
-                    const SizedBox(height: 12),
-                    FilterDropdown(
-                      label: 'Department',
-                      value: _filterState.selectedDepartment,
-                      width: double.infinity,
-                      items: [
-                        const DropdownMenuItem(
-                          value: 'all',
-                          child: Text('All Departments'),
-                        ),
-                        ...departments.map(
-                              (dept) => DropdownMenuItem(
-                            value: dept.toLowerCase(),
-                            child: Text(dept),
-                          ),
-                        ),
-                      ],
-                      onChanged: (value) {
-                        if (value == null) return;
-                        modalSetState(() {});
-                        setState(() {
-                          _filterState =
-                              _filterState.copyWith(selectedDepartment: value);
-                        });
-                      },
-                    ),
-                    const SizedBox(height: 12),
-                    FilterDropdown(
-                      label: 'Status',
-                      value: _filterState.selectedStatus,
-                      width: double.infinity,
-                      items: const [
-                        DropdownMenuItem(
-                          value: 'all',
-                          child: Text('All Status'),
-                        ),
-                        DropdownMenuItem(
-                          value: 'active',
-                          child: Text('Active'),
-                        ),
-                        DropdownMenuItem(
-                          value: 'inactive',
-                          child: Text('Inactive'),
-                        ),
-                        DropdownMenuItem(
-                          value: 'archived',
-                          child: Text('Archived'),
-                        ),
-                      ],
-                      onChanged: (value) {
-                        if (value == null) return;
-                        modalSetState(() {});
-                        setState(() {
-                          _filterState =
-                              _filterState.copyWith(selectedStatus: value);
-                        });
-                      },
-                    ),
-                    const SizedBox(height: 18),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: OutlinedButton(
-                            onPressed: () {
-                              _resetFilters();
-                              Navigator.pop(context);
-                            },
-                            style: OutlinedButton.styleFrom(
-                              foregroundColor: primaryColor,
-                              side: const BorderSide(color: cardBorderColor),
-                              padding: const EdgeInsets.symmetric(vertical: 14),
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(14),
-                              ),
-                            ),
-                            child: const Text('Reset'),
-                          ),
-                        ),
-                        const SizedBox(width: 10),
-                        Expanded(
-                          child: ElevatedButton(
-                            onPressed: () => Navigator.pop(context),
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: primaryColor,
-                              padding: const EdgeInsets.symmetric(vertical: 14),
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(14),
-                              ),
-                            ),
-                            child: const Text(
-                              'Apply',
-                              style: TextStyle(color: Colors.white),
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-            );
-          },
-        );
-      },
     );
   }
 
@@ -1114,9 +1099,9 @@ class _ScreenUserManagementState extends State<ScreenUserManagement> {
           return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
             stream: _pendingInvitesStream,
             builder: (context, inviteSnapshot) {
-              final usersWaiting =
+              final bool usersWaiting =
                   userSnapshot.connectionState == ConnectionState.waiting;
-              final invitesWaiting =
+              final bool invitesWaiting =
                   inviteSnapshot.connectionState == ConnectionState.waiting;
 
               if (usersWaiting || invitesWaiting) {
@@ -1126,9 +1111,10 @@ class _ScreenUserManagementState extends State<ScreenUserManagement> {
               }
 
               if (userSnapshot.hasError || inviteSnapshot.hasError) {
-                final userError = userSnapshot.error?.toString() ?? '';
-                final inviteError = inviteSnapshot.error?.toString() ?? '';
-                final combinedError = [
+                final String userError = userSnapshot.error?.toString() ?? '';
+                final String inviteError = inviteSnapshot.error?.toString() ?? '';
+
+                final String combinedError = [
                   if (userError.isNotEmpty) userError,
                   if (inviteError.isNotEmpty) inviteError,
                 ].join('\n\n');
@@ -1147,77 +1133,83 @@ class _ScreenUserManagementState extends State<ScreenUserManagement> {
                 );
               }
 
-              final allUsers = userSnapshot.data?.docs ?? [];
+              final List<QueryDocumentSnapshot<Map<String, dynamic>>> allUsers =
+                  userSnapshot.data?.docs ?? [];
 
-              final filteredUsers = filterUsersLocally(
+              final List<QueryDocumentSnapshot<Map<String, dynamic>>> filteredUsers =
+                  filterUsersLocally(
                 docs: allUsers,
                 state: _filterState,
               );
 
-              final locallySearchedUsers = filteredUsers;
-              final users = filteredUsers;
-              final pageDocs = locallySearchedUsers;
+              final List<QueryDocumentSnapshot<Map<String, dynamic>>> locallySearchedUsers =
+                  filteredUsers;
+              final List<QueryDocumentSnapshot<Map<String, dynamic>>> users =
+                  filteredUsers;
+              final List<QueryDocumentSnapshot<Map<String, dynamic>>> pageDocs =
+                  locallySearchedUsers;
 
-              final departments = extractDepartments(allUsers);
+              final List<String> departments = extractDepartments(allUsers);
 
-              final totalUsers = allUsers.where((doc) {
+              final int totalUsers = allUsers.where((doc) {
                 final data = doc.data();
                 return (data['isDeleted'] ?? false) == false;
               }).length;
 
-              final activeUsers = allUsers.where((doc) {
+              final int activeUsers = allUsers.where((doc) {
                 final data = doc.data();
                 return (data['isActive'] ?? true) == true &&
                     (data['isDeleted'] ?? false) == false;
               }).length;
 
-              final inactiveUsers = allUsers.where((doc) {
+              final int inactiveUsers = allUsers.where((doc) {
                 final data = doc.data();
                 return (data['isActive'] ?? true) == false &&
                     (data['isDeleted'] ?? false) == false;
               }).length;
 
-              final allInvites = inviteSnapshot.data?.docs ?? [];
+              final List<QueryDocumentSnapshot<Map<String, dynamic>>> allInvites =
+                  inviteSnapshot.data?.docs ?? [];
 
-              final pendingInvites = allInvites.where((doc) {
+              final List<QueryDocumentSnapshot<Map<String, dynamic>>> pendingInvites =
+                  allInvites.where((doc) {
                 final data = doc.data();
-                final status =
-                (data['status'] ?? '').toString().trim().toLowerCase();
-                final isDeleted = (data['isDeleted'] ?? false) == true;
+                final String status =
+                    (data['status'] ?? '').toString().trim().toLowerCase();
+                final bool isDeleted = (data['isDeleted'] ?? false) == true;
                 return !isDeleted && status == 'pending';
               }).toList()
-                ..sort((a, b) {
-                  final aData = a.data();
-                  final bData = b.data();
+                    ..sort((a, b) {
+                      final aTs = a.data()['createdAt'];
+                      final bTs = b.data()['createdAt'];
 
-                  final aTs = aData['createdAt'];
-                  final bTs = bData['createdAt'];
+                      DateTime aDate = DateTime.fromMillisecondsSinceEpoch(0);
+                      DateTime bDate = DateTime.fromMillisecondsSinceEpoch(0);
 
-                  DateTime aDate = DateTime.fromMillisecondsSinceEpoch(0);
-                  DateTime bDate = DateTime.fromMillisecondsSinceEpoch(0);
+                      if (aTs is Timestamp) aDate = aTs.toDate();
+                      if (bTs is Timestamp) bDate = bTs.toDate();
 
-                  if (aTs is Timestamp) aDate = aTs.toDate();
-                  if (bTs is Timestamp) bDate = bTs.toDate();
-
-                  return bDate.compareTo(aDate);
-                });
+                      return bDate.compareTo(aDate);
+                    });
 
               return LayoutBuilder(
                 builder: (context, constraints) {
-                  final isDesktop = constraints.maxWidth >= 900;
+                  final bool isDesktop = constraints.maxWidth >= 900;
 
-                  return isDesktop
-                      ? _buildDesktopLayout(
-                    totalUsers: totalUsers,
-                    activeUsers: activeUsers,
-                    inactiveUsers: inactiveUsers,
-                    pendingInvites: pendingInvites,
-                    users: users,
-                    pageDocs: pageDocs,
-                    locallySearchedUsers: locallySearchedUsers,
-                    departments: departments,
-                  )
-                      : _buildMobileLayout(
+                  if (isDesktop) {
+                    return _buildDesktopLayout(
+                      totalUsers: totalUsers,
+                      activeUsers: activeUsers,
+                      inactiveUsers: inactiveUsers,
+                      pendingInvites: pendingInvites,
+                      users: users,
+                      pageDocs: pageDocs,
+                      locallySearchedUsers: locallySearchedUsers,
+                      departments: departments,
+                    );
+                  }
+
+                  return _buildMobileLayout(
                     totalUsers: totalUsers,
                     activeUsers: activeUsers,
                     inactiveUsers: inactiveUsers,
@@ -1235,8 +1227,11 @@ class _ScreenUserManagementState extends State<ScreenUserManagement> {
       ),
       floatingActionButton: LayoutBuilder(
         builder: (context, constraints) {
-          final isDesktop = constraints.maxWidth >= 900;
-          if (isDesktop) return const SizedBox.shrink();
+          final bool isDesktop = constraints.maxWidth >= 900;
+
+          if (isDesktop) {
+            return const SizedBox.shrink();
+          }
 
           return SizedBox(
             width: 68,

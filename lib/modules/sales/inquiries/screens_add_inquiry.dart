@@ -1,5 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
+import 'package:QUIK/modules/crm/customers/screens_add_customer.dart';
 
 class ScreensAddInquiry extends StatefulWidget {
   final String companyId;
@@ -18,7 +19,7 @@ class ScreensAddInquiry extends StatefulWidget {
 }
 
 class _ScreensAddInquiryState extends State<ScreensAddInquiry> {
-  final _formKey = GlobalKey<FormState>();
+  final GlobalKey<FormState> _formKey = GlobalKey<FormState>();
 
   String? _selectedCustomerId;
   String? _selectedContactId;
@@ -31,15 +32,18 @@ class _ScreensAddInquiryState extends State<ScreensAddInquiry> {
   DateTime? _nextFollowUpDate;
   DateTime? _expectedClosureDate;
 
-  final _subjectController = TextEditingController();
-  final _sourceRefController = TextEditingController();
-  final _requiredProductsController = TextEditingController();
-  final _quantityController = TextEditingController();
-  final _expectedValueController = TextEditingController();
-  final _deliveryTimelineController = TextEditingController();
-  final _locationController = TextEditingController();
-  final _notesController = TextEditingController();
-  final _internalNotesController = TextEditingController();
+  final TextEditingController _subjectController = TextEditingController();
+  final TextEditingController _sourceRefController = TextEditingController();
+  final TextEditingController _requiredProductsController =
+      TextEditingController();
+  final TextEditingController _quantityController = TextEditingController();
+  final TextEditingController _expectedValueController = TextEditingController();
+  final TextEditingController _deliveryTimelineController =
+      TextEditingController();
+  final TextEditingController _locationController = TextEditingController();
+  final TextEditingController _notesController = TextEditingController();
+  final TextEditingController _internalNotesController =
+      TextEditingController();
 
   bool _isSaving = false;
 
@@ -47,8 +51,13 @@ class _ScreensAddInquiryState extends State<ScreensAddInquiry> {
   Map<String, dynamic>? _selectedContactData;
   Map<String, dynamic>? _assignedUserData;
 
-  bool get _canAssignOthers =>
-      widget.currentUserRole == 'admin' || widget.currentUserRole == 'manager';
+  bool get _canAssignOthers {
+  final role = widget.currentUserRole.trim().toLowerCase();
+  return role == 'director' ||
+      role == 'md' ||
+      role == 'ceo' ||
+      role == 'sales_manager';
+}
 
   CollectionReference<Map<String, dynamic>> get _companyCustomersRef =>
       FirebaseFirestore.instance
@@ -68,13 +77,32 @@ class _ScreensAddInquiryState extends State<ScreensAddInquiry> {
           .doc(widget.companyId)
           .collection('inquiries');
 
-  @override
-  void initState() {
-    super.initState();
-    _assignedToUid = widget.currentUserUid;
-    _selectedPriority = 'Warm';
-    _selectedStatus = 'Open';
+  CollectionReference<Map<String, dynamic>> _companyContactsRef(
+    String customerId,
+  ) {
+    return FirebaseFirestore.instance
+        .collection('companies')
+        .doc(widget.companyId)
+        .collection('customers')
+        .doc(customerId)
+        .collection('contacts');
   }
+
+  @override
+void initState() {
+  super.initState();
+
+  final role = widget.currentUserRole.toLowerCase();
+
+  if (role == 'sales') {
+    _assignedToUid = widget.currentUserUid; // salesman auto
+  } else {
+    _assignedToUid = null; // CEO/MD/Director manually choose
+  }
+
+  _selectedPriority = 'Warm';
+  _selectedStatus = 'Open';
+}
 
   @override
   void dispose() {
@@ -90,12 +118,44 @@ class _ScreensAddInquiryState extends State<ScreensAddInquiry> {
     super.dispose();
   }
 
+  Future<void> _openAddCustomerScreen() async {
+    final result = await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => ScreensAddCustomer(
+          existingDoc: null,
+          companyId: widget.companyId,
+          currentUserUid: widget.currentUserUid,
+          currentUserRole: widget.currentUserRole,
+        ),
+      ),
+    );
+
+    if (!mounted) return;
+
+    if (result == true) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Customer added successfully'),
+          backgroundColor: Colors.green,
+        ),
+      );
+
+      setState(() {
+        _selectedCustomerId = null;
+        _selectedContactId = null;
+        _selectedCustomerData = null;
+        _selectedContactData = null;
+      });
+    }
+  }
+
   InputDecoration _dec(
-      String label, {
-        String? hint,
-        Widget? prefixIcon,
-        Widget? suffixIcon,
-      }) {
+    String label, {
+    String? hint,
+    Widget? prefixIcon,
+    Widget? suffixIcon,
+  }) {
     return InputDecoration(
       labelText: label,
       hintText: hint,
@@ -153,11 +213,7 @@ class _ScreensAddInquiryState extends State<ScreensAddInquiry> {
                   color: const Color(0xFFEAF1FF),
                   borderRadius: BorderRadius.circular(12),
                 ),
-                child: Icon(
-                  icon,
-                  color: const Color(0xFF2563EB),
-                  size: 20,
-                ),
+                child: Icon(icon, color: const Color(0xFF2563EB), size: 20),
               ),
               const SizedBox(width: 12),
               Expanded(
@@ -232,9 +288,7 @@ class _ScreensAddInquiryState extends State<ScreensAddInquiry> {
       decoration: BoxDecoration(
         color: tone.withOpacity(0.08),
         borderRadius: BorderRadius.circular(999),
-        border: Border.all(
-          color: tone.withOpacity(0.18),
-        ),
+        border: Border.all(color: tone.withOpacity(0.18)),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -299,11 +353,7 @@ class _ScreensAddInquiryState extends State<ScreensAddInquiry> {
   }
 
   Future<void> _loadContactData(String customerId, String contactId) async {
-    final doc = await _companyCustomersRef
-        .doc(customerId)
-        .collection('contacts')
-        .doc(contactId)
-        .get();
+    final doc = await _companyContactsRef(customerId).doc(contactId).get();
     _selectedContactData = doc.data();
   }
 
@@ -353,32 +403,36 @@ class _ScreensAddInquiryState extends State<ScreensAddInquiry> {
       final assignedUserData = _assignedUserData ?? {};
 
       final customerName =
-      (customerData['companyName'] ?? customerData['name'] ?? '')
-          .toString()
-          .trim();
+          (customerData['companyName'] ?? customerData['name'] ?? '')
+              .toString()
+              .trim();
 
       final inquiryNumber = _generateInquiryNumber();
 
       await _companyInquiriesRef.add({
         'companyId': widget.companyId,
-
-        // Inquiry identity
         'inquiryNumber': inquiryNumber,
+        'inquiryCode': inquiryNumber,
         'subject': _subjectController.text.trim(),
-
-        // Customer snapshot
         'customerId': _selectedCustomerId,
         'customerName': customerName,
-
-        // Contact snapshot
+        'companyName': customerName,
         'contactId': _selectedContactId ?? '',
-        'contactName': (contactData['name'] ?? '').toString().trim(),
-        'contactPhone': (contactData['phone'] ?? '').toString().trim(),
+        'contactName':
+            (contactData['name'] ?? contactData['contactName'] ?? '')
+                .toString()
+                .trim(),
+        'contactPhone':
+            (contactData['phone'] ?? contactData['mobile'] ?? '')
+                .toString()
+                .trim(),
+        'contactMobile':
+            (contactData['phone'] ?? contactData['mobile'] ?? '')
+                .toString()
+                .trim(),
         'contactEmail': (contactData['email'] ?? '').toString().trim(),
         'contactDesignation':
-        (contactData['designation'] ?? '').toString().trim(),
-
-        // Inquiry details
+            (contactData['designation'] ?? '').toString().trim(),
         'source': (_selectedSource ?? '').trim(),
         'sourceReference': _sourceRefController.text.trim(),
         'channelRef': _sourceRefController.text.trim(),
@@ -392,12 +446,8 @@ class _ScreensAddInquiryState extends State<ScreensAddInquiry> {
         'location': _locationController.text.trim(),
         'notes': _notesController.text.trim(),
         'internalNotes': _internalNotesController.text.trim(),
-
-        // CRM fields
         'priority': (_selectedPriority ?? 'Warm').trim(),
         'status': (_selectedStatus ?? 'Open').trim(),
-
-        // Dates / pipeline
         'nextFollowUpDate': _nextFollowUpDate == null
             ? null
             : Timestamp.fromDate(_nextFollowUpDate!),
@@ -406,14 +456,13 @@ class _ScreensAddInquiryState extends State<ScreensAddInquiry> {
             : Timestamp.fromDate(_expectedClosureDate!),
         'lastFollowUpNote': '',
         'linkedQuotationId': '',
-
-        // Assignment snapshot
         'assignedToUid': assignedTo,
-        'assignedToName': (assignedUserData['name'] ?? '').toString().trim(),
+        'assignedToName':
+            (assignedUserData['name'] ?? assignedUserData['fullName'] ?? '')
+                .toString()
+                .trim(),
         'assignedToRole': (assignedUserData['role'] ?? '').toString().trim(),
         'assignedByUid': widget.currentUserUid,
-
-        // Ownership & audit
         'recordOwnerUid': widget.currentUserUid,
         'createdBy': widget.currentUserUid,
         'createdByUid': widget.currentUserUid,
@@ -421,8 +470,6 @@ class _ScreensAddInquiryState extends State<ScreensAddInquiry> {
         'updatedBy': widget.currentUserUid,
         'updatedByUid': widget.currentUserUid,
         'updatedAt': FieldValue.serverTimestamp(),
-
-        // Optional reporting flags
         'isActive': true,
       });
 
@@ -454,11 +501,11 @@ class _ScreensAddInquiryState extends State<ScreensAddInquiry> {
 
   Widget _buildCustomerDropdown() {
     return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-      stream: _companyCustomersRef.orderBy('companyName').snapshots(),
+      stream: _companyCustomersRef.snapshots(),
       builder: (context, snap) {
         if (snap.connectionState == ConnectionState.waiting) {
           return const Padding(
-            padding: EdgeInsets.all(8.0),
+            padding: EdgeInsets.all(8),
             child: LinearProgressIndicator(),
           );
         }
@@ -475,25 +522,25 @@ class _ScreensAddInquiryState extends State<ScreensAddInquiry> {
         final docs = _canAssignOthers
             ? allDocs
             : allDocs.where((doc) {
-          final data = doc.data();
-          final createdByUid =
-          (data['createdByUid'] ?? data['createdBy'] ?? '')
-              .toString()
-              .trim();
-          final assignedToUid =
-          (data['assignedToUid'] ?? '').toString().trim();
+                final data = doc.data();
+                final createdByUid =
+                    (data['createdByUid'] ?? data['createdBy'] ?? '')
+                        .toString()
+                        .trim();
+                final assignedToUid =
+                    (data['assignedToUid'] ?? '').toString().trim();
 
-          return createdByUid == widget.currentUserUid ||
-              assignedToUid == widget.currentUserUid;
-        }).toList();
+                return createdByUid == widget.currentUserUid ||
+                    assignedToUid == widget.currentUserUid;
+              }).toList();
 
         docs.sort((a, b) {
           final ad = a.data();
           final bd = b.data();
           final an =
-          (ad['companyName'] ?? ad['name'] ?? '').toString().toLowerCase();
+              (ad['companyName'] ?? ad['name'] ?? '').toString().toLowerCase();
           final bn =
-          (bd['companyName'] ?? bd['name'] ?? '').toString().toLowerCase();
+              (bd['companyName'] ?? bd['name'] ?? '').toString().toLowerCase();
           return an.compareTo(bn);
         });
 
@@ -524,11 +571,11 @@ class _ScreensAddInquiryState extends State<ScreensAddInquiry> {
             prefixIcon: const Icon(Icons.apartment_outlined),
           ),
           validator: (value) =>
-          value == null || value.trim().isEmpty ? 'Required' : null,
+              value == null || value.trim().isEmpty ? 'Required' : null,
           items: docs.map((doc) {
             final data = doc.data();
             final name = (data['companyName'] ?? data['name'] ?? '').toString();
-            return DropdownMenuItem(
+            return DropdownMenuItem<String>(
               value: doc.id,
               child: Text(name.isEmpty ? '(Unnamed Customer)' : name),
             );
@@ -543,7 +590,9 @@ class _ScreensAddInquiryState extends State<ScreensAddInquiry> {
 
             if (val != null) {
               await _loadCustomerData(val);
-              if (mounted) setState(() {});
+              if (mounted) {
+                setState(() {});
+              }
             }
           },
         );
@@ -553,20 +602,17 @@ class _ScreensAddInquiryState extends State<ScreensAddInquiry> {
 
   Widget _buildContactDropdown() {
     if (_selectedCustomerId == null || _selectedCustomerId!.trim().isEmpty) {
-      return const SizedBox();
+      return const SizedBox.shrink();
     }
 
     return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-      stream: _companyCustomersRef
-          .doc(_selectedCustomerId)
-          .collection('contacts')
+      stream: _companyContactsRef(_selectedCustomerId!)
           .where('isActive', isEqualTo: true)
-          .orderBy('name')
           .snapshots(),
       builder: (context, snap) {
         if (snap.connectionState == ConnectionState.waiting) {
           return const Padding(
-            padding: EdgeInsets.all(8.0),
+            padding: EdgeInsets.all(8),
             child: LinearProgressIndicator(),
           );
         }
@@ -578,8 +624,21 @@ class _ScreensAddInquiryState extends State<ScreensAddInquiry> {
           );
         }
 
-        final docs = snap.data?.docs ?? [];
-        if (docs.isEmpty) {
+        final contacts = snap.data?.docs.toList() ?? [];
+
+        contacts.sort((a, b) {
+          final nameA =
+              (a.data()['name'] ?? a.data()['contactName'] ?? '')
+                  .toString()
+                  .toLowerCase();
+          final nameB =
+              (b.data()['name'] ?? b.data()['contactName'] ?? '')
+                  .toString()
+                  .toLowerCase();
+          return nameA.compareTo(nameB);
+        });
+
+        if (contacts.isEmpty) {
           return Container(
             width: double.infinity,
             padding: const EdgeInsets.all(14),
@@ -595,7 +654,7 @@ class _ScreensAddInquiryState extends State<ScreensAddInquiry> {
           );
         }
 
-        final safeSelectedValue = docs.any((d) => d.id == _selectedContactId)
+        final safeSelectedValue = contacts.any((d) => d.id == _selectedContactId)
             ? _selectedContactId
             : null;
 
@@ -605,11 +664,13 @@ class _ScreensAddInquiryState extends State<ScreensAddInquiry> {
             'Select Contact',
             prefixIcon: const Icon(Icons.person_outline),
           ),
-          items: docs.map((doc) {
+          items: contacts.map((doc) {
             final data = doc.data();
-            final name = (data['name'] ?? '').toString();
+            final name =
+                (data['name'] ?? data['contactName'] ?? '').toString();
             final designation = (data['designation'] ?? '').toString();
-            return DropdownMenuItem(
+
+            return DropdownMenuItem<String>(
               value: doc.id,
               child: Text(
                 designation.isEmpty ? name : '$name ($designation)',
@@ -624,7 +685,9 @@ class _ScreensAddInquiryState extends State<ScreensAddInquiry> {
 
             if (v != null && _selectedCustomerId != null) {
               await _loadContactData(_selectedCustomerId!, v);
-              if (mounted) setState(() {});
+              if (mounted) {
+                setState(() {});
+              }
             }
           },
         );
@@ -638,7 +701,7 @@ class _ScreensAddInquiryState extends State<ScreensAddInquiry> {
       builder: (context, snap) {
         if (snap.connectionState == ConnectionState.waiting) {
           return const Padding(
-            padding: EdgeInsets.all(8.0),
+            padding: EdgeInsets.all(8),
             child: LinearProgressIndicator(),
           );
         }
@@ -651,9 +714,14 @@ class _ScreensAddInquiryState extends State<ScreensAddInquiry> {
         }
 
         final docs = snap.data?.docs.toList() ?? [];
+
         docs.sort((a, b) {
-          final an = (a.data()['name'] ?? '').toString().toLowerCase();
-          final bn = (b.data()['name'] ?? '').toString().toLowerCase();
+          final an = (a.data()['name'] ?? a.data()['fullName'] ?? '')
+              .toString()
+              .toLowerCase();
+          final bn = (b.data()['name'] ?? b.data()['fullName'] ?? '')
+              .toString()
+              .toLowerCase();
           return an.compareTo(bn);
         });
 
@@ -692,21 +760,24 @@ class _ScreensAddInquiryState extends State<ScreensAddInquiry> {
           },
           items: docs.map((doc) {
             final data = doc.data();
-            final name = (data['name'] ?? '').toString();
+            final name = (data['name'] ?? data['fullName'] ?? '').toString();
             final role = (data['role'] ?? '').toString();
-            return DropdownMenuItem(
+
+            return DropdownMenuItem<String>(
               value: doc.id,
               child: Text(name.isEmpty ? doc.id : '$name ($role)'),
             );
           }).toList(),
           onChanged: _canAssignOthers
               ? (v) async {
-            setState(() => _assignedToUid = v);
-            if (v != null) {
-              await _loadAssignedUserData(v);
-              if (mounted) setState(() {});
-            }
-          }
+                  setState(() => _assignedToUid = v);
+                  if (v != null) {
+                    await _loadAssignedUserData(v);
+                    if (mounted) {
+                      setState(() {});
+                    }
+                  }
+                }
               : null,
         );
       },
@@ -715,18 +786,28 @@ class _ScreensAddInquiryState extends State<ScreensAddInquiry> {
 
   Widget _buildSelectedPreview() {
     final customerName = (_selectedCustomerData?['companyName'] ??
-        _selectedCustomerData?['name'] ??
-        '')
+            _selectedCustomerData?['name'] ??
+            '')
         .toString()
         .trim();
-    final contactName = (_selectedContactData?['name'] ?? '').toString().trim();
-    final contactPhone =
-    (_selectedContactData?['phone'] ?? '').toString().trim();
+
+    final contactName = (_selectedContactData?['name'] ??
+            _selectedContactData?['contactName'] ??
+            '')
+        .toString()
+        .trim();
+
+    final contactPhone = (_selectedContactData?['phone'] ??
+            _selectedContactData?['mobile'] ??
+            '')
+        .toString()
+        .trim();
+
     final contactEmail =
-    (_selectedContactData?['email'] ?? '').toString().trim();
+        (_selectedContactData?['email'] ?? '').toString().trim();
 
     if (customerName.isEmpty && contactName.isEmpty) {
-      return const SizedBox();
+      return const SizedBox.shrink();
     }
 
     return Container(
@@ -754,27 +835,18 @@ class _ScreensAddInquiryState extends State<ScreensAddInquiry> {
             const SizedBox(height: 8),
             Text(
               'Contact: $contactName',
-              style: const TextStyle(
-                fontSize: 13,
-                color: Color(0xFF374151),
-              ),
+              style: const TextStyle(fontSize: 13, color: Color(0xFF374151)),
             ),
           ],
           if (contactPhone.isNotEmpty)
             Text(
               'Phone: $contactPhone',
-              style: const TextStyle(
-                fontSize: 13,
-                color: Color(0xFF374151),
-              ),
+              style: const TextStyle(fontSize: 13, color: Color(0xFF374151)),
             ),
           if (contactEmail.isNotEmpty)
             Text(
               'Email: $contactEmail',
-              style: const TextStyle(
-                fontSize: 13,
-                color: Color(0xFF374151),
-              ),
+              style: const TextStyle(fontSize: 13, color: Color(0xFF374151)),
             ),
         ],
       ),
@@ -796,9 +868,9 @@ class _ScreensAddInquiryState extends State<ScreensAddInquiry> {
           prefixIcon: const Icon(Icons.calendar_month_outlined),
           suffixIcon: value != null
               ? IconButton(
-            onPressed: onClear,
-            icon: const Icon(Icons.close),
-          )
+                  onPressed: onClear,
+                  icon: const Icon(Icons.close),
+                )
               : const Icon(Icons.arrow_drop_down),
         ),
         child: Text(
@@ -817,9 +889,12 @@ class _ScreensAddInquiryState extends State<ScreensAddInquiry> {
   @override
   Widget build(BuildContext context) {
     final assignedPreviewName =
-    (_assignedUserData?['name'] ?? '').toString().trim();
+        (_assignedUserData?['name'] ?? _assignedUserData?['fullName'] ?? '')
+            .toString()
+            .trim();
+
     final assignedPreviewRole =
-    (_assignedUserData?['role'] ?? '').toString().trim();
+        (_assignedUserData?['role'] ?? '').toString().trim();
 
     return Scaffold(
       backgroundColor: const Color(0xFFF5F7FB),
@@ -832,34 +907,6 @@ class _ScreensAddInquiryState extends State<ScreensAddInquiry> {
           'New Inquiry',
           style: TextStyle(fontWeight: FontWeight.w700),
         ),
-        actions: [
-          Padding(
-            padding: const EdgeInsets.only(right: 12),
-            child: FilledButton.icon(
-              onPressed: _isSaving ? null : _saveInquiry,
-              style: FilledButton.styleFrom(
-                backgroundColor: const Color(0xFF2563EB),
-                foregroundColor: Colors.white,
-                padding:
-                const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-              ),
-              icon: _isSaving
-                  ? const SizedBox(
-                height: 16,
-                width: 16,
-                child: CircularProgressIndicator(
-                  strokeWidth: 2,
-                  color: Colors.white,
-                ),
-              )
-                  : const Icon(Icons.save_outlined, size: 18),
-              label: Text(_isSaving ? 'Saving...' : 'Save Inquiry'),
-            ),
-          ),
-        ],
       ),
       body: Form(
         key: _formKey,
@@ -944,24 +991,61 @@ class _ScreensAddInquiryState extends State<ScreensAddInquiry> {
                   _sectionCard(
                     title: 'Customer & Contact',
                     subtitle:
-                    'Select the customer and the contact person related to this inquiry.',
+                        'Select the customer and the contact person related to this inquiry.',
                     icon: Icons.business_center_outlined,
-                    child: Column(
-                      children: [
-                        _buildCustomerDropdown(),
-                        const SizedBox(height: 14),
-                        if (_selectedCustomerId != null) ...[
-                          _buildContactDropdown(),
-                          _buildSelectedPreview(),
-                        ],
-                      ],
+                    child: LayoutBuilder(
+                      builder: (context, constraints) {
+                        final isSmall = constraints.maxWidth < 800;
+
+                        final addCustomerButton = OutlinedButton.icon(
+                          onPressed: _openAddCustomerScreen,
+                          icon: const Icon(Icons.add),
+                          label: const Text('Add Customer'),
+                        );
+
+                        if (isSmall) {
+                          return Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              _buildCustomerDropdown(),
+                              const SizedBox(height: 12),
+                              addCustomerButton,
+                              const SizedBox(height: 14),
+                              if (_selectedCustomerId != null) ...[
+                                _buildContactDropdown(),
+                                const SizedBox(height: 14),
+                                _buildSelectedPreview(),
+                              ],
+                            ],
+                          );
+                        }
+
+                        return Column(
+                          children: [
+                            Row(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Expanded(child: _buildCustomerDropdown()),
+                                const SizedBox(width: 10),
+                                addCustomerButton,
+                              ],
+                            ),
+                            const SizedBox(height: 14),
+                            if (_selectedCustomerId != null) ...[
+                              _buildContactDropdown(),
+                              const SizedBox(height: 14),
+                              _buildSelectedPreview(),
+                            ],
+                          ],
+                        );
+                      },
                     ),
                   ),
 
                   _sectionCard(
                     title: 'Inquiry Classification',
                     subtitle:
-                    'Capture subject, source, type, priority, status and ownership.',
+                        'Capture subject, source, type, priority, status and ownership.',
                     icon: Icons.tune_rounded,
                     child: Column(
                       children: [
@@ -971,11 +1055,11 @@ class _ScreensAddInquiryState extends State<ScreensAddInquiry> {
                             decoration: _dec(
                               'Inquiry Subject *',
                               hint:
-                              'Example: Requirement for 400A inverter welding machine',
+                                  'Example: Requirement for 400A inverter welding machine',
                               prefixIcon: const Icon(Icons.title_outlined),
                             ),
                             validator: (v) =>
-                            v == null || v.trim().isEmpty ? 'Required' : null,
+                                v == null || v.trim().isEmpty ? 'Required' : null,
                           ),
                           right: _buildAssignUserDropdown(),
                         ),
@@ -1014,11 +1098,11 @@ class _ScreensAddInquiryState extends State<ScreensAddInquiry> {
                               'Other',
                             ]
                                 .map(
-                                  (e) => DropdownMenuItem(
-                                value: e,
-                                child: Text(e),
-                              ),
-                            )
+                                  (e) => DropdownMenuItem<String>(
+                                    value: e,
+                                    child: Text(e),
+                                  ),
+                                )
                                 .toList(),
                             onChanged: (v) => setState(() => _selectedSource = v),
                           ),
@@ -1027,7 +1111,7 @@ class _ScreensAddInquiryState extends State<ScreensAddInquiry> {
                             decoration: _dec(
                               'Source Reference',
                               hint:
-                              'Example: L&T, IndiaMART lead, existing client',
+                                  'Example: L&T, IndiaMART lead, existing client',
                               prefixIcon: const Icon(Icons.link_outlined),
                             ),
                           ),
@@ -1040,13 +1124,19 @@ class _ScreensAddInquiryState extends State<ScreensAddInquiry> {
                               'Inquiry Type',
                               prefixIcon: const Icon(Icons.category_outlined),
                             ),
-                            items: const ['Product', 'Service', 'Project', 'Both']
+                            items: const [
+                              'Product Sale',
+                              'Service / Repair',
+                              'AMC / Maintenance',
+                              'Project',
+                              'Mixed',
+                            ]
                                 .map(
-                                  (e) => DropdownMenuItem(
-                                value: e,
-                                child: Text(e),
-                              ),
-                            )
+                                  (e) => DropdownMenuItem<String>(
+                                    value: e,
+                                    child: Text(e),
+                                  ),
+                                )
                                 .toList(),
                             onChanged: (v) => setState(() => _selectedType = v),
                           ),
@@ -1055,15 +1145,16 @@ class _ScreensAddInquiryState extends State<ScreensAddInquiry> {
                             decoration: _dec(
                               'Priority',
                               prefixIcon: const Icon(
-                                  Icons.local_fire_department_outlined),
+                                Icons.local_fire_department_outlined,
+                              ),
                             ),
                             items: const ['Hot', 'Warm', 'Cold']
                                 .map(
-                                  (e) => DropdownMenuItem(
-                                value: e,
-                                child: Text(e),
-                              ),
-                            )
+                                  (e) => DropdownMenuItem<String>(
+                                    value: e,
+                                    child: Text(e),
+                                  ),
+                                )
                                 .toList(),
                             onChanged: (v) =>
                                 setState(() => _selectedPriority = v),
@@ -1088,11 +1179,11 @@ class _ScreensAddInquiryState extends State<ScreensAddInquiry> {
                               'Not Qualified',
                             ]
                                 .map(
-                                  (e) => DropdownMenuItem(
-                                value: e,
-                                child: Text(e),
-                              ),
-                            )
+                                  (e) => DropdownMenuItem<String>(
+                                    value: e,
+                                    child: Text(e),
+                                  ),
+                                )
                                 .toList(),
                             onChanged: (v) => setState(() => _selectedStatus = v),
                           ),
@@ -1119,7 +1210,7 @@ class _ScreensAddInquiryState extends State<ScreensAddInquiry> {
                   _sectionCard(
                     title: 'Requirement & Commercial Details',
                     subtitle:
-                    'Capture exact requirement, scope, expected value and timeline.',
+                        'Capture exact requirement, scope, expected value and timeline.',
                     icon: Icons.inventory_2_outlined,
                     child: Column(
                       children: [
@@ -1129,14 +1220,14 @@ class _ScreensAddInquiryState extends State<ScreensAddInquiry> {
                           decoration: _dec(
                             'Requirement / Products Needed *',
                             hint:
-                            'Write product, model, specs, application, amperage, accessories, quantity requirement, etc.',
+                                'Write product, model, specs, application, amperage, accessories, quantity requirement, etc.',
                             prefixIcon: const Padding(
                               padding: EdgeInsets.only(bottom: 72),
                               child: Icon(Icons.description_outlined),
                             ),
                           ),
                           validator: (v) =>
-                          v == null || v.trim().isEmpty ? 'Required' : null,
+                              v == null || v.trim().isEmpty ? 'Required' : null,
                         ),
                         const SizedBox(height: 14),
                         _twoCol(
@@ -1145,7 +1236,7 @@ class _ScreensAddInquiryState extends State<ScreensAddInquiry> {
                             decoration: _dec(
                               'Quantity / Scope',
                               hint:
-                              'Example: 5 machines / 1 line / 200 kg wire',
+                                  'Example: 5 machines / 1 line / 200 kg wire',
                               prefixIcon: const Icon(Icons.numbers_outlined),
                             ),
                           ),
@@ -1156,7 +1247,7 @@ class _ScreensAddInquiryState extends State<ScreensAddInquiry> {
                               'Expected Deal Value',
                               hint: 'Example: 250000',
                               prefixIcon:
-                              const Icon(Icons.currency_rupee_outlined),
+                                  const Icon(Icons.currency_rupee_outlined),
                             ),
                           ),
                         ),
@@ -1168,7 +1259,7 @@ class _ScreensAddInquiryState extends State<ScreensAddInquiry> {
                               'Delivery Timeline',
                               hint: 'Example: Immediate / 2 weeks / 30 days',
                               prefixIcon:
-                              const Icon(Icons.local_shipping_outlined),
+                                  const Icon(Icons.local_shipping_outlined),
                             ),
                           ),
                           right: _buildDateSelector(
@@ -1203,7 +1294,7 @@ class _ScreensAddInquiryState extends State<ScreensAddInquiry> {
                   _sectionCard(
                     title: 'Notes & Internal Remarks',
                     subtitle:
-                    'Keep follow-up points, customer remarks and internal sales notes.',
+                        'Keep follow-up points, customer remarks and internal sales notes.',
                     icon: Icons.sticky_note_2_outlined,
                     child: Column(
                       children: [
@@ -1213,7 +1304,7 @@ class _ScreensAddInquiryState extends State<ScreensAddInquiry> {
                           decoration: _dec(
                             'Customer Notes',
                             hint:
-                            'Example: Client needs brochure and urgent quotation by Friday.',
+                                'Example: Client needs brochure and urgent quotation by Friday.',
                             prefixIcon: const Padding(
                               padding: EdgeInsets.only(bottom: 52),
                               child: Icon(Icons.notes_outlined),
@@ -1227,7 +1318,7 @@ class _ScreensAddInquiryState extends State<ScreensAddInquiry> {
                           decoration: _dec(
                             'Internal Notes',
                             hint:
-                            'Example: Good lead, decision maker involved, competitor is ESAB.',
+                                'Example: Good lead, decision maker involved, competitor is ESAB.',
                             prefixIcon: const Padding(
                               padding: EdgeInsets.only(bottom: 52),
                               child: Icon(Icons.lock_outline),
@@ -1238,7 +1329,7 @@ class _ScreensAddInquiryState extends State<ScreensAddInquiry> {
                     ),
                   ),
 
-                  const SizedBox(height: 6),
+                  const SizedBox(height: 12),
 
                   Align(
                     alignment: Alignment.centerRight,
@@ -1248,7 +1339,7 @@ class _ScreensAddInquiryState extends State<ScreensAddInquiry> {
                       children: [
                         OutlinedButton(
                           onPressed:
-                          _isSaving ? null : () => Navigator.pop(context),
+                              _isSaving ? null : () => Navigator.pop(context),
                           style: OutlinedButton.styleFrom(
                             padding: const EdgeInsets.symmetric(
                               horizontal: 18,
@@ -1275,13 +1366,13 @@ class _ScreensAddInquiryState extends State<ScreensAddInquiry> {
                           ),
                           icon: _isSaving
                               ? const SizedBox(
-                            height: 16,
-                            width: 16,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2,
-                              color: Colors.white,
-                            ),
-                          )
+                                  height: 16,
+                                  width: 16,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    color: Colors.white,
+                                  ),
+                                )
                               : const Icon(Icons.save_outlined),
                           label: Text(_isSaving ? 'Saving...' : 'Save Inquiry'),
                         ),

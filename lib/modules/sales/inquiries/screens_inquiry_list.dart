@@ -1,10 +1,11 @@
-import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/material.dart';
 
-import 'package:QUIK/modules/sales/inquiries/screens_inquiry_form.dart';
 import 'package:QUIK/models/inquiry_model.dart';
 import 'package:QUIK/modules/sales/inquiries/screens_add_inquiry.dart';
+import 'package:QUIK/modules/sales/inquiries/screens_inquiry_form.dart';
+import 'package:QUIK/modules/sales/quotations/quotation_screen_local.dart';
 
 class ScreensInquiryList extends StatefulWidget {
   const ScreensInquiryList({super.key});
@@ -20,23 +21,34 @@ class _ScreensInquiryListState extends State<ScreensInquiryList> {
   String _statusFilter = 'All';
   String _priorityFilter = 'All';
 
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
   Future<Map<String, dynamic>?> _loadCurrentUserProfile(String uid) async {
     final doc =
-    await FirebaseFirestore.instance.collection('users').doc(uid).get();
+        await FirebaseFirestore.instance.collection('users').doc(uid).get();
     return doc.data();
   }
 
   bool _isAdminOrManager(String role) {
-    return role == 'admin' || role == 'manager';
+    final r = role.trim().toLowerCase();
+    return r == 'admin' || r == 'manager';
   }
 
   bool _hasInquiryPermission(Map<String, dynamic> userData) {
-    final role = (userData['role'] ?? '').toString();
+    final role = (userData['role'] ?? '').toString().trim().toLowerCase();
+
     if (_isAdminOrManager(role)) return true;
 
-    final permissions =
-    Map<String, dynamic>.from(userData['permissions'] ?? {});
+    final permissions = Map<String, dynamic>.from(userData['permissions'] ?? {});
     return permissions['inquiries'] == true;
+  }
+
+  String _safeString(dynamic value) {
+    return (value ?? '').toString().trim();
   }
 
   String _formatDate(DateTime date) {
@@ -51,73 +63,96 @@ class _ScreensInquiryListState extends State<ScreensInquiryList> {
     return _formatDate(date);
   }
 
-  String _safeString(dynamic value) {
-    return (value ?? '').toString().trim();
-  }
-
   List<QueryDocumentSnapshot<Map<String, dynamic>>> _applyLocalFilters({
     required List<QueryDocumentSnapshot<Map<String, dynamic>>> docs,
     required String role,
     required String currentUserUid,
   }) {
-    final visibleDocs = _isAdminOrManager(role)
-        ? docs
-        : docs.where((doc) {
+    final normalizedSearch = _searchText.trim().toLowerCase();
+    final normalizedRole = role.trim().toLowerCase();
+
+    final filtered = docs.where((doc) {
       final data = doc.data();
-      final assignedToUid = _safeString(data['assignedToUid']);
-      final createdByUid = _safeString(data['createdByUid']).isNotEmpty
-          ? _safeString(data['createdByUid'])
-          : _safeString(data['createdBy']);
 
-      return assignedToUid == currentUserUid ||
-          createdByUid == currentUserUid;
-    }).toList();
+      bool matchesRole = true;
 
-    final filtered = visibleDocs.where((doc) {
-      final inquiry = Inquiry.fromSnapshot(doc);
+      if (!_isAdminOrManager(normalizedRole)) {
+        final assignedToUid = (data['assignedToUid'] ?? '').toString().trim();
+        final createdByUid = (data['createdByUid'] ?? data['createdBy'] ?? '')
+            .toString()
+            .trim();
 
-      final status = inquiry.status.isEmpty ? 'Open' : inquiry.status;
-      final priority = inquiry.priority.isEmpty ? 'Warm' : inquiry.priority;
-
-      if (_statusFilter != 'All' && status != _statusFilter) {
-        return false;
+        matchesRole =
+            assignedToUid == currentUserUid || createdByUid == currentUserUid;
       }
 
-      if (_priorityFilter != 'All' && priority != _priorityFilter) {
-        return false;
-      }
+      final inquiryCode = (data['inquiryCode'] ?? data['inquiryNumber'] ?? '')
+          .toString()
+          .toLowerCase();
 
-      if (_searchText.trim().isEmpty) return true;
+      final customerCode =
+          (data['customerCode'] ?? '').toString().toLowerCase();
 
-      final q = _searchText.trim().toLowerCase();
+      final customerName = (data['customerName'] ?? data['companyName'] ?? '')
+          .toString()
+          .toLowerCase();
 
-      return inquiry.subject.toLowerCase().contains(q) ||
-          inquiry.customerName.toLowerCase().contains(q) ||
-          inquiry.contactName.toLowerCase().contains(q) ||
-          inquiry.contactPhone.toLowerCase().contains(q) ||
-          inquiry.contactEmail.toLowerCase().contains(q) ||
-          inquiry.requiredProducts.toLowerCase().contains(q) ||
-          inquiry.source.toLowerCase().contains(q) ||
-          inquiry.inquiryType.toLowerCase().contains(q) ||
-          inquiry.location.toLowerCase().contains(q) ||
-          inquiry.inquiryNumber.toLowerCase().contains(q) ||
-          inquiry.assignedToName.toLowerCase().contains(q) ||
-          inquiry.sourceReference.toLowerCase().contains(q) ||
-          inquiry.quantityScope.toLowerCase().contains(q) ||
-          inquiry.expectedValue.toLowerCase().contains(q);
+      final subject = (data['subject'] ?? data['inquirySubject'] ?? '')
+          .toString()
+          .toLowerCase();
+
+      final contactName = (data['contactName'] ?? data['contactPerson'] ?? '')
+          .toString()
+          .toLowerCase();
+
+      final mobile = (data['contactMobile'] ??
+              data['contactPhone'] ??
+              data['mobile'] ??
+              '')
+          .toString()
+          .toLowerCase();
+
+      final projectName =
+          (data['projectName'] ?? '').toString().toLowerCase();
+
+      final source = (data['source'] ?? '').toString().toLowerCase();
+
+      final requiredProducts =
+          (data['requiredProducts'] ?? '').toString().toLowerCase();
+
+      final status = (data['status'] ?? '').toString().trim();
+      final priority = (data['priority'] ?? '').toString().trim();
+
+      final matchesSearch = normalizedSearch.isEmpty ||
+          inquiryCode.contains(normalizedSearch) ||
+          customerCode.contains(normalizedSearch) ||
+          customerName.contains(normalizedSearch) ||
+          subject.contains(normalizedSearch) ||
+          contactName.contains(normalizedSearch) ||
+          mobile.contains(normalizedSearch) ||
+          projectName.contains(normalizedSearch) ||
+          source.contains(normalizedSearch) ||
+          requiredProducts.contains(normalizedSearch);
+
+      final matchesStatus = _statusFilter == 'All' || status == _statusFilter;
+      final matchesPriority =
+          _priorityFilter == 'All' || priority == _priorityFilter;
+
+      return matchesRole && matchesSearch && matchesStatus && matchesPriority;
     }).toList();
 
     filtered.sort((a, b) {
-      final inquiryA = Inquiry.fromSnapshot(a);
-      final inquiryB = Inquiry.fromSnapshot(b);
+      final aTs = a.data()['createdAt'];
+      final bTs = b.data()['createdAt'];
 
-      final at = inquiryA.createdAt;
-      final bt = inquiryB.createdAt;
+      final aDate = aTs is Timestamp ? aTs.toDate() : null;
+      final bDate = bTs is Timestamp ? bTs.toDate() : null;
 
-      if (at == null && bt == null) return 0;
-      if (at == null) return 1;
-      if (bt == null) return -1;
-      return bt.compareTo(at);
+      if (aDate == null && bDate == null) return 0;
+      if (aDate == null) return 1;
+      if (bDate == null) return -1;
+
+      return bDate.compareTo(aDate);
     });
 
     return filtered;
@@ -225,20 +260,18 @@ class _ScreensInquiryListState extends State<ScreensInquiryList> {
     required VoidCallback onTap,
     Color? selectedColor,
   }) {
+    final tone = selectedColor ?? const Color(0xFF2563EB);
+
     return InkWell(
       onTap: onTap,
       borderRadius: BorderRadius.circular(999),
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
         decoration: BoxDecoration(
-          color: selected
-              ? (selectedColor ?? const Color(0xFF2563EB)).withOpacity(0.12)
-              : Colors.white,
+          color: selected ? tone.withOpacity(0.12) : Colors.white,
           borderRadius: BorderRadius.circular(999),
           border: Border.all(
-            color: selected
-                ? (selectedColor ?? const Color(0xFF2563EB))
-                : const Color(0xFFD9E1EC),
+            color: selected ? tone : const Color(0xFFD9E1EC),
           ),
         ),
         child: Text(
@@ -246,9 +279,7 @@ class _ScreensInquiryListState extends State<ScreensInquiryList> {
           style: TextStyle(
             fontSize: 13,
             fontWeight: FontWeight.w600,
-            color: selected
-                ? (selectedColor ?? const Color(0xFF2563EB))
-                : const Color(0xFF374151),
+            color: selected ? tone : const Color(0xFF374151),
           ),
         ),
       ),
@@ -262,19 +293,19 @@ class _ScreensInquiryListState extends State<ScreensInquiryList> {
   }) {
     if (text.trim().isEmpty) return const SizedBox.shrink();
 
+    final tone = color ?? const Color(0xFF6B7280);
+
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
       decoration: BoxDecoration(
-        color: (color ?? const Color(0xFF6B7280)).withOpacity(0.08),
+        color: tone.withOpacity(0.08),
         borderRadius: BorderRadius.circular(999),
-        border: Border.all(
-          color: (color ?? const Color(0xFF6B7280)).withOpacity(0.18),
-        ),
+        border: Border.all(color: tone.withOpacity(0.18)),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(icon, size: 14, color: color ?? const Color(0xFF6B7280)),
+          Icon(icon, size: 14, color: tone),
           const SizedBox(width: 6),
           Flexible(
             child: Text(
@@ -283,344 +314,14 @@ class _ScreensInquiryListState extends State<ScreensInquiryList> {
               style: TextStyle(
                 fontSize: 12,
                 fontWeight: FontWeight.w600,
-                color: color ?? const Color(0xFF374151),
+                color: tone == const Color(0xFF6B7280)
+                    ? const Color(0xFF374151)
+                    : tone,
               ),
             ),
           ),
         ],
       ),
-    );
-  }
-
-  Widget _buildInquiryCard({
-    required BuildContext context,
-    required QueryDocumentSnapshot<Map<String, dynamic>> doc,
-    required Inquiry inquiry,
-    required String role,
-    required String currentUserUid,
-  }) {
-    final assignedToUid = inquiry.assignedToUid;
-    final createdByUid = inquiry.createdBy;
-
-    final isAssignedToCurrentUser = assignedToUid == currentUserUid;
-    final isCreatedByCurrentUser = createdByUid == currentUserUid;
-
-    final priority = inquiry.priority.isEmpty ? 'Warm' : inquiry.priority;
-    final status = inquiry.status.isEmpty ? 'Open' : inquiry.status;
-    final subject = inquiry.subject;
-    final inquiryNumber = inquiry.inquiryNumber;
-    final source = inquiry.source;
-    final inquiryType = inquiry.inquiryType;
-    final location = inquiry.location;
-    final quantityScope = inquiry.quantityScope;
-    final expectedValue = inquiry.expectedValue;
-    final assignedToName = inquiry.assignedToName;
-    final channelRef = inquiry.sourceReference;
-    final createdAtText =
-    inquiry.createdAt == null ? '-' : _formatDate(inquiry.createdAt!);
-
-    return Container(
-      margin: const EdgeInsets.only(bottom: 14),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: const Color(0xFFE5EAF2)),
-        boxShadow: const [
-          BoxShadow(
-            color: Color(0x0A000000),
-            blurRadius: 12,
-            offset: Offset(0, 4),
-          ),
-        ],
-      ),
-      child: InkWell(
-        borderRadius: BorderRadius.circular(18),
-        onTap: () async {
-          final result = await Navigator.push(
-            context,
-            MaterialPageRoute(
-              builder: (_) => ScreensInquiryForm(
-                existingDoc: doc.reference,
-                existingInquiry: inquiry,
-                currentUserId: currentUserUid,
-              ),
-            ),
-          );
-
-          if (result == true && mounted) {
-            setState(() {});
-          }
-        },
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: LayoutBuilder(
-            builder: (context, constraints) {
-              final isTight = constraints.maxWidth < 760;
-
-              final header = Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Container(
-                    height: 46,
-                    width: 46,
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFEAF1FF),
-                      borderRadius: BorderRadius.circular(14),
-                    ),
-                    child: const Icon(
-                      Icons.support_agent_outlined,
-                      color: Color(0xFF2563EB),
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        if (subject.isNotEmpty)
-                          Text(
-                            subject,
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.w700,
-                              color: Color(0xFF111827),
-                            ),
-                          ),
-                        if (subject.isNotEmpty) const SizedBox(height: 4),
-                        Text(
-                          inquiry.customerName.isEmpty
-                              ? '(No Customer Name)'
-                              : inquiry.customerName,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                            fontSize: 14,
-                            fontWeight: FontWeight.w600,
-                            color: Color(0xFF374151),
-                          ),
-                        ),
-                        const SizedBox(height: 4),
-                        Wrap(
-                          spacing: 8,
-                          runSpacing: 8,
-                          children: [
-                            if (inquiry.contactName.isNotEmpty)
-                              _buildMetaPill(
-                                icon: Icons.person_outline,
-                                text: inquiry.contactName,
-                              ),
-                            if (inquiry.contactPhone.isNotEmpty)
-                              _buildMetaPill(
-                                icon: Icons.phone_outlined,
-                                text: inquiry.contactPhone,
-                              ),
-                            if (source.isNotEmpty)
-                              _buildMetaPill(
-                                icon: Icons.hub_outlined,
-                                text: source,
-                              ),
-                            if (inquiryType.isNotEmpty)
-                              _buildMetaPill(
-                                icon: Icons.category_outlined,
-                                text: inquiryType,
-                              ),
-                          ],
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.end,
-                    children: [
-                      _buildMetaPill(
-                        icon: Icons.flag_outlined,
-                        text: status,
-                        color: _statusColor(status),
-                      ),
-                      const SizedBox(height: 8),
-                      _buildMetaPill(
-                        icon: Icons.local_fire_department_outlined,
-                        text: priority,
-                        color: _priorityColor(priority),
-                      ),
-                    ],
-                  ),
-                ],
-              );
-
-              final details = Wrap(
-                spacing: 10,
-                runSpacing: 10,
-                children: [
-                  if (inquiryNumber.isNotEmpty)
-                    _buildMetaPill(
-                      icon: Icons.tag_outlined,
-                      text: inquiryNumber,
-                    ),
-                  if (channelRef.isNotEmpty)
-                    _buildMetaPill(
-                      icon: Icons.link_outlined,
-                      text: channelRef,
-                    ),
-                  if (location.isNotEmpty)
-                    _buildMetaPill(
-                      icon: Icons.location_on_outlined,
-                      text: location,
-                    ),
-                  if (quantityScope.isNotEmpty)
-                    _buildMetaPill(
-                      icon: Icons.numbers_outlined,
-                      text: quantityScope,
-                    ),
-                  if (expectedValue.isNotEmpty)
-                    _buildMetaPill(
-                      icon: Icons.currency_rupee_outlined,
-                      text: expectedValue,
-                    ),
-                  if (inquiry.deliveryTimeline.isNotEmpty)
-                    _buildMetaPill(
-                      icon: Icons.local_shipping_outlined,
-                      text: inquiry.deliveryTimeline,
-                    ),
-                ],
-              );
-
-              final footer = Container(
-                margin: const EdgeInsets.only(top: 14),
-                padding: const EdgeInsets.all(14),
-                decoration: BoxDecoration(
-                  color: const Color(0xFFF8FAFC),
-                  borderRadius: BorderRadius.circular(14),
-                  border: Border.all(color: const Color(0xFFE5E7EB)),
-                ),
-                child: isTight
-                    ? Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    _buildFooterLeft(
-                      inquiry: inquiry,
-                      assignedToUid: assignedToUid,
-                      isAssignedToCurrentUser: isAssignedToCurrentUser,
-                      isCreatedByCurrentUser: isCreatedByCurrentUser,
-                      isAdminOrManager: _isAdminOrManager(role),
-                      assignedToName: assignedToName,
-                      createdAtText: createdAtText,
-                    ),
-                    const SizedBox(height: 10),
-                    _buildFooterRight(inquiry),
-                  ],
-                )
-                    : Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Expanded(
-                      child: _buildFooterLeft(
-                        inquiry: inquiry,
-                        assignedToUid: assignedToUid,
-                        isAssignedToCurrentUser: isAssignedToCurrentUser,
-                        isCreatedByCurrentUser: isCreatedByCurrentUser,
-                        isAdminOrManager: _isAdminOrManager(role),
-                        assignedToName: assignedToName,
-                        createdAtText: createdAtText,
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    _buildFooterRight(inquiry),
-                  ],
-                ),
-              );
-
-              return Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  header,
-                  if (inquiry.requiredProducts.isNotEmpty) ...[
-                    const SizedBox(height: 14),
-                    Text(
-                      inquiry.requiredProducts,
-                      maxLines: 3,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        fontSize: 13,
-                        height: 1.5,
-                        color: Color(0xFF4B5563),
-                      ),
-                    ),
-                  ],
-                  const SizedBox(height: 14),
-                  details,
-                  footer,
-                ],
-              );
-            },
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildFooterLeft({
-    required Inquiry inquiry,
-    required String assignedToUid,
-    required bool isAssignedToCurrentUser,
-    required bool isCreatedByCurrentUser,
-    required bool isAdminOrManager,
-    required String assignedToName,
-    required String createdAtText,
-  }) {
-    Color assignmentColor;
-    String assignmentText;
-
-    if (assignedToUid.isEmpty) {
-      assignmentColor = Colors.red;
-      assignmentText = 'Unassigned';
-    } else if (isAssignedToCurrentUser) {
-      assignmentColor = Colors.green;
-      assignmentText = 'Assigned to you';
-    } else if (assignedToName.isNotEmpty) {
-      assignmentColor = const Color(0xFF2563EB);
-      assignmentText = 'Assigned to $assignedToName';
-    } else {
-      assignmentColor = Colors.green;
-      assignmentText = 'Assigned';
-    }
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          assignmentText,
-          style: TextStyle(
-            fontSize: 12,
-            color: assignmentColor,
-            fontWeight: FontWeight.w700,
-          ),
-        ),
-        if (isCreatedByCurrentUser &&
-            !isAssignedToCurrentUser &&
-            !isAdminOrManager) ...[
-          const SizedBox(height: 4),
-          const Text(
-            'Created by you',
-            style: TextStyle(
-              fontSize: 12,
-              color: Colors.blueGrey,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-        ],
-        const SizedBox(height: 6),
-        Text(
-          'Created: $createdAtText',
-          style: const TextStyle(
-            fontSize: 12,
-            color: Color(0xFF6B7280),
-          ),
-        ),
-      ],
     );
   }
 
@@ -646,6 +347,375 @@ class _ScreensInquiryListState extends State<ScreensInquiryList> {
             color: const Color(0xFF0F766E),
           ),
       ],
+    );
+  }
+
+  Future<void> _openEditInquiry({
+    required BuildContext context,
+    required QueryDocumentSnapshot<Map<String, dynamic>> doc,
+    required Inquiry inquiry,
+    required String currentUserUid,
+  }) async {
+    final result = await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => ScreensInquiryForm(
+          existingDoc: doc.reference,
+          existingInquiry: inquiry,
+          currentUserId: currentUserUid,
+        ),
+      ),
+    );
+
+    if (result == true && mounted) {
+      setState(() {});
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Inquiry updated'),
+          backgroundColor: Colors.green,
+        ),
+      );
+    }
+  }
+
+  Future<void> _openQuotationFromInquiry({
+    required Inquiry inquiry,
+  }) async {
+    await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => QuotationScreenLocal(
+          userId:
+              (FirebaseAuth.instance.currentUser?.uid.hashCode ?? 0).abs() %
+                  1000000,
+        ),
+      ),
+    );
+
+    if (!mounted) return;
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          inquiry.customerName.isEmpty
+              ? 'Quotation screen opened'
+              : 'Quotation screen opened for ${inquiry.customerName}',
+        ),
+      ),
+    );
+  }
+
+  Widget _buildInquiryCard({
+    required BuildContext context,
+    required QueryDocumentSnapshot<Map<String, dynamic>> doc,
+    required Inquiry inquiry,
+    required String role,
+    required String currentUserUid,
+  }) {
+    final assignedToUid = inquiry.assignedToUid;
+    final createdByUid = inquiry.createdBy;
+
+    final isAssignedToCurrentUser = assignedToUid == currentUserUid;
+    final isCreatedByCurrentUser = createdByUid == currentUserUid;
+
+    final priority = inquiry.priority.isEmpty ? 'Warm' : inquiry.priority;
+    final status = inquiry.status.isEmpty ? 'Open' : inquiry.status;
+    final subject = inquiry.subject;
+    final inquiryNumber =
+        inquiry.inquiryNumber.isEmpty ? '-' : inquiry.inquiryNumber;
+    final source = inquiry.source;
+    final inquiryType = inquiry.inquiryType;
+    final location = inquiry.location;
+    final quantityScope = inquiry.quantityScope;
+    final expectedValue = inquiry.expectedValue;
+    final assignedToName = inquiry.assignedToName;
+    final channelRef = inquiry.sourceReference;
+    final createdAtText =
+        inquiry.createdAt == null ? '-' : _formatDate(inquiry.createdAt!);
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 14),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: const Color(0xFFE5EAF2)),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x0A000000),
+            blurRadius: 12,
+            offset: Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            final isTight = constraints.maxWidth < 760;
+
+            final header = Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Container(
+                  height: 46,
+                  width: 46,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFEAF1FF),
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                  child: const Icon(
+                    Icons.support_agent_outlined,
+                    color: Color(0xFF2563EB),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      if (subject.isNotEmpty)
+                        Text(
+                          subject,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w700,
+                            color: Color(0xFF111827),
+                          ),
+                        ),
+                      if (subject.isNotEmpty) const SizedBox(height: 4),
+                      Text(
+                        inquiry.customerName.isEmpty
+                            ? '(No Customer Name)'
+                            : inquiry.customerName,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600,
+                          color: Color(0xFF374151),
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 8,
+                        children: [
+                          if (inquiry.contactName.isNotEmpty)
+                            _buildMetaPill(
+                              icon: Icons.person_outline,
+                              text: inquiry.contactName,
+                            ),
+                          if (inquiry.contactPhone.isNotEmpty)
+                            _buildMetaPill(
+                              icon: Icons.phone_outlined,
+                              text: inquiry.contactPhone,
+                            ),
+                          if (source.isNotEmpty)
+                            _buildMetaPill(
+                              icon: Icons.hub_outlined,
+                              text: source,
+                            ),
+                          if (inquiryType.isNotEmpty)
+                            _buildMetaPill(
+                              icon: Icons.category_outlined,
+                              text: inquiryType,
+                            ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    _buildMetaPill(
+                      icon: Icons.flag_outlined,
+                      text: status,
+                      color: _statusColor(status),
+                    ),
+                    const SizedBox(height: 8),
+                    _buildMetaPill(
+                      icon: Icons.local_fire_department_outlined,
+                      text: priority,
+                      color: _priorityColor(priority),
+                    ),
+                  ],
+                ),
+              ],
+            );
+
+            final details = Wrap(
+              spacing: 10,
+              runSpacing: 10,
+              children: [
+                _buildMetaPill(
+                  icon: Icons.tag_outlined,
+                  text: inquiryNumber,
+                ),
+                if (channelRef.isNotEmpty)
+                  _buildMetaPill(
+                    icon: Icons.link_outlined,
+                    text: channelRef,
+                  ),
+                if (location.isNotEmpty)
+                  _buildMetaPill(
+                    icon: Icons.location_on_outlined,
+                    text: location,
+                  ),
+                if (quantityScope.isNotEmpty)
+                  _buildMetaPill(
+                    icon: Icons.numbers_outlined,
+                    text: quantityScope,
+                  ),
+                if (expectedValue.isNotEmpty)
+                  _buildMetaPill(
+                    icon: Icons.currency_rupee_outlined,
+                    text: expectedValue,
+                  ),
+                if (inquiry.deliveryTimeline.isNotEmpty)
+                  _buildMetaPill(
+                    icon: Icons.local_shipping_outlined,
+                    text: inquiry.deliveryTimeline,
+                  ),
+              ],
+            );
+
+            final footerLeft = Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  assignedToUid.isEmpty
+                      ? 'Unassigned'
+                      : isAssignedToCurrentUser
+                          ? 'Assigned to you'
+                          : assignedToName.isNotEmpty
+                              ? 'Assigned to $assignedToName'
+                              : 'Assigned',
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: assignedToUid.isEmpty
+                        ? Colors.red
+                        : isAssignedToCurrentUser
+                            ? Colors.green
+                            : const Color(0xFF2563EB),
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                if (isCreatedByCurrentUser && !isAssignedToCurrentUser) ...[
+                  const SizedBox(height: 4),
+                  const Text(
+                    'Created by you',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: Colors.blueGrey,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ],
+                const SizedBox(height: 6),
+                Text(
+                  'Created: $createdAtText',
+                  style: const TextStyle(
+                    fontSize: 12,
+                    color: Color(0xFF6B7280),
+                  ),
+                ),
+              ],
+            );
+
+            final actions = Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                OutlinedButton.icon(
+                  onPressed: () => _openEditInquiry(
+                    context: context,
+                    doc: doc,
+                    inquiry: inquiry,
+                    currentUserUid: currentUserUid,
+                  ),
+                  icon: const Icon(Icons.edit_outlined, size: 18),
+                  label: const Text('Open'),
+                ),
+                FilledButton.icon(
+                  onPressed: () => _openQuotationFromInquiry(inquiry: inquiry),
+                  icon: const Icon(Icons.receipt_long_outlined, size: 18),
+                  label: const Text('Create Quotation'),
+                ),
+              ],
+            );
+
+            final footer = Container(
+              margin: const EdgeInsets.only(top: 14),
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                color: const Color(0xFFF8FAFC),
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: const Color(0xFFE5E7EB)),
+              ),
+              child: isTight
+                  ? Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        footerLeft,
+                        const SizedBox(height: 10),
+                        _buildFooterRight(inquiry),
+                        const SizedBox(height: 10),
+                        actions,
+                      ],
+                    )
+                  : Column(
+                      children: [
+                        Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Expanded(child: footerLeft),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Align(
+                                alignment: Alignment.centerRight,
+                                child: _buildFooterRight(inquiry),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 12),
+                        Align(
+                          alignment: Alignment.centerRight,
+                          child: actions,
+                        ),
+                      ],
+                    ),
+            );
+
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                header,
+                if (inquiry.requiredProducts.isNotEmpty) ...[
+                  const SizedBox(height: 14),
+                  Text(
+                    inquiry.requiredProducts,
+                    maxLines: 3,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      fontSize: 13,
+                      height: 1.5,
+                      color: Color(0xFF4B5563),
+                    ),
+                  ),
+                ],
+                const SizedBox(height: 14),
+                details,
+                footer,
+              ],
+            );
+          },
+        ),
+      ),
     );
   }
 
@@ -697,7 +767,9 @@ class _ScreensInquiryListState extends State<ScreensInquiryList> {
             child: TextField(
               controller: _searchController,
               onChanged: (value) {
-                setState(() => _searchText = value);
+                setState(() {
+                  _searchText = value.trim().toLowerCase();
+                });
               },
               decoration: InputDecoration(
                 hintText: 'Search customer, subject, contact, inquiry no...',
@@ -706,16 +778,18 @@ class _ScreensInquiryListState extends State<ScreensInquiryList> {
                 suffixIcon: _searchText.trim().isEmpty
                     ? null
                     : IconButton(
-                  onPressed: () {
-                    _searchController.clear();
-                    setState(() => _searchText = '');
-                  },
-                  icon: const Icon(Icons.close),
-                ),
+                        onPressed: () {
+                          _searchController.clear();
+                          setState(() {
+                            _searchText = '';
+                          });
+                        },
+                        icon: const Icon(Icons.close),
+                      ),
                 filled: true,
                 fillColor: Colors.white,
                 contentPadding:
-                const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                    const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(14),
                   borderSide: BorderSide.none,
@@ -786,15 +860,15 @@ class _ScreensInquiryListState extends State<ScreensInquiryList> {
             children: statuses
                 .map(
                   (e) => _buildFilterChip(
-                label: e,
-                selected: _statusFilter == e,
-                selectedColor:
-                e == 'All' ? const Color(0xFF2563EB) : _statusColor(e),
-                onTap: () {
-                  setState(() => _statusFilter = e);
-                },
-              ),
-            )
+                    label: e,
+                    selected: _statusFilter == e,
+                    selectedColor:
+                        e == 'All' ? const Color(0xFF2563EB) : _statusColor(e),
+                    onTap: () {
+                      setState(() => _statusFilter = e);
+                    },
+                  ),
+                )
                 .toList(),
           ),
           const SizedBox(height: 14),
@@ -813,16 +887,16 @@ class _ScreensInquiryListState extends State<ScreensInquiryList> {
             children: priorities
                 .map(
                   (e) => _buildFilterChip(
-                label: e,
-                selected: _priorityFilter == e,
-                selectedColor: e == 'All'
-                    ? const Color(0xFF2563EB)
-                    : _priorityColor(e),
-                onTap: () {
-                  setState(() => _priorityFilter = e);
-                },
-              ),
-            )
+                    label: e,
+                    selected: _priorityFilter == e,
+                    selectedColor: e == 'All'
+                        ? const Color(0xFF2563EB)
+                        : _priorityColor(e),
+                    onTap: () {
+                      setState(() => _priorityFilter = e);
+                    },
+                  ),
+                )
                 .toList(),
           ),
         ],
@@ -831,8 +905,8 @@ class _ScreensInquiryListState extends State<ScreensInquiryList> {
   }
 
   Widget _buildSummarySection(
-      List<QueryDocumentSnapshot<Map<String, dynamic>>> docs,
-      ) {
+    List<QueryDocumentSnapshot<Map<String, dynamic>>> docs,
+  ) {
     int total = docs.length;
     int open = 0;
     int followUp = 0;
@@ -894,10 +968,10 @@ class _ScreensInquiryListState extends State<ScreensInquiryList> {
               children: cards
                   .map(
                     (e) => Padding(
-                  padding: const EdgeInsets.only(bottom: 12),
-                  child: e,
-                ),
-              )
+                      padding: const EdgeInsets.only(bottom: 12),
+                      child: e,
+                    ),
+                  )
                   .toList(),
             );
           }
@@ -908,10 +982,10 @@ class _ScreensInquiryListState extends State<ScreensInquiryList> {
             children: cards
                 .map(
                   (e) => SizedBox(
-                width: 220,
-                child: e,
-              ),
-            )
+                    width: 220,
+                    child: e,
+                  ),
+                )
                 .toList(),
           );
         },
@@ -961,12 +1035,6 @@ class _ScreensInquiryListState extends State<ScreensInquiryList> {
         ),
       ),
     );
-  }
-
-  @override
-  void dispose() {
-    _searchController.dispose();
-    super.dispose();
   }
 
   @override
@@ -1076,12 +1144,14 @@ class _ScreensInquiryListState extends State<ScreensInquiryList> {
                     backgroundColor: Colors.green,
                   ),
                 );
+                setState(() {});
               }
             },
             child: const Icon(Icons.add),
           ),
           body: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-            stream: inquiryRef.orderBy('createdAt', descending: true).snapshots(),
+            stream:
+                inquiryRef.orderBy('createdAt', descending: true).snapshots(),
             builder: (context, snapshot) {
               if (snapshot.hasError) {
                 return Center(

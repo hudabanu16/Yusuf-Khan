@@ -9,7 +9,7 @@ class ScreensAddCustomer extends StatefulWidget {
 
   const ScreensAddCustomer({
     super.key,
-    required this.existingDoc,
+    this.existingDoc,
     required this.companyId,
     required this.currentUserUid,
     required this.currentUserRole,
@@ -61,8 +61,13 @@ class _ScreensAddCustomerState extends State<ScreensAddCustomer> {
   String _currentUserName = '';
   final Map<String, String> _cachedUserNames = {};
 
-  bool get _canAssignOthers =>
-      widget.currentUserRole == 'admin' || widget.currentUserRole == 'manager';
+  bool get _canAssignOthers {
+  final role = widget.currentUserRole.trim().toLowerCase();
+  return role == 'director' ||
+      role == 'md' ||
+      role == 'ceo' ||
+      role == 'sales_manager';
+}
 
   bool get _isEdit => widget.existingDoc != null;
 

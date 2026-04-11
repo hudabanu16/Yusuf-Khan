@@ -9,6 +9,8 @@ import 'package:QUIK/modules/inventory/products/screens_product_list.dart';
 import 'package:QUIK/modules/sales/inquiries/screens_inquiry_list.dart';
 import 'package:QUIK/modules/sales/quotations/screens_quotation_list.dart';
 import 'package:QUIK/modules/settings/screen_settings_home.dart';
+import 'package:QUIK/modules/sales/sales_orders/screens_sales_order_list.dart';
+import 'package:QUIK/modules/service/screens_service_home.dart';
 
 enum ShellPage {
   dashboard,
@@ -16,6 +18,7 @@ enum ShellPage {
   salesInquiries,
   salesQuotations,
   salesOrders,
+  service,
   salesFollowUps,
   salesTasks,
   salesMeetings,
@@ -75,6 +78,8 @@ extension ShellPageX on ShellPage {
         return 'Quotations';
       case ShellPage.salesOrders:
         return 'Sales Orders';
+      case ShellPage.service:
+        return 'Service';
       case ShellPage.salesFollowUps:
         return 'Follow-ups';
       case ShellPage.salesTasks:
@@ -171,6 +176,8 @@ extension ShellPageX on ShellPage {
         return Icons.receipt_long_outlined;
       case ShellPage.salesOrders:
         return Icons.shopping_bag_outlined;
+      case ShellPage.service:
+       return Icons.build_outlined;
       case ShellPage.salesFollowUps:
         return Icons.event_repeat_outlined;
       case ShellPage.salesTasks:
@@ -300,6 +307,7 @@ class _ZohoShellState extends State<ZohoShell> {
 
   final Set<String> expandedGroups = {
     'sales',
+    'service',
     'crm',
     'inventory',
   };
@@ -333,6 +341,14 @@ class _ZohoShellState extends State<ZohoShell> {
         ShellPage.salesMeetings,
       ],
     ),
+    SidebarGroup(
+      key: 'service',
+      title: 'Service',
+      icon: Icons.build_outlined,
+      children: [
+        ShellPage.service,
+      ],
+   ),
     SidebarGroup(
       key: 'crm',
       title: 'CRM',
@@ -920,6 +936,9 @@ class _ZohoShellState extends State<ZohoShell> {
 
       case ShellPage.salesInquiries:
         return const ScreensInquiryList();
+      
+      case ShellPage.service:
+        return ServiceHomeScreen();
 
       case ShellPage.crmCustomers:
         return const ScreensCustomerList();
@@ -931,6 +950,9 @@ class _ZohoShellState extends State<ZohoShell> {
         return ScreensQuotationList(
           userId: (widget.userUid.hashCode).abs() % 1000000,
         );
+      case ShellPage.salesOrders:
+        return const SalesOrderListScreen();
+     
 
       case ShellPage.adminUsers:
         return ScreenUserManagement(

@@ -27,8 +27,15 @@ class _ScreensQuotationListState extends State<ScreensQuotationList> {
   String? _errorMessage;
   String _searchText = '';
 
-  bool get _isAdminOrManager =>
-      _currentUserRole == 'admin' || _currentUserRole == 'manager';
+  bool get _isAdminOrManager {
+    final role = _currentUserRole.trim().toLowerCase();
+    return role == 'admin' ||
+        role == 'manager' ||
+        role == 'director' ||
+        role == 'md' ||
+        role == 'ceo' ||
+        role == 'super_admin';
+  }
 
   @override
   void initState() {
@@ -53,20 +60,20 @@ class _ScreensQuotationListState extends State<ScreensQuotationList> {
           .doc(user.uid)
           .get();
 
-      final data = rootUserDoc.data() ?? {};
+      final data = rootUserDoc.data() ?? <String, dynamic>{};
+
+      final companyId = (data['companyId'] ?? '').toString().trim();
+      final role = (data['role'] ?? 'sales').toString().trim();
 
       setState(() {
         _currentUserUid = user.uid;
-        _companyId = (data['companyId'] ?? '').toString().trim();
-        _currentUserRole = (data['role'] ?? 'sales').toString().trim();
+        _companyId = companyId;
+        _currentUserRole = role;
         _isLoadingContext = false;
+        _errorMessage = companyId.isEmpty
+            ? 'Company context not found for current user.'
+            : null;
       });
-
-      if (_companyId == null || _companyId!.isEmpty) {
-        setState(() {
-          _errorMessage = 'Company context not found for current user.';
-        });
-      }
     } catch (e) {
       setState(() {
         _errorMessage = 'Failed to load user context: $e';
@@ -75,12 +82,18 @@ class _ScreensQuotationListState extends State<ScreensQuotationList> {
     }
   }
 
-  Query<Map<String, dynamic>> _quotationQuery() {
-    Query<Map<String, dynamic>> query = FirebaseFirestore.instance
+  CollectionReference<Map<String, dynamic>> get _quotationCollection {
+    return FirebaseFirestore.instance
         .collection('companies')
-        .doc(_companyId!)
-        .collection('quotations')
-        .orderBy('createdAt', descending: true);
+        .doc(_companyId)
+        .collection('quotations');
+  }
+
+  Query<Map<String, dynamic>> _quotationQuery() {
+    Query<Map<String, dynamic>> query = _quotationCollection.orderBy(
+      'createdAt',
+      descending: true,
+    );
 
     if (!_isAdminOrManager && _currentUserUid != null) {
       query = query.where('createdByUid', isEqualTo: _currentUserUid);
@@ -100,19 +113,91 @@ class _ScreensQuotationListState extends State<ScreensQuotationList> {
   }
 
   String _money(dynamic value) {
-    final amount = (value as num?)?.toDouble() ?? 0.0;
-    return 'Rs ${amount.toStringAsFixed(2)}';
+    if (value == null) return 'Rs 0.00';
+
+    if (value is num) {
+      return 'Rs ${value.toDouble().toStringAsFixed(2)}';
+    }
+
+    final parsed = double.tryParse(value.toString()) ?? 0.0;
+    return 'Rs ${parsed.toStringAsFixed(2)}';
+  }
+
+  Color _statusTextColor(String status) {
+    final s = status.trim().toLowerCase();
+
+    if (s == 'draft') return Colors.orange.shade800;
+    if (s == 'converted to so') return Colors.green.shade800;
+    if (s == 'approved') return Colors.green.shade800;
+    if (s == 'sent') return Colors.blue.shade800;
+
+    return Colors.grey.shade800;
+  }
+
+  Color _statusBgColor(String status) {
+    final s = status.trim().toLowerCase();
+
+    if (s == 'draft') return Colors.orange.shade50;
+    if (s == 'converted to so') return Colors.green.shade50;
+    if (s == 'approved') return Colors.green.shade50;
+    if (s == 'sent') return Colors.blue.shade50;
+
+    return Colors.grey.shade100;
+  }
+
+  Color _statusBorderColor(String status) {
+    final s = status.trim().toLowerCase();
+
+    if (s == 'draft') return Colors.orange.shade300;
+    if (s == 'converted to so') return Colors.green.shade300;
+    if (s == 'approved') return Colors.green.shade300;
+    if (s == 'sent') return Colors.blue.shade300;
+
+    return Colors.grey.shade300;
   }
 
   Future<void> _openCreateQuotation() async {
-    await Navigator.of(context).push(
+    final result = await Navigator.of(context).push(
       MaterialPageRoute(
-        builder: (_) => QuotationScreenLocal(userId: widget.userId),
+        builder: (_) => QuotationScreenLocal(
+          userId: widget.userId,
+        ),
       ),
     );
 
-    if (mounted) {
+    if (!mounted) return;
+
+    if (result == true) {
       setState(() {});
+    }
+  }
+
+  Future<void> _openQuotationForEdit(
+    String docId,
+    Map<String, dynamic> data,
+  ) async {
+    final result = await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => QuotationScreenLocal(
+          userId: widget.userId,
+          // Jab aap quotation_screen_local me edit support add kar chuke ho
+          // tab yeh 2 params uncomment / use karna:
+          // existingQuotationDoc: _quotationCollection.doc(docId),
+          // existingQuotationData: data,
+        ),
+      ),
+    );
+
+    if (!mounted) return;
+
+    if (result == true) {
+      setState(() {});
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Quotation screen opened'),
+        ),
+      );
     }
   }
 
@@ -120,7 +205,7 @@ class _ScreensQuotationListState extends State<ScreensQuotationList> {
     String docId,
     Map<String, dynamic> data,
   ) async {
-    showDialog<void>(
+    await showDialog<void>(
       context: context,
       builder: (context) {
         return AlertDialog(
@@ -159,6 +244,80 @@ class _ScreensQuotationListState extends State<ScreensQuotationList> {
     );
   }
 
+  Future<void> _convertToSalesOrder(
+    String docId,
+    Map<String, dynamic> data,
+  ) async {
+    final quoteNumber = (data['quoteNumber'] ?? '-').toString();
+    final currentStatus = (data['status'] ?? 'Draft').toString();
+
+    if (currentStatus.trim().toLowerCase() == 'converted to so') {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('This quotation is already converted to sales order'),
+        ),
+      );
+      return;
+    }
+
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: const Text('Convert to Sales Order'),
+          content: Text(
+            'Do you want to mark quotation $quoteNumber as converted to sales order?',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Cancel'),
+            ),
+            ElevatedButton(
+              onPressed: () => Navigator.pop(context, true),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: primaryColor,
+                foregroundColor: Colors.white,
+              ),
+              child: const Text('Convert'),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (confirm != true) return;
+
+    try {
+      await _quotationCollection.doc(docId).update({
+        'status': 'Converted to SO',
+        'convertedToSalesOrder': true,
+        'convertedAt': FieldValue.serverTimestamp(),
+        'convertedByUid': _currentUserUid ?? '',
+      });
+
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Quotation converted to sales order status'),
+          backgroundColor: Colors.green,
+        ),
+      );
+
+      setState(() {});
+    } catch (e) {
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Failed to convert quotation: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+
   Future<void> _confirmDeleteQuotation(
     String docId,
     Map<String, dynamic> data,
@@ -194,14 +353,10 @@ class _ScreensQuotationListState extends State<ScreensQuotationList> {
     if (shouldDelete != true) return;
 
     try {
-      await FirebaseFirestore.instance
-          .collection('companies')
-          .doc(_companyId!)
-          .collection('quotations')
-          .doc(docId)
-          .delete();
+      await _quotationCollection.doc(docId).delete();
 
       if (!mounted) return;
+
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('Quotation deleted successfully'),
@@ -210,6 +365,7 @@ class _ScreensQuotationListState extends State<ScreensQuotationList> {
       );
     } catch (e) {
       if (!mounted) return;
+
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text('Failed to delete quotation: $e'),
@@ -269,6 +425,7 @@ class _ScreensQuotationListState extends State<ScreensQuotationList> {
     }
 
     return Scaffold(
+      backgroundColor: const Color(0xFFF4F7FB),
       body: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(
@@ -281,6 +438,14 @@ class _ScreensQuotationListState extends State<ScreensQuotationList> {
                   style: ElevatedButton.styleFrom(
                     backgroundColor: primaryColor,
                     foregroundColor: Colors.white,
+                    elevation: 0,
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 18,
+                      vertical: 14,
+                    ),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(14),
+                    ),
                   ),
                   icon: const Icon(Icons.add),
                   label: const Text('Create New'),
@@ -292,8 +457,15 @@ class _ScreensQuotationListState extends State<ScreensQuotationList> {
               decoration: InputDecoration(
                 hintText: 'Search by quotation no, customer, status',
                 prefixIcon: const Icon(Icons.search),
+                filled: true,
+                fillColor: Colors.white,
                 border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(10),
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: BorderSide(color: Colors.grey.shade300),
+                ),
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: BorderSide(color: Colors.grey.shade300),
                 ),
                 isDense: true,
               ),
@@ -336,7 +508,9 @@ class _ScreensQuotationListState extends State<ScreensQuotationList> {
                     final status =
                         (data['status'] ?? '').toString().toLowerCase();
 
-                    if (_searchText.isEmpty) return true;
+                    if (_searchText.isEmpty) {
+                      return true;
+                    }
 
                     return quoteNumber.contains(_searchText) ||
                         customer.contains(_searchText) ||
@@ -396,7 +570,8 @@ class _ScreensQuotationListState extends State<ScreensQuotationList> {
                             (data['quoteNumber'] ?? '-').toString();
                         final customer =
                             (data['clientName'] ?? '-').toString();
-                        final status = (data['status'] ?? 'Draft').toString();
+                        final status =
+                            (data['status'] ?? 'Draft').toString();
                         final quoteDate = _formatTimestamp(data['quoteDate']);
                         final grandTotal = _money(data['grandTotal']);
 
@@ -422,23 +597,17 @@ class _ScreensQuotationListState extends State<ScreensQuotationList> {
                                   vertical: 4,
                                 ),
                                 decoration: BoxDecoration(
-                                  color: status.toLowerCase() == 'draft'
-                                      ? Colors.orange.shade50
-                                      : Colors.green.shade50,
+                                  color: _statusBgColor(status),
                                   borderRadius: BorderRadius.circular(20),
                                   border: Border.all(
-                                    color: status.toLowerCase() == 'draft'
-                                        ? Colors.orange.shade300
-                                        : Colors.green.shade300,
+                                    color: _statusBorderColor(status),
                                   ),
                                 ),
                                 child: Text(
                                   status,
                                   style: TextStyle(
                                     fontWeight: FontWeight.w600,
-                                    color: status.toLowerCase() == 'draft'
-                                        ? Colors.orange.shade800
-                                        : Colors.green.shade800,
+                                    color: _statusTextColor(status),
                                   ),
                                 ),
                               ),
@@ -457,13 +626,31 @@ class _ScreensQuotationListState extends State<ScreensQuotationList> {
                             ),
                           ),
                           trailing: Wrap(
-                            spacing: 4,
+                            spacing: 2,
                             children: [
                               IconButton(
                                 icon: const Icon(Icons.visibility_outlined),
                                 tooltip: 'View',
                                 onPressed: () =>
                                     _openQuotationDetails(doc.id, data),
+                              ),
+                              IconButton(
+                                icon: const Icon(
+                                  Icons.edit_outlined,
+                                  color: Colors.blueGrey,
+                                ),
+                                tooltip: 'Edit',
+                                onPressed: () =>
+                                    _openQuotationForEdit(doc.id, data),
+                              ),
+                              IconButton(
+                                icon: const Icon(
+                                  Icons.shopping_cart_checkout_outlined,
+                                  color: Colors.green,
+                                ),
+                                tooltip: 'Convert to Sales Order',
+                                onPressed: () =>
+                                    _convertToSalesOrder(doc.id, data),
                               ),
                               IconButton(
                                 icon: const Icon(
