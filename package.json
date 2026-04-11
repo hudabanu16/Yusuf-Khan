@@ -1,13 +1,10 @@
 {
-  "name": "salman-flutter-web",
+  "name": "qwik-erp",
   "version": "1.0.0",
-  "description": "Flutter web app on Heroku",
+  "private": true,
   "main": "server.js",
   "scripts": {
     "start": "node server.js"
-  },
-  "engines": {
-    "node": "18.x"
   },
   "dependencies": {
     "express": "^4.18.2"
