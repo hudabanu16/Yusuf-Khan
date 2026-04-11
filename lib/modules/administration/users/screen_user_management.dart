@@ -56,7 +56,7 @@ class _ScreenUserManagementState extends State<ScreenUserManagement> {
   }
 
   Stream<QuerySnapshot<Map<String, dynamic>>> get _pendingInvitesStream {
-    return _userManagementService.watchInvitesBase(
+    return _userManagementService.watchPendingInvites(
       companyId: widget.companyId,
     );
   }
@@ -93,10 +93,10 @@ class _ScreenUserManagementState extends State<ScreenUserManagement> {
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(18),
           ),
-          title: const Text('Delete User'),
+          title: const Text('Archive User'),
           content: Text(
-            'Do you want to delete $name?\n\n'
-                'This will remove the user from active operations and mark the record as deleted.',
+            'Do you want to archive $name?\n\n'
+                'This will remove the user from active operations and mark the record as archived.',
           ),
           actions: [
             TextButton(
@@ -112,7 +112,7 @@ class _ScreenUserManagementState extends State<ScreenUserManagement> {
               ),
               onPressed: () => Navigator.pop(dialogContext, true),
               child: const Text(
-                'Delete',
+                'Archive',
                 style: TextStyle(color: Colors.white),
               ),
             ),
@@ -121,7 +121,9 @@ class _ScreenUserManagementState extends State<ScreenUserManagement> {
       },
     );
 
-    if (confirm == true) {
+    if (confirm != true) return;
+
+    try {
       await _userManagementService.deleteUser(
         companyId: widget.companyId,
         userUid: doc.id,
@@ -132,8 +134,17 @@ class _ScreenUserManagementState extends State<ScreenUserManagement> {
 
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('User deleted successfully'),
+          content: Text('User archived successfully'),
           backgroundColor: successColor,
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(_friendlyError(e)),
+          backgroundColor: dangerColor,
         ),
       );
     }
@@ -181,7 +192,9 @@ class _ScreenUserManagementState extends State<ScreenUserManagement> {
       },
     );
 
-    if (confirm == true) {
+    if (confirm != true) return;
+
+    try {
       await _userManagementService.cancelInvite(
         companyId: widget.companyId,
         inviteId: doc.id,
@@ -194,6 +207,15 @@ class _ScreenUserManagementState extends State<ScreenUserManagement> {
         const SnackBar(
           content: Text('Invite cancelled successfully'),
           backgroundColor: successColor,
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(_friendlyError(e)),
+          backgroundColor: dangerColor,
         ),
       );
     }
@@ -285,11 +307,22 @@ class _ScreenUserManagementState extends State<ScreenUserManagement> {
   Future<void> _handleToggleUser({
     required QueryDocumentSnapshot<Map<String, dynamic>> doc,
   }) async {
-    await _userManagementService.toggleUserStatus(
-      companyId: widget.companyId,
-      userUid: doc.id,
-      updatedByUid: widget.currentUid,
-    );
+    try {
+      await _userManagementService.toggleUserStatus(
+        companyId: widget.companyId,
+        userUid: doc.id,
+        updatedByUid: widget.currentUid,
+      );
+    } catch (e) {
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(_friendlyError(e)),
+          backgroundColor: dangerColor,
+        ),
+      );
+    }
   }
 
   Widget _buildMiniStat({
@@ -701,7 +734,7 @@ class _ScreenUserManagementState extends State<ScreenUserManagement> {
                 ),
                 child: Text(
                   _filterState.searchQuery.trim().isEmpty
-                      ? '${users.length} shown'
+                      ? '${pageDocs.length} shown'
                       : '${locallySearchedUsers.length} matched locally',
                   style: const TextStyle(
                     fontWeight: FontWeight.w700,
@@ -952,15 +985,15 @@ class _ScreenUserManagementState extends State<ScreenUserManagement> {
                           child: Text('All Status'),
                         ),
                         DropdownMenuItem(
-                          value: 'active',
+                          value: UserStatus.active,
                           child: Text('Active'),
                         ),
                         DropdownMenuItem(
-                          value: 'inactive',
+                          value: UserStatus.inactive,
                           child: Text('Inactive'),
                         ),
                         DropdownMenuItem(
-                          value: 'archived',
+                          value: UserStatus.archived,
                           child: Text('Archived'),
                         ),
                       ],
@@ -1103,6 +1136,17 @@ class _ScreenUserManagementState extends State<ScreenUserManagement> {
     );
   }
 
+  String _friendlyError(Object error) {
+    final message = error.toString().trim();
+    if (message.isEmpty) {
+      return 'Something went wrong. Please try again.';
+    }
+    if (message.startsWith('Exception: ')) {
+      return message.replaceFirst('Exception: ', '');
+    }
+    return message;
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -1156,7 +1200,8 @@ class _ScreenUserManagementState extends State<ScreenUserManagement> {
 
               final locallySearchedUsers = filteredUsers;
               final users = filteredUsers;
-              final pageDocs = locallySearchedUsers;
+              final pageDocs =
+              locallySearchedUsers.take(_filterState.limit).toList();
 
               final departments = extractDepartments(allUsers);
 
@@ -1177,30 +1222,7 @@ class _ScreenUserManagementState extends State<ScreenUserManagement> {
                     (data['isDeleted'] ?? false) == false;
               }).length;
 
-              final allInvites = inviteSnapshot.data?.docs ?? [];
-
-              final pendingInvites = allInvites.where((doc) {
-                final data = doc.data();
-                final status =
-                (data['status'] ?? '').toString().trim().toLowerCase();
-                final isDeleted = (data['isDeleted'] ?? false) == true;
-                return !isDeleted && status == 'pending';
-              }).toList()
-                ..sort((a, b) {
-                  final aData = a.data();
-                  final bData = b.data();
-
-                  final aTs = aData['createdAt'];
-                  final bTs = bData['createdAt'];
-
-                  DateTime aDate = DateTime.fromMillisecondsSinceEpoch(0);
-                  DateTime bDate = DateTime.fromMillisecondsSinceEpoch(0);
-
-                  if (aTs is Timestamp) aDate = aTs.toDate();
-                  if (bTs is Timestamp) bDate = bTs.toDate();
-
-                  return bDate.compareTo(aDate);
-                });
+              final pendingInvites = inviteSnapshot.data?.docs ?? [];
 
               return LayoutBuilder(
                 builder: (context, constraints) {

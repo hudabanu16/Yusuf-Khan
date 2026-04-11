@@ -431,6 +431,9 @@ class _QuotationScreenLocalState extends State<QuotationScreenLocal> {
   // ================== ADD / EDIT ITEM ==================
 
   void _showAddItemModal([Item? itemToEdit, int? index]) {
+    String currentId = itemToEdit?.id ?? DateTime.now().millisecondsSinceEpoch.toString();
+    String currentCompanyId = itemToEdit?.companyId ?? _companyId ?? '';
+
     final nameController = TextEditingController(text: itemToEdit?.name);
     final descriptionController =
     TextEditingController(text: itemToEdit?.description);
@@ -477,6 +480,7 @@ class _QuotationScreenLocalState extends State<QuotationScreenLocal> {
                         onPressed: () async {
                           final productData = await _selectProductDialog();
                           if (productData != null) {
+                            currentId = (productData['id'] ?? currentId).toString();
                             nameController.text =
                                 (productData['name'] ?? '').toString();
                             descriptionController.text =
@@ -544,10 +548,16 @@ class _QuotationScreenLocalState extends State<QuotationScreenLocal> {
                     onPressed: () {
                       if (modalFormKey.currentState!.validate()) {
                         final newItem = Item(
+                          id: currentId,
+                          companyId: currentCompanyId,
                           name: nameController.text.trim(),
                           description: descriptionController.text.trim(),
                           quantity: double.parse(quantityController.text),
                           unitPrice: double.parse(priceController.text),
+                          isActive: itemToEdit?.isActive ?? true,
+                          isDeleted: itemToEdit?.isDeleted ?? false,
+                          createdAt: itemToEdit?.createdAt ?? DateTime.now(),
+                          createdBy: itemToEdit?.createdBy ?? _currentUserUid ?? '',
                         );
 
                         setState(() {

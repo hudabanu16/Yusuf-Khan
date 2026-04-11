@@ -271,6 +271,80 @@ class SidebarGroup {
   });
 }
 
+class _PagePermission {
+  final String? module;
+  final String? submodule;
+  final String action;
+
+  const _PagePermission({
+    required this.module,
+    required this.submodule,
+    this.action = 'view',
+  });
+}
+
+class _ShellAccess {
+  final String role;
+  final Map<String, dynamic> permissions;
+  final bool isActive;
+  final bool isDeleted;
+  final String status;
+
+  const _ShellAccess({
+    required this.role,
+    required this.permissions,
+    required this.isActive,
+    required this.isDeleted,
+    required this.status,
+  });
+
+  bool get isArchived => status.toLowerCase() == 'archived';
+  bool get isBlocked => isDeleted || !isActive || isArchived;
+
+  String get normalizedRole => role.trim().toLowerCase();
+
+  bool get isMainOrganizationAccount =>
+      normalizedRole == 'owner' ||
+          normalizedRole == 'founder' ||
+          normalizedRole == 'ceo' ||
+          normalizedRole == 'superadmin' ||
+          normalizedRole == 'admin';
+
+  bool canAccess({
+    String? module,
+    String? submodule,
+    String action = 'view',
+  }) {
+    if (isBlocked) return false;
+
+    if (isMainOrganizationAccount) return true;
+
+    if (module == null || module.isEmpty) {
+      return _readBool(permissions, [action]);
+    }
+
+    if (submodule == null || submodule.isEmpty) {
+      return _readBool(permissions, [module, action]);
+    }
+
+    return _readBool(permissions, [module, submodule, action]);
+  }
+
+  static bool _readBool(Map<String, dynamic>? source, List<String> path) {
+    dynamic current = source;
+    for (final segment in path) {
+      if (current is Map<String, dynamic>) {
+        current = current[segment];
+      } else if (current is Map) {
+        current = current[segment];
+      } else {
+        return false;
+      }
+    }
+    return current == true;
+  }
+}
+
 class ZohoShell extends StatefulWidget {
   final String userEmail;
   final String userUid;
@@ -304,22 +378,7 @@ class _ZohoShellState extends State<ZohoShell> {
     'inventory',
   };
 
-  bool get isAdminOrManager =>
-      widget.role.toLowerCase() == 'admin' ||
-          widget.role.toLowerCase() == 'manager';
-
-  bool _canAccess(String module) {
-    if (isAdminOrManager) return true;
-    return widget.permissions[module] == true;
-  }
-
-  bool get canInquiries => _canAccess('inquiries');
-  bool get canCustomers => _canAccess('customers');
-  bool get canProducts => _canAccess('products');
-  bool get canQuotations => _canAccess('quotations');
-  bool get canUsers => isAdminOrManager || _canAccess('userManagement');
-
-  List<SidebarGroup> get sidebarGroups => const [
+  static const List<SidebarGroup> _allSidebarGroups = [
     SidebarGroup(
       key: 'sales',
       title: 'Sales',
@@ -417,43 +476,279 @@ class _ZohoShellState extends State<ZohoShell> {
     ),
   ];
 
-  void _noAccess() {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('You do not have permission to access this module'),
-      ),
+  static const Map<ShellPage, _PagePermission> _pagePermissions = {
+    ShellPage.dashboard: _PagePermission(module: null, submodule: null, action: 'view'),
+
+    ShellPage.salesInquiries: _PagePermission(
+      module: 'sales',
+      submodule: 'inquiries',
+      action: 'view',
+    ),
+    ShellPage.salesQuotations: _PagePermission(
+      module: 'sales',
+      submodule: 'quotations',
+      action: 'view',
+    ),
+    ShellPage.salesOrders: _PagePermission(
+      module: 'sales',
+      submodule: 'salesOrders',
+      action: 'view',
+    ),
+    ShellPage.salesFollowUps: _PagePermission(
+      module: 'sales',
+      submodule: 'followUps',
+      action: 'view',
+    ),
+    ShellPage.salesTasks: _PagePermission(
+      module: 'sales',
+      submodule: 'tasks',
+      action: 'view',
+    ),
+    ShellPage.salesMeetings: _PagePermission(
+      module: 'sales',
+      submodule: 'meetings',
+      action: 'view',
+    ),
+
+    ShellPage.crmCustomers: _PagePermission(
+      module: 'crm',
+      submodule: 'customers',
+      action: 'view',
+    ),
+    ShellPage.crmContacts: _PagePermission(
+      module: 'crm',
+      submodule: 'contacts',
+      action: 'view',
+    ),
+    ShellPage.crmVisits: _PagePermission(
+      module: 'crm',
+      submodule: 'customerVisits',
+      action: 'view',
+    ),
+    ShellPage.crmCommunication: _PagePermission(
+      module: 'crm',
+      submodule: 'communicationHistory',
+      action: 'view',
+    ),
+
+    ShellPage.purchaseVendors: _PagePermission(
+      module: 'purchase',
+      submodule: 'vendors',
+      action: 'view',
+    ),
+    ShellPage.purchaseOrders: _PagePermission(
+      module: 'purchase',
+      submodule: 'purchaseOrders',
+      action: 'view',
+    ),
+    ShellPage.purchaseGrn: _PagePermission(
+      module: 'purchase',
+      submodule: 'grnMaterialReceipt',
+      action: 'view',
+    ),
+    ShellPage.purchaseLedger: _PagePermission(
+      module: 'purchase',
+      submodule: 'vendorLedger',
+      action: 'view',
+    ),
+
+    ShellPage.inventoryProducts: _PagePermission(
+      module: 'inventory',
+      submodule: 'products',
+      action: 'view',
+    ),
+    ShellPage.inventoryStockSummary: _PagePermission(
+      module: 'inventory',
+      submodule: 'stockSummary',
+      action: 'view',
+    ),
+    ShellPage.inventoryStockIn: _PagePermission(
+      module: 'inventory',
+      submodule: 'stockIn',
+      action: 'view',
+    ),
+    ShellPage.inventoryStockOut: _PagePermission(
+      module: 'inventory',
+      submodule: 'stockOut',
+      action: 'view',
+    ),
+    ShellPage.inventoryWarehouse: _PagePermission(
+      module: 'inventory',
+      submodule: 'warehouse',
+      action: 'view',
+    ),
+    ShellPage.inventoryLowStock: _PagePermission(
+      module: 'inventory',
+      submodule: 'lowStockAlerts',
+      action: 'view',
+    ),
+
+    ShellPage.dispatchReady: _PagePermission(
+      module: 'dispatch',
+      submodule: 'readyForDispatch',
+      action: 'view',
+    ),
+    ShellPage.dispatchChallans: _PagePermission(
+      module: 'dispatch',
+      submodule: 'dispatchChallans',
+      action: 'view',
+    ),
+    ShellPage.dispatchShipmentTracking: _PagePermission(
+      module: 'dispatch',
+      submodule: 'shipmentTracking',
+      action: 'view',
+    ),
+    ShellPage.dispatchDelivered: _PagePermission(
+      module: 'dispatch',
+      submodule: 'deliveredOrders',
+      action: 'view',
+    ),
+
+    ShellPage.financeProforma: _PagePermission(
+      module: 'finance',
+      submodule: 'proformaInvoice',
+      action: 'view',
+    ),
+    ShellPage.financeTaxInvoice: _PagePermission(
+      module: 'finance',
+      submodule: 'taxInvoice',
+      action: 'view',
+    ),
+    ShellPage.financePaymentsReceived: _PagePermission(
+      module: 'finance',
+      submodule: 'paymentReceived',
+      action: 'view',
+    ),
+    ShellPage.financeOutstanding: _PagePermission(
+      module: 'finance',
+      submodule: 'outstanding',
+      action: 'view',
+    ),
+    ShellPage.financeExpenses: _PagePermission(
+      module: 'finance',
+      submodule: 'expenseEntries',
+      action: 'view',
+    ),
+
+    ShellPage.reportsSales: _PagePermission(
+      module: 'reports',
+      submodule: 'salesReport',
+      action: 'view',
+    ),
+    ShellPage.reportsInquiry: _PagePermission(
+      module: 'reports',
+      submodule: 'inquiryReport',
+      action: 'view',
+    ),
+    ShellPage.reportsCustomer: _PagePermission(
+      module: 'reports',
+      submodule: 'customerReport',
+      action: 'view',
+    ),
+    ShellPage.reportsProduct: _PagePermission(
+      module: 'reports',
+      submodule: 'productReport',
+      action: 'view',
+    ),
+    ShellPage.reportsPayment: _PagePermission(
+      module: 'reports',
+      submodule: 'paymentReport',
+      action: 'view',
+    ),
+
+    ShellPage.adminUsers: _PagePermission(
+      module: 'administration',
+      submodule: 'users',
+      action: 'view',
+    ),
+    ShellPage.adminRoles: _PagePermission(
+      module: 'administration',
+      submodule: 'rolesPermissions',
+      action: 'view',
+    ),
+    ShellPage.adminCompanyProfile: _PagePermission(
+      module: 'administration',
+      submodule: 'companyProfile',
+      action: 'view',
+    ),
+    ShellPage.adminBranches: _PagePermission(
+      module: 'administration',
+      submodule: 'branches',
+      action: 'view',
+    ),
+    ShellPage.adminAuditLogs: _PagePermission(
+      module: 'administration',
+      submodule: 'auditLogs',
+      action: 'view',
+    ),
+
+    ShellPage.settingsGeneral: _PagePermission(module: null, submodule: null, action: 'view'),
+  };
+
+  Stream<DocumentSnapshot<Map<String, dynamic>>> _companyUserStream() {
+    return FirebaseFirestore.instance
+        .collection('companies')
+        .doc(widget.companyId)
+        .collection('users')
+        .doc(widget.userUid)
+        .snapshots();
+  }
+
+  _ShellAccess _resolveAccess(DocumentSnapshot<Map<String, dynamic>>? companyUserDoc) {
+    // 🔴 FIX: Hard-block access entirely if the company document doesn't exist,
+    // instead of resolving to empty global widget permissions which triggers the bug.
+    if (companyUserDoc == null || !companyUserDoc.exists) {
+      return const _ShellAccess(
+        role: 'viewer',
+        permissions: {},
+        isActive: false,
+        isDeleted: false,
+        status: 'inactive',
+      );
+    }
+
+    final data = companyUserDoc.data() ?? <String, dynamic>{};
+
+    final dynamic permissionsRaw = data['permissions'];
+    final Map<String, dynamic> resolvedPermissions =
+    permissionsRaw is Map<String, dynamic>
+        ? Map<String, dynamic>.from(permissionsRaw)
+        : permissionsRaw is Map
+        ? Map<String, dynamic>.from(permissionsRaw)
+        : Map<String, dynamic>.from(widget.permissions);
+
+    final String resolvedRole =
+    (data['roleLabel'] ?? data['role'] ?? widget.role).toString().trim();
+
+    final bool isDeleted = data['isDeleted'] == true;
+    final bool isActive = data.containsKey('isActive') ? data['isActive'] == true : true;
+    final String status = (data['status'] ?? 'active').toString().trim();
+
+    return _ShellAccess(
+      role: resolvedRole,
+      permissions: resolvedPermissions,
+      isActive: isActive,
+      isDeleted: isDeleted,
+      status: status,
     );
   }
 
-  void _selectPage(ShellPage page) {
-    if (!_canViewPage(page)) {
-      _noAccess();
-      return;
+  bool _canViewPage(
+      ShellPage page,
+      _ShellAccess access,
+      ) {
+    if (page == ShellPage.dashboard || page == ShellPage.settingsGeneral) {
+      return !access.isBlocked;
     }
 
-    setState(() => activePage = page);
-  }
+    final config = _pagePermissions[page];
+    if (config == null) return false;
 
-  bool _canViewPage(ShellPage page) {
-    switch (page) {
-      case ShellPage.salesInquiries:
-        return canInquiries;
-      case ShellPage.crmCustomers:
-        return canCustomers;
-      case ShellPage.inventoryProducts:
-        return canProducts;
-      case ShellPage.salesQuotations:
-        return canQuotations;
-      case ShellPage.adminUsers:
-        return canUsers;
-      case ShellPage.adminRoles:
-      case ShellPage.adminCompanyProfile:
-      case ShellPage.adminBranches:
-      case ShellPage.adminAuditLogs:
-        return isAdminOrManager;
-      default:
-        return true;
-    }
+    return access.canAccess(
+      module: config.module,
+      submodule: config.submodule,
+      action: config.action,
+    );
   }
 
   bool _isImplementedPage(ShellPage page) {
@@ -471,6 +766,43 @@ class _ZohoShellState extends State<ZohoShell> {
     }
   }
 
+  List<SidebarGroup> _visibleSidebarGroups(_ShellAccess access) {
+    return _allSidebarGroups
+        .map(
+          (group) => SidebarGroup(
+        key: group.key,
+        title: group.title,
+        icon: group.icon,
+        children: group.children.where((page) => _canViewPage(page, access)).toList(),
+      ),
+    )
+        .where((group) => group.children.isNotEmpty)
+        .toList();
+  }
+
+  void _noAccess() {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('You do not have permission to access this module'),
+      ),
+    );
+  }
+
+  void _selectPage(
+      ShellPage page,
+      _ShellAccess access,
+      ) {
+    if (!_canViewPage(page, access)) {
+      _noAccess();
+      return;
+    }
+
+    setState(() {
+      activePage = page;
+    });
+  }
+
   Future<void> _logout() async {
     await FirebaseAuth.instance.signOut();
   }
@@ -479,14 +811,14 @@ class _ZohoShellState extends State<ZohoShell> {
     return group.children.contains(activePage);
   }
 
-  String _activeSectionTitle() {
+  String _activeSectionTitle(List<SidebarGroup> sidebarGroups) {
     if (activePage == ShellPage.dashboard) return 'Dashboard';
     if (activePage == ShellPage.settingsGeneral) return 'Settings';
 
-    if (sidebarGroups.any((group) => group.children.contains(activePage))) {
-      final group =
-      sidebarGroups.firstWhere((g) => g.children.contains(activePage));
-      return '${group.title} • ${activePage.label}';
+    for (final group in sidebarGroups) {
+      if (group.children.contains(activePage)) {
+        return '${group.title} • ${activePage.label}';
+      }
     }
 
     return activePage.label;
@@ -502,14 +834,14 @@ class _ZohoShellState extends State<ZohoShell> {
     return 'User';
   }
 
-  String _dashboardWelcomeText() {
-    if (isAdminOrManager) {
+  String _dashboardWelcomeText(_ShellAccess access) {
+    if (access.isMainOrganizationAccount) {
       return 'Welcome ${widget.companyName}';
     }
     return 'Welcome ${_resolvedEmployeeName()}';
   }
 
-  Widget _buildTopHeader() {
+  Widget _buildTopHeader(List<SidebarGroup> sidebarGroups) {
     return Container(
       constraints: const BoxConstraints(minHeight: 66),
       padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
@@ -523,7 +855,7 @@ class _ZohoShellState extends State<ZohoShell> {
         children: [
           Expanded(
             child: Text(
-              _activeSectionTitle(),
+              _activeSectionTitle(sidebarGroups),
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               style: const TextStyle(
@@ -538,145 +870,231 @@ class _ZohoShellState extends State<ZohoShell> {
     );
   }
 
+  void _ensureActivePageAccessible(_ShellAccess access) {
+    if (_canViewPage(activePage, access)) return;
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      setState(() {
+        activePage = ShellPage.dashboard;
+      });
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: zCanvasBg,
-      body: Row(
-        children: [
-          Container(
-            width: 292,
-            color: zIconRail,
-            child: SafeArea(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(18, 16, 18, 14),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Text(
-                          'QUIK ERP',
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontWeight: FontWeight.w900,
-                            fontSize: 18,
-                            letterSpacing: 0.2,
-                          ),
-                        ),
-                        const SizedBox(height: 8),
-                        Text(
-                          widget.companyName,
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                            color: Colors.white70,
-                            fontSize: 12.5,
-                            fontWeight: FontWeight.w600,
-                            height: 1.4,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  const Divider(color: Color(0xFF243041), height: 1),
-                  Expanded(
-                    child: ListView(
-                      padding: const EdgeInsets.fromLTRB(10, 12, 10, 10),
-                      children: [
-                        _dashboardNavItem(),
-                        const SizedBox(height: 8),
-                        ...sidebarGroups.map(_groupWidget),
-                        const SizedBox(height: 8),
-                        const Divider(color: Color(0xFF243041)),
-                        _settingsNavItem(),
-                      ],
-                    ),
-                  ),
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(10, 8, 10, 12),
-                    child: InkWell(
-                      borderRadius: BorderRadius.circular(14),
-                      onTap: _logout,
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 12,
-                          vertical: 12,
-                        ),
-                        decoration: BoxDecoration(
-                          color: Colors.white.withOpacity(0.06),
-                          borderRadius: BorderRadius.circular(14),
-                          border: Border.all(
-                            color: Colors.white.withOpacity(0.10),
-                          ),
-                        ),
-                        child: Row(
+    return StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
+      stream: _companyUserStream(),
+      builder: (context, userSnap) {
+        // 🔴 FIX: Await connection safely instead of letting null data slip through,
+        // triggering empty default permissions, which immediately wipes UI state.
+        if (userSnap.connectionState == ConnectionState.waiting && !userSnap.hasData) {
+          return const Scaffold(
+            backgroundColor: zCanvasBg,
+            body: Center(
+              child: CircularProgressIndicator(),
+            ),
+          );
+        }
+
+        final access = _resolveAccess(userSnap.data);
+        final sidebarGroups = _visibleSidebarGroups(access);
+
+        _ensureActivePageAccessible(access);
+
+        return Scaffold(
+          backgroundColor: zCanvasBg,
+          body: access.isBlocked
+              ? _blockedWorkspaceBody()
+              : Row(
+            children: [
+              Container(
+                width: 292,
+                color: zIconRail,
+                child: SafeArea(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(18, 16, 18, 14),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            const Icon(
-                              Icons.logout,
-                              color: Colors.white70,
-                              size: 20,
-                            ),
-                            const SizedBox(width: 10),
-                            const Expanded(
-                              child: Text(
-                                'Logout',
-                                style: TextStyle(
-                                  color: Colors.white,
-                                  fontWeight: FontWeight.w800,
-                                ),
+                            const Text(
+                              'QUIK ERP',
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontWeight: FontWeight.w900,
+                                fontSize: 18,
+                                letterSpacing: 0.2,
                               ),
                             ),
+                            const SizedBox(height: 8),
                             Text(
-                              widget.role.toUpperCase(),
+                              widget.companyName,
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
                               style: const TextStyle(
-                                color: Colors.white54,
-                                fontSize: 11,
-                                fontWeight: FontWeight.w700,
+                                color: Colors.white70,
+                                fontSize: 12.5,
+                                fontWeight: FontWeight.w600,
+                                height: 1.4,
                               ),
                             ),
                           ],
                         ),
                       ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-          Expanded(
-            child: Column(
-              children: [
-                _buildTopHeader(),
-                Expanded(
-                  child: Padding(
-                    padding: const EdgeInsets.all(14),
-                    child: _buildActiveBody(),
+                      const Divider(color: Color(0xFF243041), height: 1),
+                      Expanded(
+                        child: ListView(
+                          padding: const EdgeInsets.fromLTRB(10, 12, 10, 10),
+                          children: [
+                            _dashboardNavItem(access),
+                            const SizedBox(height: 8),
+                            ...sidebarGroups.map((group) => _groupWidget(group, access)),
+                            const SizedBox(height: 8),
+                            const Divider(color: Color(0xFF243041)),
+                            _settingsNavItem(access),
+                          ],
+                        ),
+                      ),
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(10, 8, 10, 12),
+                        child: InkWell(
+                          borderRadius: BorderRadius.circular(14),
+                          onTap: _logout,
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 12,
+                              vertical: 12,
+                            ),
+                            decoration: BoxDecoration(
+                              color: Colors.white.withOpacity(0.06),
+                              borderRadius: BorderRadius.circular(14),
+                              border: Border.all(
+                                color: Colors.white.withOpacity(0.10),
+                              ),
+                            ),
+                            child: Row(
+                              children: [
+                                const Icon(
+                                  Icons.logout,
+                                  color: Colors.white70,
+                                  size: 20,
+                                ),
+                                const SizedBox(width: 10),
+                                const Expanded(
+                                  child: Text(
+                                    'Logout',
+                                    style: TextStyle(
+                                      color: Colors.white,
+                                      fontWeight: FontWeight.w800,
+                                    ),
+                                  ),
+                                ),
+                                Text(
+                                  access.role.toUpperCase(),
+                                  style: const TextStyle(
+                                    color: Colors.white54,
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
                 ),
-              ],
-            ),
+              ),
+              Expanded(
+                child: Column(
+                  children: [
+                    _buildTopHeader(sidebarGroups),
+                    Expanded(
+                      child: Padding(
+                        padding: const EdgeInsets.all(14),
+                        child: _buildActiveBody(access, sidebarGroups),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
           ),
-        ],
+        );
+      },
+    );
+  }
+
+  Widget _blockedWorkspaceBody() {
+    return SafeArea(
+      child: Center(
+        child: Container(
+          constraints: const BoxConstraints(maxWidth: 520),
+          margin: const EdgeInsets.all(24),
+          padding: const EdgeInsets.all(24),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            border: Border.all(color: zBorder),
+            borderRadius: BorderRadius.circular(18),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(
+                Icons.lock_person_outlined,
+                size: 42,
+                color: zMuted,
+              ),
+              const SizedBox(height: 12),
+              const Text(
+                'Workspace access unavailable',
+                style: TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.w900,
+                  color: zText,
+                ),
+              ),
+              const SizedBox(height: 10),
+              const Text(
+                'Your company workspace access is inactive, archived, or deleted. Please contact your administrator.',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  color: zMuted,
+                  fontSize: 14,
+                  height: 1.5,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              const SizedBox(height: 18),
+              OutlinedButton.icon(
+                onPressed: _logout,
+                icon: const Icon(Icons.logout),
+                label: const Text('Logout'),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
 
-  Widget _dashboardNavItem() {
+  Widget _dashboardNavItem(_ShellAccess access) {
     final selected = activePage == ShellPage.dashboard;
 
     return Padding(
       padding: const EdgeInsets.only(bottom: 4),
       child: InkWell(
         borderRadius: BorderRadius.circular(14),
-        onTap: () => _selectPage(ShellPage.dashboard),
+        onTap: () => _selectPage(ShellPage.dashboard, access),
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 13),
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(14),
-            color:
-            selected ? Colors.white.withOpacity(0.10) : Colors.transparent,
+            color: selected ? Colors.white.withOpacity(0.10) : Colors.transparent,
             border: Border.all(
               color: selected
                   ? Colors.white.withOpacity(0.16)
@@ -707,20 +1125,19 @@ class _ZohoShellState extends State<ZohoShell> {
     );
   }
 
-  Widget _settingsNavItem() {
+  Widget _settingsNavItem(_ShellAccess access) {
     final selected = activePage == ShellPage.settingsGeneral;
 
     return Padding(
       padding: const EdgeInsets.only(top: 4),
       child: InkWell(
         borderRadius: BorderRadius.circular(14),
-        onTap: () => _selectPage(ShellPage.settingsGeneral),
+        onTap: () => _selectPage(ShellPage.settingsGeneral, access),
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 13),
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(14),
-            color:
-            selected ? Colors.white.withOpacity(0.10) : Colors.transparent,
+            color: selected ? Colors.white.withOpacity(0.10) : Colors.transparent,
             border: Border.all(
               color: selected
                   ? Colors.white.withOpacity(0.16)
@@ -751,7 +1168,10 @@ class _ZohoShellState extends State<ZohoShell> {
     );
   }
 
-  Widget _groupWidget(SidebarGroup group) {
+  Widget _groupWidget(
+      SidebarGroup group,
+      _ShellAccess access,
+      ) {
     final bool expanded = expandedGroups.contains(group.key);
     final bool hasActiveChild = _groupContainsActive(group);
 
@@ -783,8 +1203,7 @@ class _ZohoShellState extends State<ZohoShell> {
                 });
               },
               child: Padding(
-                padding:
-                const EdgeInsets.symmetric(horizontal: 12, vertical: 13),
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 13),
                 child: Row(
                   children: [
                     Icon(
@@ -821,7 +1240,9 @@ class _ZohoShellState extends State<ZohoShell> {
               firstChild: Padding(
                 padding: const EdgeInsets.fromLTRB(8, 0, 8, 8),
                 child: Column(
-                  children: group.children.map((page) => _subNavItem(page)).toList(),
+                  children: group.children
+                      .map((page) => _subNavItem(page, access))
+                      .toList(),
                 ),
               ),
               secondChild: const SizedBox.shrink(),
@@ -832,15 +1253,18 @@ class _ZohoShellState extends State<ZohoShell> {
     );
   }
 
-  Widget _subNavItem(ShellPage page) {
+  Widget _subNavItem(
+      ShellPage page,
+      _ShellAccess access,
+      ) {
     final bool selected = activePage == page;
-    final bool allowed = _canViewPage(page);
+    final bool allowed = _canViewPage(page, access);
 
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 2),
       child: InkWell(
         borderRadius: BorderRadius.circular(12),
-        onTap: () => _selectPage(page),
+        onTap: allowed ? () => _selectPage(page, access) : _noAccess,
         child: Opacity(
           opacity: allowed ? 1 : 0.55,
           child: Container(
@@ -870,7 +1294,8 @@ class _ZohoShellState extends State<ZohoShell> {
                     ),
                   ),
                 ),
-                if (page == ShellPage.salesInquiries && canInquiries)
+                if (page == ShellPage.salesInquiries &&
+                    _canViewPage(ShellPage.salesInquiries, access))
                   _inquiryBadge(selected: selected),
               ],
             ),
@@ -912,10 +1337,21 @@ class _ZohoShellState extends State<ZohoShell> {
     );
   }
 
-  Widget _buildActiveBody() {
+  Widget _buildActiveBody(
+      _ShellAccess access,
+      List<SidebarGroup> sidebarGroups,
+      ) {
+    if (!_canViewPage(activePage, access)) {
+      return _moduleLandingPage(
+        ShellPage.dashboard,
+        access,
+        sidebarGroups,
+      );
+    }
+
     switch (activePage) {
       case ShellPage.dashboard:
-        return _homeDashboardLive();
+        return _homeDashboardLive(access);
 
       case ShellPage.salesInquiries:
         return const ScreensInquiryList();
@@ -941,22 +1377,26 @@ class _ZohoShellState extends State<ZohoShell> {
         return ScreenSettingsHome(
           companyId: widget.companyId,
           companyName: widget.companyName,
-          role: widget.role,
+          role: access.role,
           userEmail: widget.userEmail,
-          permissions: widget.permissions,
-          onOpenUsers: () => _selectPage(ShellPage.adminUsers),
-          onOpenCompanyProfile: () => _selectPage(ShellPage.adminCompanyProfile),
-          onOpenAuditLogs: () => _selectPage(ShellPage.adminAuditLogs),
+          permissions: access.permissions,
+          onOpenUsers: () => _selectPage(ShellPage.adminUsers, access),
+          onOpenCompanyProfile: () => _selectPage(ShellPage.adminCompanyProfile, access),
+          onOpenAuditLogs: () => _selectPage(ShellPage.adminAuditLogs, access),
         );
 
       default:
-        return _moduleLandingPage(activePage);
+        return _moduleLandingPage(activePage, access, sidebarGroups);
     }
   }
 
-  Widget _moduleLandingPage(ShellPage page) {
+  Widget _moduleLandingPage(
+      ShellPage page,
+      _ShellAccess access,
+      List<SidebarGroup> sidebarGroups,
+      ) {
     final bool implemented = _isImplementedPage(page);
-    final bool allowed = _canViewPage(page);
+    final bool allowed = _canViewPage(page, access);
 
     String sectionName = 'Workspace';
     for (final group in sidebarGroups) {
@@ -1097,7 +1537,7 @@ class _ZohoShellState extends State<ZohoShell> {
                           implemented
                               ? 'This module is already connected to an existing screen.'
                               : 'This is a safe placeholder module.',
-                          'You can connect Firestore collections later.',
+                          'Primary account retains full organization access.',
                           'No current feature is removed from your app.',
                         ],
                         icon: Icons.build_circle_outlined,
@@ -1352,12 +1792,12 @@ class _ZohoShellState extends State<ZohoShell> {
     );
   }
 
-  Widget _homeDashboardLive() {
+  Widget _homeDashboardLive(_ShellAccess access) {
     DateTime dateOnly(DateTime d) => DateTime(d.year, d.month, d.day);
     final today = dateOnly(DateTime.now());
 
-    final canShowInquiryDashboard = canInquiries;
-    final welcomeText = _dashboardWelcomeText();
+    final canShowInquiryDashboard = _canViewPage(ShellPage.salesInquiries, access);
+    final welcomeText = _dashboardWelcomeText(access);
 
     final inquiryStream = canShowInquiryDashboard
         ? FirebaseFirestore.instance
@@ -1423,8 +1863,7 @@ class _ZohoShellState extends State<ZohoShell> {
                 Expanded(
                   child: _Panel(
                     title: 'Workspace Structure',
-                    emptyText:
-                    'Professional SaaS modules are ready in sidebar',
+                    emptyText: 'Professional SaaS modules are ready in sidebar',
                     emptyIcon: Icons.dashboard_customize_outlined,
                   ),
                 ),
@@ -1432,8 +1871,7 @@ class _ZohoShellState extends State<ZohoShell> {
                 Expanded(
                   child: _Panel(
                     title: 'Next Build Suggestion',
-                    emptyText:
-                    'Start with Follow-ups, Stock Summary and Vendors',
+                    emptyText: 'Start with Follow-ups, Stock Summary and Vendors',
                     emptyIcon: Icons.rocket_launch_outlined,
                   ),
                 ),

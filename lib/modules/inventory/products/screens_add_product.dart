@@ -326,6 +326,7 @@ class _ScreensAddProductState extends State<ScreensAddProduct> {
     return Icons.attach_file_outlined;
   }
 
+  // 🔴 FIXED: Upload spinner logic with preview state update and failsafe
   Future<void> _pickAndUploadImage() async {
     try {
       if (mounted) {
@@ -339,12 +340,7 @@ class _ScreensAddProductState extends State<ScreensAddProduct> {
         withData: true,
       );
 
-      if (result == null || result.files.isEmpty) {
-        if (mounted) {
-          setState(() => _isUploadingImage = false);
-        }
-        return;
-      }
+      if (result == null || result.files.isEmpty) return;
 
       final file = result.files.first;
       final bytes = file.bytes;
@@ -355,9 +351,6 @@ class _ScreensAddProductState extends State<ScreensAddProduct> {
 
       final ext = _safeExt(file.extension, fallback: 'jpg');
       final contentType = _detectContentTypeFromExtension(ext);
-
-      _pickedImageBytes = bytes;
-      _pickedImageName = file.name;
 
       final fileName =
           'product_photo_${DateTime.now().millisecondsSinceEpoch}_${widget.currentUserUid}.$ext';
@@ -377,7 +370,11 @@ class _ScreensAddProductState extends State<ScreensAddProduct> {
         },
       );
 
-      final task = await ref.putData(bytes, metadata);
+      final task = await ref.putData(bytes, metadata).timeout(
+        const Duration(seconds: 30),
+        onTimeout: () => throw Exception('Upload timed out after 30 seconds'),
+      );
+
       if (task.state != TaskState.success) {
         throw Exception('Image upload did not complete successfully');
       }
@@ -387,24 +384,26 @@ class _ScreensAddProductState extends State<ScreensAddProduct> {
       if (!mounted) return;
       setState(() {
         _imageUrl = downloadUrl;
-        _isUploadingImage = false;
+        _pickedImageBytes = bytes;
+        _pickedImageName = file.name;
       });
 
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Product photo uploaded successfully')),
+        const SnackBar(content: Text('Product photo uploaded successfully'), backgroundColor: Colors.green),
       );
     } catch (e) {
       if (!mounted) return;
-      setState(() => _isUploadingImage = false);
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Image upload failed: $e'),
-          backgroundColor: Colors.red,
-        ),
+        SnackBar(content: Text('Image upload failed: $e'), backgroundColor: Colors.red),
       );
+    } finally {
+      if (mounted) {
+        setState(() => _isUploadingImage = false);
+      }
     }
   }
 
+  // 🔴 FIXED: Catalog upload preview logic and failsafe
   Future<void> _pickAndUploadCatalog() async {
     try {
       if (mounted) {
@@ -418,12 +417,7 @@ class _ScreensAddProductState extends State<ScreensAddProduct> {
         withData: true,
       );
 
-      if (result == null || result.files.isEmpty) {
-        if (mounted) {
-          setState(() => _isUploadingCatalog = false);
-        }
-        return;
-      }
+      if (result == null || result.files.isEmpty) return;
 
       final file = result.files.first;
       final bytes = file.bytes;
@@ -453,7 +447,11 @@ class _ScreensAddProductState extends State<ScreensAddProduct> {
         },
       );
 
-      final task = await ref.putData(bytes, metadata);
+      final task = await ref.putData(bytes, metadata).timeout(
+        const Duration(seconds: 30),
+        onTimeout: () => throw Exception('Upload timed out after 30 seconds'),
+      );
+
       if (task.state != TaskState.success) {
         throw Exception('Catalog upload did not complete successfully');
       }
@@ -465,21 +463,20 @@ class _ScreensAddProductState extends State<ScreensAddProduct> {
         _catalogUrl = downloadUrl;
         _catalogName = file.name;
         _catalogContentType = contentType;
-        _isUploadingCatalog = false;
       });
 
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Catalog uploaded successfully')),
+        const SnackBar(content: Text('Catalog uploaded successfully'), backgroundColor: Colors.green),
       );
     } catch (e) {
       if (!mounted) return;
-      setState(() => _isUploadingCatalog = false);
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Catalog upload failed: $e'),
-          backgroundColor: Colors.red,
-        ),
+        SnackBar(content: Text('Catalog upload failed: $e'), backgroundColor: Colors.red),
       );
+    } finally {
+      if (mounted) {
+        setState(() => _isUploadingCatalog = false);
+      }
     }
   }
 
@@ -611,6 +608,7 @@ class _ScreensAddProductState extends State<ScreensAddProduct> {
           ...data,
           'stockOnHand': _trackInventory && !_isServiceLike ? openingStock : 0.0,
           'qty': _trackInventory && !_isServiceLike ? openingStock : 0.0,
+          'isDeleted': false,
           'createdAt': FieldValue.serverTimestamp(),
           'createdBy': widget.currentUserUid,
           'createdByUid': widget.currentUserUid,
@@ -921,8 +919,7 @@ class _ScreensAddProductState extends State<ScreensAddProduct> {
 
     return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
       stream: _subcategoriesRef(_selectedCategoryId!)
-          .orderBy('nameLower')
-          .snapshots(),
+          .orderBy('nameLower').snapshots(),
       builder: (context, snap) {
         if (snap.connectionState == ConnectionState.waiting && !snap.hasData) {
           return const LinearProgressIndicator();
@@ -1240,204 +1237,7 @@ class _ScreensAddProductState extends State<ScreensAddProduct> {
     );
   }
 
-  Widget _buildSummaryPanel() {
-    final productName = _nameController.text.trim().isEmpty
-        ? 'Unnamed Product'
-        : _nameController.text.trim();
-
-    final category = (_selectedCategoryName ?? '').trim().isEmpty
-        ? 'Uncategorized'
-        : _selectedCategoryName!;
-
-    final subcategory = (_selectedSubcategoryName ?? '').trim().isEmpty
-        ? '—'
-        : _selectedSubcategoryName!;
-
-    final itemCode = _itemCodeController.text.trim().isEmpty
-        ? '—'
-        : _itemCodeController.text.trim();
-
-    final hsn =
-    _hsnController.text.trim().isEmpty ? '—' : _hsnController.text.trim();
-
-    final stock = !_trackInventory || _isServiceLike
-        ? 'Not Tracked'
-        : (_openingStockController.text.trim().isEmpty
-        ? '0'
-        : _openingStockController.text.trim());
-
-    final reorder = !_trackInventory || _isServiceLike
-        ? 'Not Tracked'
-        : (_reorderLevelController.text.trim().isEmpty
-        ? '0'
-        : _reorderLevelController.text.trim());
-
-    return Column(
-      children: [
-        _sectionCard(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text(
-                'Live Summary',
-                style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
-              ),
-              const SizedBox(height: 14),
-              Row(
-                children: [
-                  CircleAvatar(
-                    radius: 22,
-                    backgroundColor: const Color(0xFFEAF2FF),
-                    child: Text(
-                      productName.isNotEmpty ? productName[0].toUpperCase() : '?',
-                      style: const TextStyle(fontWeight: FontWeight.bold),
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          productName,
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                            fontWeight: FontWeight.w700,
-                            fontSize: 14,
-                          ),
-                        ),
-                        const SizedBox(height: 3),
-                        Text(
-                          'Type: ${_productType.toUpperCase()}',
-                          style: const TextStyle(
-                            color: Color(0xFF667085),
-                            fontSize: 12,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 14),
-              _summaryRow('Category', category),
-              _summaryRow('Subcategory', subcategory),
-              _summaryRow('Item Code', itemCode),
-              _summaryRow('HSN', hsn),
-              _summaryRow(
-                'UOM',
-                _uomController.text.trim().isEmpty
-                    ? '—'
-                    : _uomController.text.trim(),
-              ),
-              _summaryRow('Opening Stock', stock),
-              _summaryRow('Reorder Level', reorder),
-              _summaryRow(
-                'Selling Price',
-                _formatCurrencyPreview(_unitPriceController.text),
-              ),
-              _summaryRow(
-                'Cost Price',
-                _formatCurrencyPreview(_costPriceController.text),
-              ),
-              _summaryRow('MRP', _formatCurrencyPreview(_mrpController.text)),
-              _summaryRow(
-                'GST',
-                '${_gstController.text.trim().isEmpty ? '0' : _gstController.text.trim()} %',
-              ),
-              _summaryRow(
-                'Catalog',
-                (_catalogName ?? '').trim().isEmpty ? 'Not Uploaded' : _catalogName!,
-              ),
-            ],
-          ),
-        ),
-        const SizedBox(height: 12),
-        _sectionCard(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text(
-                'Status',
-                style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
-              ),
-              const SizedBox(height: 12),
-              Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                children: [
-                  _chip(
-                    _isActive ? 'Active' : 'Inactive',
-                    _isActive ? Colors.green : Colors.grey,
-                  ),
-                  _chip(
-                    _trackInventory ? 'Track Inventory' : 'No Tracking',
-                    _trackInventory ? Colors.blue : Colors.grey,
-                  ),
-                  _chip(
-                    _isSaleable ? 'Saleable' : 'Not Saleable',
-                    _isSaleable ? Colors.teal : Colors.grey,
-                  ),
-                  _chip(
-                    _isPurchasable ? 'Purchasable' : 'Not Purchasable',
-                    _isPurchasable ? Colors.orange : Colors.grey,
-                  ),
-                ],
-              ),
-            ],
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _summaryRow(String label, String value) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 9),
-      child: Row(
-        children: [
-          SizedBox(
-            width: 105,
-            child: Text(
-              label,
-              style: const TextStyle(
-                color: Color(0xFF667085),
-                fontSize: 12,
-              ),
-            ),
-          ),
-          Expanded(
-            child: Text(
-              value,
-              style: const TextStyle(
-                fontWeight: FontWeight.w600,
-                fontSize: 12.5,
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _chip(String label, Color color) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.12),
-        borderRadius: BorderRadius.circular(30),
-      ),
-      child: Text(
-        label,
-        style: TextStyle(
-          color: color,
-          fontWeight: FontWeight.w600,
-          fontSize: 12,
-        ),
-      ),
-    );
-  }
+  // 🔴 REMOVED: _buildSummaryPanel (Strip logic requested)
 
   @override
   Widget build(BuildContext context) {
@@ -2057,7 +1857,7 @@ class _ScreensAddProductState extends State<ScreensAddProduct> {
                           width: 16,
                           height: 16,
                           child:
-                          CircularProgressIndicator(strokeWidth: 2),
+                          CircularProgressIndicator(strokeWidth: 2.5),
                         )
                             : const Icon(Icons.save_outlined),
                         label: Text(
@@ -2084,17 +1884,14 @@ class _ScreensAddProductState extends State<ScreensAddProduct> {
                   children: [
                     Expanded(flex: 7, child: mainForm),
                     const SizedBox(width: 14),
-                    SizedBox(
-                      width: 320,
-                      child: _buildSummaryPanel(),
-                    ),
+                    // 🔴 REMOVED: Summary panel widget call
                   ],
                 )
                     : Column(
                   children: [
                     mainForm,
                     const SizedBox(height: 12),
-                    _buildSummaryPanel(),
+                    // 🔴 REMOVED: Summary panel widget call
                   ],
                 ),
               ),

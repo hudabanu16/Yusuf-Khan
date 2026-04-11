@@ -21,22 +21,78 @@ class _ScreensInquiryListState extends State<ScreensInquiryList> {
   String _priorityFilter = 'All';
 
   Future<Map<String, dynamic>?> _loadCurrentUserProfile(String uid) async {
-    final doc =
-    await FirebaseFirestore.instance.collection('users').doc(uid).get();
-    return doc.data();
+    final firestore = FirebaseFirestore.instance;
+
+    // 1. Fetch Global User
+    final globalDoc = await firestore.collection('users').doc(uid).get();
+    final globalData = globalDoc.data() ?? <String, dynamic>{};
+
+    // 2. Safely extract dynamic companyId
+    String companyId = (globalData['companyId'] ?? '').toString();
+    if (companyId.isEmpty) {
+      final companyIds = globalData['companyIds'];
+      if (companyIds is List && companyIds.isNotEmpty) {
+        companyId = companyIds.first.toString();
+      } else {
+        final memberships = globalData['memberships'];
+        if (memberships is Map && memberships.isNotEmpty) {
+          companyId = memberships.keys.first.toString();
+        }
+      }
+    }
+
+    if (companyId.isEmpty) return globalData;
+
+    // 3. Fetch Company-Scoped User Document
+    final companyUserDoc = await firestore
+        .collection('companies')
+        .doc(companyId)
+        .collection('users')
+        .doc(uid)
+        .get();
+
+    final companyData = companyUserDoc.data() ?? <String, dynamic>{};
+
+    // 4. Merge data
+    return {
+      ...globalData,
+      ...companyData,
+      'companyId': companyId,
+    };
   }
 
   bool _isAdminOrManager(String role) {
-    return role == 'admin' || role == 'manager';
+    final r = role.toLowerCase().trim();
+    return r == 'owner' ||
+        r == 'founder' ||
+        r == 'ceo' ||
+        r == 'superadmin' ||
+        r == 'admin' ||
+        r == 'manager';
   }
 
-  bool _hasInquiryPermission(Map<String, dynamic> userData) {
+  // 🔴 FIX 1: Make permission checker dynamic for view, create, edit, delete
+  bool _hasInquiryPermission(Map<String, dynamic> userData, {String action = 'view'}) {
     final role = (userData['role'] ?? '').toString();
     if (_isAdminOrManager(role)) return true;
 
-    final permissions =
-    Map<String, dynamic>.from(userData['permissions'] ?? {});
-    return permissions['inquiries'] == true;
+    final permissions = userData['permissions'];
+    if (permissions is! Map) return false;
+
+    // New nested structure check
+    final sales = permissions['sales'];
+    if (sales is Map) {
+      final inquiries = sales['inquiries'];
+      if (inquiries is Map && inquiries[action] == true) {
+        return true;
+      }
+    }
+
+    // Legacy fallback check
+    if (permissions['inquiries'] == true && action == 'view') return true;
+    if (permissions['inquiries'] is Map && permissions['inquiries'][action] == true) return true;
+
+    return false;
   }
 
   String _formatDate(DateTime date) {
@@ -298,6 +354,7 @@ class _ScreensInquiryListState extends State<ScreensInquiryList> {
     required Inquiry inquiry,
     required String role,
     required String currentUserUid,
+    required bool canEdit, // Pass edit permission to card
   }) {
     final assignedToUid = inquiry.assignedToUid;
     final createdByUid = inquiry.createdBy;
@@ -336,6 +393,15 @@ class _ScreensInquiryListState extends State<ScreensInquiryList> {
       child: InkWell(
         borderRadius: BorderRadius.circular(18),
         onTap: () async {
+          // 🔴 FIX 2: Check if user can actually click into the record
+          // They can enter if they have 'edit' permission OR if they are assigned to it
+          if (!canEdit && !isAssignedToCurrentUser && !isCreatedByCurrentUser) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('You do not have permission to open this record.')),
+            );
+            return;
+          }
+
           final result = await Navigator.push(
             context,
             MaterialPageRoute(
@@ -1028,7 +1094,8 @@ class _ScreensInquiryListState extends State<ScreensInquiryList> {
           );
         }
 
-        if (!_hasInquiryPermission(userData)) {
+        // 1. Check if user can VIEW the page at all
+        if (!_hasInquiryPermission(userData, action: 'view')) {
           return Scaffold(
             appBar: AppBar(title: const Text('Inquiries')),
             body: const Center(
@@ -1036,6 +1103,12 @@ class _ScreensInquiryListState extends State<ScreensInquiryList> {
             ),
           );
         }
+
+        // 2. Check if user can CREATE new inquiries
+        final bool canCreate = _hasInquiryPermission(userData, action: 'create');
+
+        // 3. Check if user can EDIT existing inquiries
+        final bool canEdit = _hasInquiryPermission(userData, action: 'edit');
 
         final inquiryRef = FirebaseFirestore.instance
             .collection('companies')
@@ -1054,7 +1127,10 @@ class _ScreensInquiryListState extends State<ScreensInquiryList> {
               style: TextStyle(fontWeight: FontWeight.w700),
             ),
           ),
-          floatingActionButton: FloatingActionButton(
+
+          // 🔴 FIX 3: Conditionally render the Floating Action Button
+          floatingActionButton: canCreate
+              ? FloatingActionButton(
             backgroundColor: const Color(0xFF2563EB),
             foregroundColor: Colors.white,
             onPressed: () async {
@@ -1079,7 +1155,9 @@ class _ScreensInquiryListState extends State<ScreensInquiryList> {
               }
             },
             child: const Icon(Icons.add),
-          ),
+          )
+              : null, // Hides the button if they don't have 'create' permission
+
           body: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
             stream: inquiryRef.orderBy('createdAt', descending: true).snapshots(),
             builder: (context, snapshot) {
@@ -1145,6 +1223,7 @@ class _ScreensInquiryListState extends State<ScreensInquiryList> {
                                   inquiry: inquiry,
                                   role: role,
                                   currentUserUid: firebaseUser.uid,
+                                  canEdit: canEdit, // Pass 'edit' permission
                                 );
                               },
                             ),

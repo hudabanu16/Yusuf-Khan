@@ -38,23 +38,98 @@ class _ScreensProductListState extends State<ScreensProductList> {
     super.dispose();
   }
 
+  // 🔴 NEW UI HELPER: Displays Product Photo or Initials fallback
+  Widget _buildProductAvatar(String? imageUrl, String name, double size) {
+    if (imageUrl != null && imageUrl.isNotEmpty) {
+      return Container(
+        width: size,
+        height: size,
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: const Color(0xFFE4E7EC)),
+          image: DecorationImage(
+            image: NetworkImage(imageUrl),
+            fit: BoxFit.cover,
+          ),
+        ),
+      );
+    }
+    return CircleAvatar(
+      radius: size / 2,
+      backgroundColor: const Color(0xFFEAF2FF),
+      child: Text(
+        name.isNotEmpty ? name[0].toUpperCase() : '?',
+        style: const TextStyle(fontWeight: FontWeight.w700),
+      ),
+    );
+  }
+
   Future<Map<String, dynamic>?> _loadCurrentUserProfile(String uid) async {
-    final doc =
-    await FirebaseFirestore.instance.collection('users').doc(uid).get();
-    return doc.data();
+    final firestore = FirebaseFirestore.instance;
+
+    final globalDoc = await firestore.collection('users').doc(uid).get();
+    final globalData = globalDoc.data() ?? <String, dynamic>{};
+
+    String companyId = (globalData['companyId'] ?? '').toString();
+    if (companyId.isEmpty) {
+      final companyIds = globalData['companyIds'];
+      if (companyIds is List && companyIds.isNotEmpty) {
+        companyId = companyIds.first.toString();
+      } else {
+        final memberships = globalData['memberships'];
+        if (memberships is Map && memberships.isNotEmpty) {
+          companyId = memberships.keys.first.toString();
+        }
+      }
+    }
+
+    if (companyId.isEmpty) return globalData;
+
+    final companyUserDoc = await firestore
+        .collection('companies')
+        .doc(companyId)
+        .collection('users')
+        .doc(uid)
+        .get();
+
+    final companyData = companyUserDoc.data() ?? <String, dynamic>{};
+
+    return {
+      ...globalData,
+      ...companyData,
+      'companyId': companyId,
+    };
   }
 
   bool _isAdminOrManager(String role) {
-    return role == 'admin' || role == 'manager';
+    final r = role.toLowerCase().trim();
+    return r == 'owner' ||
+        r == 'founder' ||
+        r == 'ceo' ||
+        r == 'superadmin' ||
+        r == 'admin' ||
+        r == 'manager';
   }
 
-  bool _hasProductPermission(Map<String, dynamic> userData) {
+  bool _hasProductPermission(Map<String, dynamic> userData, {String action = 'view'}) {
     final role = (userData['role'] ?? '').toString();
     if (_isAdminOrManager(role)) return true;
 
-    final permissions =
-    Map<String, dynamic>.from(userData['permissions'] ?? {});
-    return permissions['products'] == true;
+    final permissions = userData['permissions'];
+    if (permissions is! Map) return false;
+
+    final inventory = permissions['inventory'];
+    if (inventory is Map) {
+      final products = inventory['products'];
+      if (products is Map && products[action] == true) {
+        return true;
+      }
+    }
+
+    if (permissions['products'] == true && action == 'view') return true;
+    if (permissions['products'] is Map && permissions['products'][action] == true) return true;
+
+    return false;
   }
 
   String _formatCurrency(dynamic value) {
@@ -98,6 +173,13 @@ class _ScreensProductListState extends State<ScreensProductList> {
       return _toDouble(data['minStockLevel']);
     }
     return 0;
+  }
+
+  double _minStockLevel(Map<String, dynamic> data) {
+    if (data.containsKey('minStockLevel')) {
+      return _toDouble(data['minStockLevel']);
+    }
+    return _reorderLevel(data);
   }
 
   String _categoryName(Map<String, dynamic> data) {
@@ -162,13 +244,13 @@ class _ScreensProductListState extends State<ScreensProductList> {
 
   bool _matchesStockFilter(Map<String, dynamic> data) {
     final stock = _stockOnHand(data);
-    final reorder = _reorderLevel(data);
+    final threshold = _minStockLevel(data) > 0 ? _minStockLevel(data) : _reorderLevel(data);
 
     switch (_stockFilter) {
       case 'in_stock':
         return stock > 0;
       case 'low_stock':
-        return stock > 0 && reorder > 0 && stock <= reorder;
+        return stock > 0 && threshold > 0 && stock <= threshold;
       case 'out_of_stock':
         return stock <= 0;
       default:
@@ -189,10 +271,10 @@ class _ScreensProductListState extends State<ScreensProductList> {
 
   String _stockStatus(Map<String, dynamic> data) {
     final stock = _stockOnHand(data);
-    final reorder = _reorderLevel(data);
+    final threshold = _minStockLevel(data) > 0 ? _minStockLevel(data) : _reorderLevel(data);
 
     if (stock <= 0) return 'Out of Stock';
-    if (reorder > 0 && stock <= reorder) return 'Low Stock';
+    if (threshold > 0 && stock <= threshold) return 'Low Stock';
     return 'In Stock';
   }
 
@@ -295,6 +377,7 @@ class _ScreensProductListState extends State<ScreensProductList> {
     required String companyId,
     required String productId,
     required String productName,
+    required String currentUserUid,
   }) async {
     final confirm = await showDialog<bool>(
       context: context,
@@ -326,7 +409,12 @@ class _ScreensProductListState extends State<ScreensProductList> {
           .doc(companyId)
           .collection('products')
           .doc(productId)
-          .delete();
+          .update({
+        'isDeleted': true,
+        'isActive': false,
+        'updatedAt': FieldValue.serverTimestamp(),
+        'updatedByUid': currentUserUid,
+      });
 
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -351,7 +439,8 @@ class _ScreensProductListState extends State<ScreensProductList> {
     required String companyId,
     required String currentUserUid,
     required String currentUserRole,
-    required bool canManageProducts,
+    required bool canEdit,
+    required bool canDelete,
   }) async {
     final data = doc.data();
     final productName = (data['name'] ?? '').toString().trim();
@@ -366,16 +455,13 @@ class _ScreensProductListState extends State<ScreensProductList> {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                ListTile(
-                  leading: Icon(
-                    canManageProducts
-                        ? Icons.edit_outlined
-                        : Icons.visibility_outlined,
+                if (canEdit)
+                  ListTile(
+                    leading: const Icon(Icons.edit_outlined),
+                    title: const Text('Edit Product'),
+                    onTap: () => Navigator.pop(context, 'edit'),
                   ),
-                  title: Text(canManageProducts ? 'Edit Product' : 'View Product'),
-                  onTap: () => Navigator.pop(context, 'edit'),
-                ),
-                if (canManageProducts)
+                if (canDelete)
                   ListTile(
                     leading: const Icon(Icons.delete_outline, color: Colors.red),
                     title: const Text(
@@ -393,7 +479,7 @@ class _ScreensProductListState extends State<ScreensProductList> {
 
     if (!mounted || selected == null) return;
 
-    if (selected == 'edit') {
+    if (selected == 'edit' && canEdit) {
       _openEditProduct(
         productId: doc.id,
         initialData: data,
@@ -401,11 +487,12 @@ class _ScreensProductListState extends State<ScreensProductList> {
         currentUserUid: currentUserUid,
         currentUserRole: currentUserRole,
       );
-    } else if (selected == 'delete' && canManageProducts) {
+    } else if (selected == 'delete' && canDelete) {
       await _deleteProduct(
         companyId: companyId,
         productId: doc.id,
         productName: productName.isEmpty ? 'Product' : productName,
+        currentUserUid: currentUserUid,
       );
     }
   }
@@ -927,7 +1014,8 @@ class _ScreensProductListState extends State<ScreensProductList> {
     final productsRef = FirebaseFirestore.instance
         .collection('companies')
         .doc(companyId)
-        .collection('products');
+        .collection('products')
+        .where('isDeleted', isNotEqualTo: true);
 
     final byId =
     await productsRef.where('categoryId', isEqualTo: categoryId).limit(1).get();
@@ -948,7 +1036,8 @@ class _ScreensProductListState extends State<ScreensProductList> {
     final productsRef = FirebaseFirestore.instance
         .collection('companies')
         .doc(companyId)
-        .collection('products');
+        .collection('products')
+        .where('isDeleted', isNotEqualTo: true);
 
     final byId = await productsRef
         .where('subcategoryId', isEqualTo: subcategoryId)
@@ -1462,14 +1551,14 @@ class _ScreensProductListState extends State<ScreensProductList> {
     required String companyId,
     required String currentUserUid,
     required bool isWide,
-    required bool canManageProducts,
+    required bool canCreate,
     required List<String> categoryOptions,
     required List<String> subcategoryOptions,
     required Map<String, List<String>> subcategoryMap,
   }) {
     const double rowHeight = 42;
 
-    final categoryButton = canManageProducts
+    final categoryButton = canCreate
         ? SizedBox(
       height: rowHeight,
       child: OutlinedButton.icon(
@@ -1523,7 +1612,7 @@ class _ScreensProductListState extends State<ScreensProductList> {
                 ),
               ),
             ),
-            if (canManageProducts) ...[
+            if (canCreate) ...[
               const SizedBox(width: 8),
               categoryButton,
             ],
@@ -1575,7 +1664,7 @@ class _ScreensProductListState extends State<ScreensProductList> {
                 ),
               ),
             ),
-            if (canManageProducts) ...[
+            if (canCreate) ...[
               const SizedBox(width: 8),
               categoryButton,
             ],
@@ -1829,7 +1918,8 @@ class _ScreensProductListState extends State<ScreensProductList> {
 
   Widget _buildContentCard({
     required List<QueryDocumentSnapshot<Map<String, dynamic>>> docs,
-    required bool canManageProducts,
+    required bool canEdit,
+    required bool canDelete,
     required String companyId,
     required String firebaseUserUid,
     required String role,
@@ -1851,14 +1941,16 @@ class _ScreensProductListState extends State<ScreensProductList> {
           : showTable
           ? _buildTableView(
         docs: docs,
-        canManageProducts: canManageProducts,
+        canEdit: canEdit,
+        canDelete: canDelete,
         companyId: companyId,
         firebaseUserUid: firebaseUserUid,
         role: role,
       )
           : _buildCardView(
         docs: docs,
-        canManageProducts: canManageProducts,
+        canEdit: canEdit,
+        canDelete: canDelete,
         companyId: companyId,
         firebaseUserUid: firebaseUserUid,
         role: role,
@@ -1868,7 +1960,8 @@ class _ScreensProductListState extends State<ScreensProductList> {
 
   Widget _buildTableView({
     required List<QueryDocumentSnapshot<Map<String, dynamic>>> docs,
-    required bool canManageProducts,
+    required bool canEdit,
+    required bool canDelete,
     required String companyId,
     required String firebaseUserUid,
     required String role,
@@ -1908,14 +2001,8 @@ class _ScreensProductListState extends State<ScreensProductList> {
                   width: 250,
                   child: Row(
                     children: [
-                      CircleAvatar(
-                        radius: 18,
-                        backgroundColor: const Color(0xFFEAF2FF),
-                        child: Text(
-                          name.isNotEmpty ? name[0].toUpperCase() : '?',
-                          style: const TextStyle(fontWeight: FontWeight.w700),
-                        ),
-                      ),
+                      // 🔴 UPDATED: Uses photo if available
+                      _buildProductAvatar(data['imageUrl'], name, 36),
                       const SizedBox(width: 10),
                       Expanded(
                         child: Column(
@@ -1962,10 +2049,11 @@ class _ScreensProductListState extends State<ScreensProductList> {
               DataCell(Text(_formatNumber(stock))),
               DataCell(_buildStatusChip(isActive ? 'Active' : 'Inactive')),
               DataCell(
-                PopupMenuButton<String>(
+                (canEdit || canDelete)
+                    ? PopupMenuButton<String>(
                   tooltip: 'Actions',
                   onSelected: (value) async {
-                    if (value == 'edit') {
+                    if (value == 'edit' && canEdit) {
                       _openEditProduct(
                         productId: doc.id,
                         initialData: data,
@@ -1973,31 +2061,28 @@ class _ScreensProductListState extends State<ScreensProductList> {
                         currentUserUid: firebaseUserUid,
                         currentUserRole: role,
                       );
-                    } else if (value == 'delete' && canManageProducts) {
+                    } else if (value == 'delete' && canDelete) {
                       await _deleteProduct(
                         companyId: companyId,
                         productId: doc.id,
                         productName: name.isEmpty ? 'Product' : name,
+                        currentUserUid: firebaseUserUid,
                       );
                     }
                   },
                   itemBuilder: (context) => [
-                    PopupMenuItem(
-                      value: 'edit',
-                      child: ListTile(
-                        dense: true,
-                        contentPadding: EdgeInsets.zero,
-                        leading: Icon(
-                          canManageProducts
-                              ? Icons.edit_outlined
-                              : Icons.visibility_outlined,
+                    if (canEdit)
+                      const PopupMenuItem(
+                        value: 'edit',
+                        child: ListTile(
+                          dense: true,
+                          contentPadding: EdgeInsets.zero,
+                          leading: Icon(Icons.edit_outlined),
+                          title: Text('Edit'),
                         ),
-                        title:
-                        Text(canManageProducts ? 'Edit' : 'View'),
                       ),
-                    ),
-                    if (canManageProducts) const PopupMenuDivider(),
-                    if (canManageProducts)
+                    if (canDelete) const PopupMenuDivider(),
+                    if (canDelete)
                       const PopupMenuItem(
                         value: 'delete',
                         child: ListTile(
@@ -2014,7 +2099,8 @@ class _ScreensProductListState extends State<ScreensProductList> {
                         ),
                       ),
                   ],
-                ),
+                )
+                    : const SizedBox.shrink(),
               ),
             ],
           );
@@ -2025,7 +2111,8 @@ class _ScreensProductListState extends State<ScreensProductList> {
 
   Widget _buildCardView({
     required List<QueryDocumentSnapshot<Map<String, dynamic>>> docs,
-    required bool canManageProducts,
+    required bool canEdit,
+    required bool canDelete,
     required String companyId,
     required String firebaseUserUid,
     required String role,
@@ -2053,14 +2140,8 @@ class _ScreensProductListState extends State<ScreensProductList> {
           ),
           child: ListTile(
             contentPadding: const EdgeInsets.all(14),
-            leading: CircleAvatar(
-              radius: 22,
-              backgroundColor: const Color(0xFFEAF2FF),
-              child: Text(
-                name.isNotEmpty ? name[0].toUpperCase() : '?',
-                style: const TextStyle(fontWeight: FontWeight.w700),
-              ),
-            ),
+            // 🔴 UPDATED: Uses photo if available
+            leading: _buildProductAvatar(data['imageUrl'], name, 44),
             title: Row(
               children: [
                 Expanded(
@@ -2105,10 +2186,11 @@ class _ScreensProductListState extends State<ScreensProductList> {
                 ],
               ),
             ),
-            trailing: PopupMenuButton<String>(
+            trailing: (canEdit || canDelete)
+                ? PopupMenuButton<String>(
               tooltip: 'Actions',
               onSelected: (value) async {
-                if (value == 'edit') {
+                if (value == 'edit' && canEdit) {
                   _openEditProduct(
                     productId: doc.id,
                     initialData: data,
@@ -2116,30 +2198,28 @@ class _ScreensProductListState extends State<ScreensProductList> {
                     currentUserUid: firebaseUserUid,
                     currentUserRole: role,
                   );
-                } else if (value == 'delete' && canManageProducts) {
+                } else if (value == 'delete' && canDelete) {
                   await _deleteProduct(
                     companyId: companyId,
                     productId: doc.id,
                     productName: name.isEmpty ? 'Product' : name,
+                    currentUserUid: firebaseUserUid,
                   );
                 }
               },
               itemBuilder: (context) => [
-                PopupMenuItem(
-                  value: 'edit',
-                  child: ListTile(
-                    dense: true,
-                    contentPadding: EdgeInsets.zero,
-                    leading: Icon(
-                      canManageProducts
-                          ? Icons.edit_outlined
-                          : Icons.visibility_outlined,
+                if (canEdit)
+                  const PopupMenuItem(
+                    value: 'edit',
+                    child: ListTile(
+                      dense: true,
+                      contentPadding: EdgeInsets.zero,
+                      leading: Icon(Icons.edit_outlined),
+                      title: Text('Edit'),
                     ),
-                    title: Text(canManageProducts ? 'Edit' : 'View'),
                   ),
-                ),
-                if (canManageProducts) const PopupMenuDivider(),
-                if (canManageProducts)
+                if (canDelete) const PopupMenuDivider(),
+                if (canDelete)
                   const PopupMenuItem(
                     value: 'delete',
                     child: ListTile(
@@ -2156,8 +2236,15 @@ class _ScreensProductListState extends State<ScreensProductList> {
                     ),
                   ),
               ],
-            ),
+            )
+                : null,
             onTap: () {
+              if (!canEdit) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('You do not have permission to edit this product.')),
+                );
+                return;
+              }
               _openEditProduct(
                 productId: doc.id,
                 initialData: data,
@@ -2266,8 +2353,6 @@ class _ScreensProductListState extends State<ScreensProductList> {
 
         final companyId = (userData['companyId'] ?? '').toString();
         final role = (userData['role'] ?? 'sales').toString();
-        final canManageProducts = _isAdminOrManager(role);
-        final canViewProducts = _hasProductPermission(userData);
 
         if (companyId.isEmpty) {
           return const Scaffold(
@@ -2275,13 +2360,17 @@ class _ScreensProductListState extends State<ScreensProductList> {
           );
         }
 
-        if (!canViewProducts) {
+        if (!_hasProductPermission(userData, action: 'view')) {
           return const Scaffold(
             body: Center(
               child: Text('You do not have permission to view products'),
             ),
           );
         }
+
+        final bool canCreate = _hasProductPermission(userData, action: 'create');
+        final bool canEdit = _hasProductPermission(userData, action: 'edit');
+        final bool canDelete = _hasProductPermission(userData, action: 'delete');
 
         final productsRef = FirebaseFirestore.instance
             .collection('companies')
@@ -2290,7 +2379,8 @@ class _ScreensProductListState extends State<ScreensProductList> {
 
         return Scaffold(
           backgroundColor: const Color(0xFFF6F8FB),
-          floatingActionButton: canManageProducts
+
+          floatingActionButton: canCreate
               ? FloatingActionButton(
             key: _fabKey,
             onPressed: () {
@@ -2303,6 +2393,7 @@ class _ScreensProductListState extends State<ScreensProductList> {
             child: const Icon(Icons.add),
           )
               : null,
+
           body: FutureBuilder<List<_CategoryMaster>>(
             future: _loadCategoryMaster(companyId),
             builder: (context, masterSnap) {
@@ -2395,8 +2486,10 @@ class _ScreensProductListState extends State<ScreensProductList> {
                     return const Center(child: CircularProgressIndicator());
                   }
 
-                  final allDocs = productSnap.data?.docs.toList() ??
-                      <QueryDocumentSnapshot<Map<String, dynamic>>>[];
+                  final allDocs = productSnap.data?.docs.where((doc) {
+                    final data = doc.data();
+                    return data['isDeleted'] != true;
+                  }).toList() ?? <QueryDocumentSnapshot<Map<String, dynamic>>>[];
 
                   allDocs.sort((a, b) {
                     final aTs = a.data()['createdAt'] as Timestamp?;
@@ -2420,12 +2513,14 @@ class _ScreensProductListState extends State<ScreensProductList> {
                   final totalProducts = allDocs.length;
                   final activeProducts =
                       allDocs.where((e) => _isProductActive(e.data())).length;
+
                   final lowStockProducts = allDocs.where((e) {
                     final data = e.data();
                     final stock = _stockOnHand(data);
-                    final reorder = _reorderLevel(data);
-                    return stock > 0 && reorder > 0 && stock <= reorder;
+                    final threshold = _minStockLevel(data) > 0 ? _minStockLevel(data) : _reorderLevel(data);
+                    return stock > 0 && threshold > 0 && stock <= threshold;
                   }).length;
+
                   final outOfStockProducts =
                       allDocs.where((e) => _stockOnHand(e.data()) <= 0).length;
 
@@ -2453,7 +2548,7 @@ class _ScreensProductListState extends State<ScreensProductList> {
                               companyId: companyId,
                               currentUserUid: firebaseUser.uid,
                               isWide: isWide,
-                              canManageProducts: canManageProducts,
+                              canCreate: canCreate,
                               categoryOptions: categoryOptions,
                               subcategoryOptions: subcategoryOptions,
                               subcategoryMap: subcategoryMap,
@@ -2465,7 +2560,8 @@ class _ScreensProductListState extends State<ScreensProductList> {
                             const SizedBox(height: 10),
                             _buildContentCard(
                               docs: filteredDocs,
-                              canManageProducts: canManageProducts,
+                              canEdit: canEdit,
+                              canDelete: canDelete,
                               companyId: companyId,
                               firebaseUserUid: firebaseUser.uid,
                               role: role,

@@ -24,7 +24,10 @@ class AuthWrapper extends StatelessWidget {
         }
 
         if (authSnap.data == null) {
-          return const LoginScreen();
+          // 🔴 FIX: Removed the 'const' keyword here.
+          // Note: Standard Dart convention uses PascalCase for classes (LoginScreen).
+          // If your class is strictly named login_Screen, change this to: return login_Screen();
+          return LoginScreen();
         }
 
         return _UserProfileGate(firebaseUser: authSnap.data!);
@@ -149,10 +152,23 @@ class _UserProfileGateState extends State<_UserProfileGate> {
       );
     }
 
-    final companyId = (data['companyId'] ?? '').toString();
+    // Dynamic companyId extraction
+    String companyId = (data['companyId'] ?? '').toString();
+    if (companyId.isEmpty) {
+      final companyIds = data['companyIds'];
+      if (companyIds is List && companyIds.isNotEmpty) {
+        companyId = companyIds.first.toString();
+      } else {
+        final memberships = data['memberships'];
+        if (memberships is Map && memberships.isNotEmpty) {
+          companyId = memberships.keys.first.toString();
+        }
+      }
+    }
+
     final role = (data['role'] ?? 'sales').toString();
     final companyName =
-    (data['companyName'] ?? widget.firebaseUser.email ?? kAppName).toString();
+    (data['companyName'] ?? widget.firebaseUser.email ?? 'Workspace').toString();
 
     final permissions = Map<String, dynamic>.from(data['permissions'] ?? {});
 
@@ -175,7 +191,7 @@ class _UserProfileGateState extends State<_UserProfileGate> {
               decoration: BoxDecoration(
                 color: Colors.white,
                 borderRadius: BorderRadius.circular(20),
-                border: Border.all(color: zBorder),
+                border: Border.all(color: Colors.grey.shade300),
                 boxShadow: [
                   BoxShadow(
                     color: Colors.black.withOpacity(0.06),
@@ -193,7 +209,7 @@ class _UserProfileGateState extends State<_UserProfileGate> {
                     child: Icon(
                       Icons.group_add_outlined,
                       size: 28,
-                      color: zBlue,
+                      color: Colors.blue,
                     ),
                   ),
                   const SizedBox(height: 16),
@@ -202,14 +218,14 @@ class _UserProfileGateState extends State<_UserProfileGate> {
                     style: TextStyle(
                       fontSize: 18,
                       fontWeight: FontWeight.w800,
-                      color: zText,
+                      color: Colors.black87,
                     ),
                     textAlign: TextAlign.center,
                   ),
                   const SizedBox(height: 8),
                   const Text(
                     'Join your company using an invite code to access your workspace.',
-                    style: TextStyle(color: zMuted, height: 1.4),
+                    style: TextStyle(color: Colors.grey, height: 1.4),
                     textAlign: TextAlign.center,
                   ),
                   const SizedBox(height: 18),
@@ -234,7 +250,7 @@ class _UserProfileGateState extends State<_UserProfileGate> {
                         _loadUserProfileWithRetry();
                       },
                       style: FilledButton.styleFrom(
-                        backgroundColor: zBlue,
+                        backgroundColor: Colors.blue,
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(12),
                         ),
@@ -259,7 +275,7 @@ class _UserProfileGateState extends State<_UserProfileGate> {
     }
 
     return ZohoShell(
-      userEmail: widget.firebaseUser.email ?? kAppName,
+      userEmail: widget.firebaseUser.email ?? 'user@workspace.com',
       userUid: widget.firebaseUser.uid,
       companyId: companyId,
       companyName: companyName,
