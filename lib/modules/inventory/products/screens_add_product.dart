@@ -1,4 +1,5 @@
 import 'dart:typed_data';
+import 'dart:html' as html; // NATIVE WEB FILE LAUNCHER (NO PLUGINS REQUIRED)
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:file_picker/file_picker.dart';
@@ -66,13 +67,9 @@ class _ScreensAddProductState extends State<ScreensAddProduct> {
   String? _selectedSubcategoryId;
   String? _selectedSubcategoryName;
 
-  String? _imageUrl;
-  Uint8List? _pickedImageBytes;
-  String? _pickedImageName;
-
-  String? _catalogUrl;
-  String? _catalogName;
-  String? _catalogContentType;
+  // Multi-file Storage Lists
+  List<String> _imageUrls = [];
+  List<Map<String, dynamic>> _catalogs = [];
 
   double _existingStockOnHand = 0;
   double _existingQty = 0;
@@ -127,20 +124,27 @@ class _ScreensAddProductState extends State<ScreensAddProduct> {
       _brandController.text = (data['brand'] ?? '').toString();
       _notesController.text = (data['notes'] ?? '').toString();
 
-      _imageUrl = (data['imageUrl'] ?? '').toString().trim().isEmpty
-          ? null
-          : (data['imageUrl'] ?? '').toString().trim();
+      // Safely migrate legacy single image OR load new multi-image list
+      final existingImages = data['images'];
+      if (existingImages is List) {
+        _imageUrls = List<String>.from(existingImages);
+      } else if ((data['imageUrl'] ?? '').toString().trim().isNotEmpty) {
+        _imageUrls = [(data['imageUrl'] ?? '').toString().trim()];
+      }
 
-      _catalogUrl = (data['catalogUrl'] ?? '').toString().trim().isEmpty
-          ? null
-          : (data['catalogUrl'] ?? '').toString().trim();
-      _catalogName = (data['catalogName'] ?? '').toString().trim().isEmpty
-          ? null
-          : (data['catalogName'] ?? '').toString().trim();
-      _catalogContentType =
-      (data['catalogContentType'] ?? '').toString().trim().isEmpty
-          ? null
-          : (data['catalogContentType'] ?? '').toString().trim();
+      // Safely migrate legacy single catalog OR load new multi-catalog list
+      final existingCatalogs = data['catalogs'];
+      if (existingCatalogs is List) {
+        _catalogs = (existingCatalogs).map((e) => Map<String, dynamic>.from(e as Map)).toList();
+      } else if ((data['catalogUrl'] ?? '').toString().trim().isNotEmpty) {
+        _catalogs = [
+          {
+            'url': (data['catalogUrl'] ?? '').toString().trim(),
+            'name': (data['catalogName'] ?? '').toString().trim(),
+            'contentType': (data['catalogContentType'] ?? '').toString().trim(),
+          }
+        ];
+      }
 
       final categoryId = (data['categoryId'] ?? '').toString().trim();
       final categoryName = (data['category'] ?? '').toString().trim();
@@ -261,27 +265,22 @@ class _ScreensAddProductState extends State<ScreensAddProduct> {
     return double.tryParse(value.toString()) ?? fallback;
   }
 
-  String _formatCurrencyPreview(String value) {
-    final number = double.tryParse(value.trim());
-    if (number == null) return '₹ 0';
-    if (number == number.toInt()) return '₹ ${number.toInt()}';
-    return '₹ ${number.toStringAsFixed(2)}';
-  }
-
   String? _requiredValidator(String? v) {
     if (v == null || v.trim().isEmpty) return 'Required';
     return null;
   }
 
   String? _numberValidator(String? v, {bool required = false}) {
-    if ((v == null || v.trim().isEmpty) && !required) return null;
-    if ((v == null || v.trim().isEmpty) && required) return 'Required';
-    if (double.tryParse(v!.trim()) == null) return 'Enter valid number';
+    final val = v ?? '';
+    if (val.trim().isEmpty && !required) return null;
+    if (val.trim().isEmpty && required) return 'Required';
+    if (double.tryParse(val.trim()) == null) return 'Enter valid number';
     return null;
   }
 
   String? _categoryValidator(String? _) {
-    if (_selectedCategoryId == null || _selectedCategoryId!.trim().isEmpty) {
+    final catId = _selectedCategoryId;
+    if (catId == null || catId.trim().isEmpty) {
       return 'Please select category';
     }
     return null;
@@ -304,6 +303,12 @@ class _ScreensAddProductState extends State<ScreensAddProduct> {
         return 'image/webp';
       case 'pdf':
         return 'application/pdf';
+      case 'doc':
+      case 'docx':
+        return 'application/msword';
+      case 'xls':
+      case 'xlsx':
+        return 'application/vnd.ms-excel';
       default:
         return 'application/octet-stream';
     }
@@ -316,6 +321,12 @@ class _ScreensAddProductState extends State<ScreensAddProduct> {
     if (lowerType.contains('pdf') || lowerName.endsWith('.pdf')) {
       return Icons.picture_as_pdf_outlined;
     }
+    if (lowerType.contains('msword') || lowerType.contains('word') || lowerName.endsWith('.doc') || lowerName.endsWith('.docx')) {
+      return Icons.description_outlined;
+    }
+    if (lowerType.contains('excel') || lowerType.contains('spreadsheet') || lowerName.endsWith('.xls') || lowerName.endsWith('.xlsx')) {
+      return Icons.table_chart_outlined;
+    }
     if (lowerType.startsWith('image/') ||
         lowerName.endsWith('.jpg') ||
         lowerName.endsWith('.jpeg') ||
@@ -326,180 +337,429 @@ class _ScreensAddProductState extends State<ScreensAddProduct> {
     return Icons.attach_file_outlined;
   }
 
-  // 🔴 FIXED: Upload spinner logic with preview state update and failsafe
-  Future<void> _pickAndUploadImage() async {
+  Future<void> _pickAndUploadImages() async {
     try {
-      if (mounted) {
-        setState(() => _isUploadingImage = true);
-      }
+      if (mounted) setState(() => _isUploadingImage = true);
 
       final result = await FilePicker.platform.pickFiles(
         type: FileType.custom,
         allowedExtensions: ['jpg', 'jpeg', 'png', 'webp'],
-        allowMultiple: false,
+        allowMultiple: true,
         withData: true,
       );
 
       if (result == null || result.files.isEmpty) return;
 
-      final file = result.files.first;
-      final bytes = file.bytes;
+      for (final file in result.files) {
+        final bytes = file.bytes;
+        if (bytes == null || bytes.isEmpty) continue;
 
-      if (bytes == null || bytes.isEmpty) {
-        throw Exception('Unable to read selected image bytes');
+        final ext = _safeExt(file.extension, fallback: 'jpg');
+        final contentType = _detectContentTypeFromExtension(ext);
+        final fileName = 'product_photo_${DateTime.now().millisecondsSinceEpoch}_${widget.currentUserUid}_${file.name}.$ext';
+
+        final ref = FirebaseStorage.instance
+            .ref()
+            .child('companies/${widget.companyId}/products/images/$fileName');
+
+        final metadata = SettableMetadata(
+          contentType: contentType,
+          customMetadata: {
+            'companyId': widget.companyId,
+            'uploadedBy': widget.currentUserUid,
+            'originalName': file.name,
+            'module': 'products',
+            'type': 'image',
+          },
+        );
+
+        final task = await ref.putData(bytes, metadata).timeout(
+          const Duration(seconds: 30),
+          onTimeout: () => throw Exception('Upload timed out after 30 seconds'),
+        );
+
+        if (task.state != TaskState.success) throw Exception('Image upload did not complete successfully');
+
+        final downloadUrl = await ref.getDownloadURL();
+
+        if (mounted) {
+          setState(() {
+            _imageUrls.add(downloadUrl);
+          });
+        }
       }
 
-      final ext = _safeExt(file.extension, fallback: 'jpg');
-      final contentType = _detectContentTypeFromExtension(ext);
-
-      final fileName =
-          'product_photo_${DateTime.now().millisecondsSinceEpoch}_${widget.currentUserUid}.$ext';
-
-      final ref = FirebaseStorage.instance
-          .ref()
-          .child('companies/${widget.companyId}/products/images/$fileName');
-
-      final metadata = SettableMetadata(
-        contentType: contentType,
-        customMetadata: {
-          'companyId': widget.companyId,
-          'uploadedBy': widget.currentUserUid,
-          'originalName': file.name,
-          'module': 'products',
-          'type': 'image',
-        },
-      );
-
-      final task = await ref.putData(bytes, metadata).timeout(
-        const Duration(seconds: 30),
-        onTimeout: () => throw Exception('Upload timed out after 30 seconds'),
-      );
-
-      if (task.state != TaskState.success) {
-        throw Exception('Image upload did not complete successfully');
-      }
-
-      final downloadUrl = await ref.getDownloadURL();
-
-      if (!mounted) return;
-      setState(() {
-        _imageUrl = downloadUrl;
-        _pickedImageBytes = bytes;
-        _pickedImageName = file.name;
-      });
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Product photo uploaded successfully'), backgroundColor: Colors.green),
-      );
-    } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Image upload failed: $e'), backgroundColor: Colors.red),
-      );
-    } finally {
       if (mounted) {
-        setState(() => _isUploadingImage = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Product photos uploaded successfully'), backgroundColor: Colors.green),
+        );
       }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Image upload failed: $e'), backgroundColor: Colors.red),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isUploadingImage = false);
     }
   }
 
-  // 🔴 FIXED: Catalog upload preview logic and failsafe
-  Future<void> _pickAndUploadCatalog() async {
+  Future<void> _pickAndUploadCatalogs() async {
     try {
-      if (mounted) {
-        setState(() => _isUploadingCatalog = true);
-      }
+      if (mounted) setState(() => _isUploadingCatalog = true);
 
       final result = await FilePicker.platform.pickFiles(
         type: FileType.custom,
-        allowedExtensions: ['pdf', 'jpg', 'jpeg', 'png', 'webp'],
-        allowMultiple: false,
+        allowedExtensions: ['pdf', 'jpg', 'jpeg', 'png', 'webp', 'doc', 'docx', 'xls', 'xlsx'],
+        allowMultiple: true,
         withData: true,
       );
 
       if (result == null || result.files.isEmpty) return;
 
-      final file = result.files.first;
-      final bytes = file.bytes;
+      for (final file in result.files) {
+        final bytes = file.bytes;
+        if (bytes == null || bytes.isEmpty) continue;
 
-      if (bytes == null || bytes.isEmpty) {
-        throw Exception('Unable to read selected catalog file');
+        final ext = _safeExt(file.extension, fallback: 'bin');
+        final contentType = _detectContentTypeFromExtension(ext);
+        final fileName = 'product_catalog_${DateTime.now().millisecondsSinceEpoch}_${widget.currentUserUid}_${file.name}.$ext';
+
+        final ref = FirebaseStorage.instance
+            .ref()
+            .child('companies/${widget.companyId}/products/catalogs/$fileName');
+
+        final metadata = SettableMetadata(
+          contentType: contentType,
+          customMetadata: {
+            'companyId': widget.companyId,
+            'uploadedBy': widget.currentUserUid,
+            'originalName': file.name,
+            'module': 'products',
+            'type': 'catalog',
+          },
+        );
+
+        final task = await ref.putData(bytes, metadata).timeout(
+          const Duration(seconds: 30),
+          onTimeout: () => throw Exception('Upload timed out after 30 seconds'),
+        );
+
+        if (task.state != TaskState.success) throw Exception('Catalog upload did not complete successfully');
+
+        final downloadUrl = await ref.getDownloadURL();
+
+        if (mounted) {
+          setState(() {
+            _catalogs.add({
+              'url': downloadUrl,
+              'name': file.name,
+              'contentType': contentType,
+            });
+          });
+        }
       }
 
-      final ext = _safeExt(file.extension, fallback: 'bin');
-      final contentType = _detectContentTypeFromExtension(ext);
-
-      final fileName =
-          'product_catalog_${DateTime.now().millisecondsSinceEpoch}_${widget.currentUserUid}.$ext';
-
-      final ref = FirebaseStorage.instance
-          .ref()
-          .child('companies/${widget.companyId}/products/catalogs/$fileName');
-
-      final metadata = SettableMetadata(
-        contentType: contentType,
-        customMetadata: {
-          'companyId': widget.companyId,
-          'uploadedBy': widget.currentUserUid,
-          'originalName': file.name,
-          'module': 'products',
-          'type': 'catalog',
-        },
-      );
-
-      final task = await ref.putData(bytes, metadata).timeout(
-        const Duration(seconds: 30),
-        onTimeout: () => throw Exception('Upload timed out after 30 seconds'),
-      );
-
-      if (task.state != TaskState.success) {
-        throw Exception('Catalog upload did not complete successfully');
-      }
-
-      final downloadUrl = await ref.getDownloadURL();
-
-      if (!mounted) return;
-      setState(() {
-        _catalogUrl = downloadUrl;
-        _catalogName = file.name;
-        _catalogContentType = contentType;
-      });
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Catalog uploaded successfully'), backgroundColor: Colors.green),
-      );
-    } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Catalog upload failed: $e'), backgroundColor: Colors.red),
-      );
-    } finally {
       if (mounted) {
-        setState(() => _isUploadingCatalog = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Catalogs uploaded successfully'), backgroundColor: Colors.green),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Catalog upload failed: $e'), backgroundColor: Colors.red),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isUploadingCatalog = false);
+    }
+  }
+
+  void _removeImage(int index) {
+    setState(() {
+      _imageUrls.removeAt(index);
+    });
+  }
+
+  void _removeCatalog(int index) {
+    setState(() {
+      _catalogs.removeAt(index);
+    });
+  }
+
+  // ---------------------------------------------------------
+  // SECURE NATIVE URL LAUNCHER (BYPASS CORS)
+  // ---------------------------------------------------------
+
+  void _launchSafeUrl(String? urlString) {
+    if (urlString == null || urlString.trim().isEmpty) return;
+
+    final url = urlString.trim();
+
+    if (url.startsWith('gs://')) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Cannot open gs:// URLs directly. Ensure file is uploaded via HTTPS.'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+      return;
+    }
+
+    try {
+      html.window.open(url, '_blank');
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error opening file: $e'), backgroundColor: Colors.red),
+        );
       }
     }
   }
 
-  void _removeSelectedImage() {
-    setState(() {
-      _imageUrl = null;
-      _pickedImageBytes = null;
-      _pickedImageName = null;
-    });
+  // ---------------------------------------------------------
+
+  Widget _buildImagesPreview() {
+    if (_imageUrls.isEmpty) return const SizedBox.shrink();
+
+    return SizedBox(
+      height: 120,
+      child: ListView.separated(
+        scrollDirection: Axis.horizontal,
+        itemCount: _imageUrls.length,
+        separatorBuilder: (_, __) => const SizedBox(width: 12),
+        itemBuilder: (context, index) {
+          final url = _imageUrls[index];
+          return Container(
+            width: 100,
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: const Color(0xFFE4E7EC)),
+            ),
+            child: Stack(
+              children: [
+                Positioned.fill(
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(9),
+                    child: Container(
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFF9FAFB),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: const Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(Icons.cloud_done_outlined, size: 30, color: Colors.green),
+                          SizedBox(height: 4),
+                          Text('Uploaded', style: TextStyle(fontSize: 12, color: Colors.green, fontWeight: FontWeight.w600)),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+                Positioned(
+                  top: 4,
+                  right: 4,
+                  child: InkWell(
+                    onTap: () => _removeImage(index),
+                    child: Container(
+                      padding: const EdgeInsets.all(4),
+                      decoration: const BoxDecoration(
+                        color: Colors.black54,
+                        shape: BoxShape.circle,
+                      ),
+                      child: const Icon(Icons.close, size: 14, color: Colors.white),
+                    ),
+                  ),
+                ),
+                Positioned(
+                  bottom: 4,
+                  left: 4,
+                  right: 4,
+                  child: InkWell(
+                    onTap: () => _launchSafeUrl(url),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(vertical: 4),
+                      decoration: BoxDecoration(
+                        color: Colors.black54,
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                      child: const Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(Icons.zoom_in, size: 14, color: Colors.white),
+                          SizedBox(width: 4),
+                          Text(
+                            'View',
+                            style: TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          );
+        },
+      ),
+    );
   }
 
-  void _removeCatalog() {
-    setState(() {
-      _catalogUrl = null;
-      _catalogName = null;
-      _catalogContentType = null;
-    });
+  Widget _buildCatalogsPreview() {
+    if (_catalogs.isEmpty) return const SizedBox.shrink();
+
+    return Column(
+      children: _catalogs.asMap().entries.map((entry) {
+        final index = entry.key;
+        final cat = entry.value;
+        final url = (cat['url'] ?? '').toString();
+        final name = (cat['name'] ?? 'Document').toString();
+        final type = (cat['contentType'] ?? '').toString();
+
+        return Container(
+          margin: const EdgeInsets.only(bottom: 8),
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: const Color(0xFFF9FAFB),
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(color: const Color(0xFFE5E7EB)),
+          ),
+          child: Row(
+            children: [
+              Icon(_catalogIcon(type, name), color: Colors.redAccent, size: 28),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      name,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
+                    ),
+                    const SizedBox(height: 2),
+                    const Text(
+                      'Ready to view',
+                      style: TextStyle(fontSize: 11, color: Color(0xFF6B7280)),
+                    ),
+                  ],
+                ),
+              ),
+              TextButton.icon(
+                onPressed: () => _launchSafeUrl(url),
+                icon: const Icon(Icons.open_in_new, size: 16),
+                label: const Text('Open', style: TextStyle(fontSize: 12)),
+              ),
+              IconButton(
+                onPressed: () => _removeCatalog(index),
+                icon: const Icon(Icons.delete_outline, size: 18, color: Colors.red),
+              ),
+            ],
+          ),
+        );
+      }).toList(),
+    );
+  }
+
+  Widget _buildImageAndCatalogCard() {
+    return _sectionCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _sectionHeader('Product Media & Notes'),
+
+          // Image Upload Section
+          Container(
+            padding: const EdgeInsets.all(12),
+            width: double.infinity,
+            decoration: BoxDecoration(
+              color: const Color(0xFFF8FAFC),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: const Color(0xFFE4E7EC)),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text('Product Images', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 14)),
+                const SizedBox(height: 4),
+                const Text('Upload one or multiple images.', style: TextStyle(fontSize: 12, color: Color(0xFF667085))),
+                const SizedBox(height: 12),
+                Row(
+                  children: [
+                    FilledButton.icon(
+                      onPressed: _isUploadingImage ? null : _pickAndUploadImages,
+                      icon: _isUploadingImage
+                          ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                          : const Icon(Icons.add_photo_alternate_outlined),
+                      label: Text(_isUploadingImage ? 'Uploading...' : 'Add Images'),
+                    ),
+                  ],
+                ),
+                if (_imageUrls.isNotEmpty) const SizedBox(height: 16),
+                _buildImagesPreview(),
+              ],
+            ),
+          ),
+
+          const SizedBox(height: 18),
+
+          // Catalog Upload Section
+          Container(
+            padding: const EdgeInsets.all(12),
+            width: double.infinity,
+            decoration: BoxDecoration(
+              color: const Color(0xFFF8FAFC),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: const Color(0xFFE4E7EC)),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text('Product Catalogs & Attachments', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 14)),
+                const SizedBox(height: 4),
+                const Text('Upload PDFs, brochures, or spec sheets.', style: TextStyle(fontSize: 12, color: Color(0xFF667085))),
+                const SizedBox(height: 12),
+                Row(
+                  children: [
+                    FilledButton.icon(
+                      onPressed: _isUploadingCatalog ? null : _pickAndUploadCatalogs,
+                      icon: _isUploadingCatalog
+                          ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                          : const Icon(Icons.attach_file_outlined),
+                      label: Text(_isUploadingCatalog ? 'Uploading...' : 'Add Catalogs'),
+                    ),
+                  ],
+                ),
+                if (_catalogs.isNotEmpty) const SizedBox(height: 16),
+                _buildCatalogsPreview(),
+              ],
+            ),
+          ),
+
+          const SizedBox(height: 12),
+          _buildTextField(
+            controller: _notesController,
+            label: 'Internal Notes',
+            icon: Icons.sticky_note_2_outlined,
+            maxLines: 3,
+          ),
+        ],
+      ),
+    );
   }
 
   Future<void> _saveProduct() async {
-    if (!_formKey.currentState!.validate()) return;
+    final state = _formKey.currentState;
+    if (state == null || !state.validate()) return;
 
-    if (_assignedToUid == null || _assignedToUid!.trim().isEmpty) {
+    final assigned = _assignedToUid;
+    if (assigned == null || assigned.trim().isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('Please select assigned user'),
@@ -509,7 +769,9 @@ class _ScreensAddProductState extends State<ScreensAddProduct> {
       return;
     }
 
-    if (_selectedCategoryId == null || _selectedCategoryName == null) {
+    final catId = _selectedCategoryId;
+    final catName = _selectedCategoryName;
+    if (catId == null || catName == null) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('Please select category'),
@@ -559,8 +821,8 @@ class _ScreensAddProductState extends State<ScreensAddProduct> {
         'nameLower': cleanName.toLowerCase(),
         'description': cleanDescription,
         'type': _productType,
-        'categoryId': _selectedCategoryId,
-        'category': _selectedCategoryName ?? '',
+        'categoryId': catId,
+        'category': catName,
         'subcategoryId': _selectedSubcategoryId,
         'subcategory': _selectedSubcategoryName ?? '',
         'brand': cleanBrand,
@@ -579,15 +841,18 @@ class _ScreensAddProductState extends State<ScreensAddProduct> {
         'sellingPrice': unitPrice,
         'mrp': mrp,
         'gstPercentage': gst,
-        'imageUrl': _imageUrl ?? '',
-        'catalogUrl': _catalogUrl ?? '',
-        'catalogName': _catalogName ?? '',
-        'catalogContentType': _catalogContentType ?? '',
+        // Ensure backward compatibility while adopting new List structures
+        'imageUrl': _imageUrls.isNotEmpty ? _imageUrls.first : '',
+        'images': _imageUrls,
+        'catalogUrl': _catalogs.isNotEmpty ? _catalogs.first['url'] : '',
+        'catalogName': _catalogs.isNotEmpty ? _catalogs.first['name'] : '',
+        'catalogContentType': _catalogs.isNotEmpty ? _catalogs.first['contentType'] : '',
+        'catalogs': _catalogs,
         'notes': cleanNotes,
         'isActive': _isActive,
         'isSaleable': _isSaleable,
         'isPurchasable': _isPurchasable,
-        'assignedToUid': _assignedToUid,
+        'assignedToUid': assigned,
         'assignedByUid': widget.currentUserUid,
         'updatedAt': FieldValue.serverTimestamp(),
         'updatedBy': widget.currentUserUid,
@@ -900,7 +1165,8 @@ class _ScreensAddProductState extends State<ScreensAddProduct> {
   }
 
   Widget _buildSubcategoryDropdown() {
-    if (_selectedCategoryId == null) {
+    final catId = _selectedCategoryId;
+    if (catId == null) {
       return DropdownButtonFormField<String?>(
         value: null,
         decoration: _inputDecoration(
@@ -918,8 +1184,9 @@ class _ScreensAddProductState extends State<ScreensAddProduct> {
     }
 
     return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-      stream: _subcategoriesRef(_selectedCategoryId!)
-          .orderBy('nameLower').snapshots(),
+      stream: _subcategoriesRef(catId)
+          .orderBy('nameLower')
+          .snapshots(),
       builder: (context, snap) {
         if (snap.connectionState == ConnectionState.waiting && !snap.hasData) {
           return const LinearProgressIndicator();
@@ -994,251 +1261,6 @@ class _ScreensAddProductState extends State<ScreensAddProduct> {
     );
   }
 
-  Widget _buildImageAndCatalogCard() {
-    Widget preview;
-
-    if (_pickedImageBytes != null) {
-      preview = ClipRRect(
-        borderRadius: BorderRadius.circular(12),
-        child: Image.memory(
-          _pickedImageBytes!,
-          width: 110,
-          height: 110,
-          fit: BoxFit.cover,
-        ),
-      );
-    } else if ((_imageUrl ?? '').isNotEmpty) {
-      preview = ClipRRect(
-        borderRadius: BorderRadius.circular(12),
-        child: Image.network(
-          _imageUrl!,
-          width: 110,
-          height: 110,
-          fit: BoxFit.cover,
-          errorBuilder: (_, __, ___) => Container(
-            width: 110,
-            height: 110,
-            decoration: BoxDecoration(
-              color: const Color(0xFFF3F4F6),
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: const Icon(Icons.broken_image_outlined),
-          ),
-        ),
-      );
-    } else {
-      preview = Container(
-        width: 110,
-        height: 110,
-        decoration: BoxDecoration(
-          color: const Color(0xFFF8FAFC),
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: const Color(0xFFE4E7EC)),
-        ),
-        child: const Icon(
-          Icons.image_outlined,
-          size: 34,
-          color: Color(0xFF667085),
-        ),
-      );
-    }
-
-    return _sectionCard(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          _sectionHeader('Product Media & Notes'),
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              preview,
-              const SizedBox(width: 14),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    FilledButton.icon(
-                      onPressed: _isUploadingImage ? null : _pickAndUploadImage,
-                      icon: _isUploadingImage
-                          ? const SizedBox(
-                        width: 16,
-                        height: 16,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      )
-                          : const Icon(Icons.upload_file_outlined),
-                      label: Text(
-                        _isUploadingImage
-                            ? 'Uploading...'
-                            : 'Upload Product Photo',
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    if ((_pickedImageName ?? '').isNotEmpty)
-                      Text(
-                        _pickedImageName!,
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          fontSize: 12,
-                          color: Color(0xFF667085),
-                        ),
-                      )
-                    else if ((_imageUrl ?? '').isNotEmpty)
-                      const Text(
-                        'Photo uploaded',
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: Color(0xFF667085),
-                        ),
-                      )
-                    else
-                      const Text(
-                        'Select image from your device and upload to cloud storage.',
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: Color(0xFF667085),
-                        ),
-                      ),
-                    const SizedBox(height: 8),
-                    if ((_imageUrl ?? '').isNotEmpty || _pickedImageBytes != null)
-                      TextButton.icon(
-                        onPressed: _isUploadingImage ? null : _removeSelectedImage,
-                        icon: const Icon(Icons.delete_outline, color: Colors.red),
-                        label: const Text(
-                          'Remove Photo',
-                          style: TextStyle(color: Colors.red),
-                        ),
-                      ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 18),
-          Container(
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: const Color(0xFFF8FAFC),
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: const Color(0xFFE4E7EC)),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text(
-                  'Product Catalog / Attachment',
-                  style: TextStyle(
-                    fontWeight: FontWeight.w700,
-                    fontSize: 14,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                const Text(
-                  'Upload product catalog, brochure, spec sheet, image, or PDF.',
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: Color(0xFF667085),
-                  ),
-                ),
-                const SizedBox(height: 12),
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Container(
-                      width: 52,
-                      height: 52,
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(color: const Color(0xFFE4E7EC)),
-                      ),
-                      child: Icon(
-                        _catalogIcon(_catalogContentType, _catalogName),
-                        color: const Color(0xFF475467),
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          FilledButton.icon(
-                            onPressed:
-                            _isUploadingCatalog ? null : _pickAndUploadCatalog,
-                            icon: _isUploadingCatalog
-                                ? const SizedBox(
-                              width: 16,
-                              height: 16,
-                              child:
-                              CircularProgressIndicator(strokeWidth: 2),
-                            )
-                                : const Icon(Icons.attach_file_outlined),
-                            label: Text(
-                              _isUploadingCatalog
-                                  ? 'Uploading...'
-                                  : 'Upload Catalog',
-                            ),
-                          ),
-                          const SizedBox(height: 8),
-                          if ((_catalogName ?? '').isNotEmpty)
-                            Text(
-                              _catalogName!,
-                              maxLines: 2,
-                              overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(
-                                fontSize: 12,
-                                color: Color(0xFF667085),
-                              ),
-                            )
-                          else if ((_catalogUrl ?? '').isNotEmpty)
-                            const Text(
-                              'Catalog uploaded',
-                              style: TextStyle(
-                                fontSize: 12,
-                                color: Color(0xFF667085),
-                              ),
-                            )
-                          else
-                            const Text(
-                              'Allowed formats: PDF, JPG, JPEG, PNG, WEBP',
-                              style: TextStyle(
-                                fontSize: 12,
-                                color: Color(0xFF667085),
-                              ),
-                            ),
-                          if ((_catalogUrl ?? '').isNotEmpty)
-                            TextButton.icon(
-                              onPressed:
-                              _isUploadingCatalog ? null : _removeCatalog,
-                              icon: const Icon(Icons.delete_outline,
-                                  color: Colors.red),
-                              label: const Text(
-                                'Remove Catalog',
-                                style: TextStyle(color: Colors.red),
-                              ),
-                            ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 12),
-          _buildTextField(
-            controller: _notesController,
-            label: 'Internal Notes',
-            icon: Icons.sticky_note_2_outlined,
-            maxLines: 3,
-          ),
-        ],
-      ),
-    );
-  }
-
-  // 🔴 REMOVED: _buildSummaryPanel (Strip logic requested)
-
   @override
   Widget build(BuildContext context) {
     final isEditText = isEditMode ? 'Edit Product' : 'Add Product';
@@ -1251,7 +1273,6 @@ class _ScreensAddProductState extends State<ScreensAddProduct> {
       ),
       body: LayoutBuilder(
         builder: (context, constraints) {
-          final isDesktop = constraints.maxWidth >= 1100;
           final isTablet = constraints.maxWidth >= 760;
 
           final mainForm = Form(
@@ -1857,7 +1878,7 @@ class _ScreensAddProductState extends State<ScreensAddProduct> {
                           width: 16,
                           height: 16,
                           child:
-                          CircularProgressIndicator(strokeWidth: 2.5),
+                          CircularProgressIndicator(strokeWidth: 2),
                         )
                             : const Icon(Icons.save_outlined),
                         label: Text(
@@ -1877,23 +1898,8 @@ class _ScreensAddProductState extends State<ScreensAddProduct> {
             padding: const EdgeInsets.all(16),
             child: Center(
               child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 1320),
-                child: isDesktop
-                    ? Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Expanded(flex: 7, child: mainForm),
-                    const SizedBox(width: 14),
-                    // 🔴 REMOVED: Summary panel widget call
-                  ],
-                )
-                    : Column(
-                  children: [
-                    mainForm,
-                    const SizedBox(height: 12),
-                    // 🔴 REMOVED: Summary panel widget call
-                  ],
-                ),
+                constraints: const BoxConstraints(maxWidth: 900),
+                child: mainForm,
               ),
             ),
           );
