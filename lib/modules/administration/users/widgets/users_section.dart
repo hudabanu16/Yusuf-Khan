@@ -10,8 +10,8 @@ import 'package:QUIK/modules/administration/users/widgets/user_card.dart';
 
 class UsersSection extends StatelessWidget {
   final bool isDesktop;
-  final List<QueryDocumentSnapshot> filteredUsers;
-  final List<QueryDocumentSnapshot> pageDocs;
+  final List<QueryDocumentSnapshot<Map<String, dynamic>>> filteredUsers;
+  final List<QueryDocumentSnapshot<Map<String, dynamic>>> pageDocs;
 
   final String currentUid;
 
@@ -25,12 +25,14 @@ class UsersSection extends StatelessWidget {
   final int currentPage;
 
   final void Function(int columnIndex, String field) onSort;
-  final Future<void> Function(QueryDocumentSnapshot doc) onView;
-  final Future<void> Function(QueryDocumentSnapshot doc) onEdit;
-  final Future<void> Function(QueryDocumentSnapshot doc, bool currentValue)
+  final Future<void> Function(QueryDocumentSnapshot<Map<String, dynamic>> doc)
+  onView;
+  final Future<void> Function(QueryDocumentSnapshot<Map<String, dynamic>> doc)
+  onEdit;
+  final Future<void> Function(QueryDocumentSnapshot<Map<String, dynamic>> doc)
   onToggle;
-  final void Function(String email) onResetPassword;
-  final Future<void> Function(QueryDocumentSnapshot doc) onArchive;
+  final Future<void> Function(QueryDocumentSnapshot<Map<String, dynamic>> doc)
+  onDelete;
 
   final ValueChanged<int?> onRowsChanged;
   final VoidCallback? onPrevious;
@@ -53,8 +55,7 @@ class UsersSection extends StatelessWidget {
     required this.onView,
     required this.onEdit,
     required this.onToggle,
-    required this.onResetPassword,
-    required this.onArchive,
+    required this.onDelete,
     required this.onRowsChanged,
     required this.onPrevious,
     required this.onNext,
@@ -112,37 +113,37 @@ class UsersSection extends StatelessWidget {
                 onView: onView,
                 onEdit: onEdit,
                 onToggle: onToggle,
-                onResetPassword: onResetPassword,
-                onArchive: onArchive,
+                onDelete: onDelete,
               )
             else
               Column(
                 children: pageDocs.map((doc) {
-                  final data = doc.data() as Map<String, dynamic>;
+                  final data = doc.data();
                   final isSelfUser = doc.id == currentUid;
-                  final isActive = data['isActive'] ?? true;
-                  final email = (data['email'] ?? '').toString();
+                  final isDeleted = (data['isDeleted'] ?? false) == true;
 
-                  return UserCard(
-                    doc: doc,
-                    currentUid: currentUid,
-                    onView: () async {
-                      await onView(doc);
-                    },
-                    onEdit: () async {
-                      await onEdit(doc);
-                    },
-                    onToggle: isSelfUser
-                        ? null
-                        : () async {
-                      await onToggle(doc, isActive);
-                    },
-                    onResetPassword: () => onResetPassword(email),
-                    onArchive: isSelfUser
-                        ? null
-                        : () async {
-                      await onArchive(doc);
-                    },
+                  return Padding(
+                    padding: const EdgeInsets.only(bottom: 10),
+                    child: UserCard(
+                      doc: doc,
+                      currentUid: currentUid,
+                      onView: () async {
+                        await onView(doc);
+                      },
+                      onEdit: () async {
+                        await onEdit(doc);
+                      },
+                      onToggle: (isSelfUser || isDeleted)
+                          ? null
+                          : () async {
+                        await onToggle(doc);
+                      },
+                      onDelete: (isSelfUser || isDeleted)
+                          ? null
+                          : () async {
+                        await onDelete(doc);
+                      },
+                    ),
                   );
                 }).toList(),
               ),

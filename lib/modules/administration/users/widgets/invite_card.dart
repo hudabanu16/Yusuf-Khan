@@ -22,21 +22,37 @@ class InviteCard extends StatelessWidget {
     return DateTime.now().isAfter(expiresAt.toDate());
   }
 
+  String _normalizeText(String? value) {
+    return (value ?? '').trim();
+  }
+
+  String _normalizeRole(String? value) {
+    return _normalizeText(value).toLowerCase();
+  }
+
+  String _normalizeStatus(String? value) {
+    return _normalizeText(value).toLowerCase();
+  }
+
   @override
   Widget build(BuildContext context) {
     final data = doc.data();
 
-    final name = (data['name'] ?? 'Unnamed Invite').toString().trim();
-    final role = (data['role'] ?? '').toString().trim();
-    final code = (data['code'] ?? '').toString().trim();
-    final email = (data['email'] ?? '').toString().trim();
-    final department = (data['department'] ?? '').toString().trim();
-    final designation = (data['designation'] ?? '').toString().trim();
-    final branchName = (data['branchName'] ?? '').toString().trim();
+    final name = _normalizeText(data['name']).isEmpty
+        ? 'Unnamed Invite'
+        : _normalizeText(data['name']);
+    final role = _normalizeRole(data['role']);
+    final code = _normalizeText(data['code']);
+    final email = _normalizeText(data['email']);
+    final department = _normalizeText(data['department']);
+    final designation = _normalizeText(data['designation']);
+    final branchName = _normalizeText(data['branchName']);
 
     final createdAt = formatTimestamp(data['createdAt']);
 
-    final status = (data['status'] ?? 'pending').toString().toLowerCase();
+    final status = _normalizeStatus(data['status'].toString().isEmpty
+        ? 'pending'
+        : data['status'].toString());
     final expiresAt = data['expiresAt'] as Timestamp?;
     final isExpired = _isExpired(expiresAt);
 
@@ -58,7 +74,6 @@ class InviteCard extends StatelessWidget {
               children: [
                 _buildHeader(name: name, role: role),
                 const SizedBox(height: 6),
-
                 Text(
                   designation.isNotEmpty
                       ? formatDesignation(designation)
@@ -68,7 +83,6 @@ class InviteCard extends StatelessWidget {
                     fontSize: 13,
                   ),
                 ),
-
                 if (email.isNotEmpty && designation.isNotEmpty) ...[
                   const SizedBox(height: 4),
                   Text(
@@ -79,37 +93,30 @@ class InviteCard extends StatelessWidget {
                     ),
                   ),
                 ],
-
                 const SizedBox(height: 8),
-
                 Wrap(
                   spacing: 8,
                   runSpacing: 6,
                   children: [
-                    /// STATUS BADGE (NEW)
                     _buildStatusBadge(status, isExpired),
-
                     if (department.isNotEmpty)
                       MiniBadge(
                         text: formatDepartment(department),
                         textColor: const Color(0xFF475569),
                         backgroundColor: const Color(0xFFF1F5F9),
                       ),
-
                     if (branchName.isNotEmpty)
                       MiniBadge(
                         text: formatBranch(branchName),
                         textColor: accentColor,
                         backgroundColor: const Color(0x1A2563EB),
                       ),
-
                     if (code.isNotEmpty)
                       MiniBadge(
                         text: 'Code: $code',
                         textColor: primaryColor,
                         backgroundColor: const Color(0xFFE0F2FE),
                       ),
-
                     MiniBadge(
                       text: createdAt,
                       textColor: const Color(0xFF475569),
@@ -121,7 +128,11 @@ class InviteCard extends StatelessWidget {
             ),
           ),
           const SizedBox(width: 8),
-          _buildDeleteButton(context, status, isExpired),
+          _buildDeleteButton(
+            context,
+            status,
+            isExpired,
+          ),
         ],
       ),
     );
@@ -143,14 +154,12 @@ class InviteCard extends StatelessWidget {
           textColor: Colors.white,
           backgroundColor: Colors.green,
         );
-
       case 'cancelled':
         return const MiniBadge(
           text: 'Cancelled',
           textColor: Colors.white,
           backgroundColor: Colors.grey,
         );
-
       default:
         return const MiniBadge(
           text: 'Pending',
@@ -185,7 +194,7 @@ class InviteCard extends StatelessWidget {
       crossAxisAlignment: WrapCrossAlignment.center,
       children: [
         Text(
-          name.isEmpty ? 'Unnamed Invite' : name,
+          name,
           style: const TextStyle(
             fontWeight: FontWeight.w700,
             color: primaryColor,
@@ -207,9 +216,11 @@ class InviteCard extends StatelessWidget {
       String status,
       bool isExpired,
       ) {
+    final canCancel = status == 'pending' && !isExpired;
+
     return IconButton(
-      tooltip: 'Cancel Invite',
-      onPressed: (status == 'accepted')
+      tooltip: canCancel ? 'Cancel Invite' : 'Invite cannot be cancelled',
+      onPressed: !canCancel
           ? null
           : () async {
         final confirm = await showDialog<bool>(
@@ -217,7 +228,8 @@ class InviteCard extends StatelessWidget {
           builder: (_) => AlertDialog(
             title: const Text('Cancel Invite'),
             content: const Text(
-                'Are you sure you want to cancel this invite?'),
+              'Are you sure you want to cancel this invite?',
+            ),
             actions: [
               TextButton(
                 onPressed: () => Navigator.pop(context, false),
@@ -232,7 +244,20 @@ class InviteCard extends StatelessWidget {
         );
 
         if (confirm == true) {
-          await onDelete();
+          try {
+            await onDelete();
+          } catch (e) {
+            if (!context.mounted) return;
+
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text(
+                  e.toString().replaceFirst('Exception: ', ''),
+                ),
+                backgroundColor: dangerColor,
+              ),
+            );
+          }
         }
       },
       style: IconButton.styleFrom(
@@ -242,9 +267,9 @@ class InviteCard extends StatelessWidget {
           borderRadius: BorderRadius.circular(12),
         ),
       ),
-      icon: const Icon(
+      icon: Icon(
         Icons.close,
-        color: dangerColor,
+        color: canCancel ? dangerColor : mutedTextColor,
       ),
     );
   }

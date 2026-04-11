@@ -33,10 +33,13 @@ Future<void> showEditUserDialog({
 }) async {
   final data = doc.data();
 
-  String selectedRole = (data['role'] ?? UserRoles.sales).toString().trim();
+  String selectedRole = _normalizeRoleValue(
+    (data['role'] ?? UserRoles.sales).toString(),
+  );
   bool isActive = (data['isActive'] ?? true) == true;
   final bool isDeleted = (data['isDeleted'] ?? false) == true;
   final bool isSelfUser = doc.id == currentUid;
+  bool isSaving = false;
 
   final List<String> departmentOptions = const [
     'Sales',
@@ -117,11 +120,15 @@ Future<void> showEditUserDialog({
     allowedOptions: designationOptions,
   );
 
-  String selectedAccessScope =
-  (data['accessScope'] ?? AccessScope.company).toString().trim();
+  String selectedAccessScope = _normalizeAccessScopeValue(
+    (data['accessScope'] ?? AccessScope.company).toString(),
+  );
 
-  Map<String, Map<String, bool>> permissions = _inflatePermissionsFromExisting(
-    Map<String, dynamic>.from(data['permissions'] ?? {}),
+  Map<String, dynamic> permissions = _buildUiPermissionState(
+    role: selectedRole,
+    permissions: Map<String, dynamic>.from(
+      data['permissions'] ?? const <String, dynamic>{},
+    ),
   );
 
   await showDialog<void>(
@@ -130,6 +137,57 @@ Future<void> showEditUserDialog({
     builder: (_) {
       return StatefulBuilder(
         builder: (context, setLocalState) {
+          Future<void> saveUser() async {
+            if (isSaving) return;
+
+            setLocalState(() {
+              isSaving = true;
+            });
+
+            try {
+              await onSaveUser(
+                companyId: companyId,
+                userUid: doc.id,
+                role: selectedRole,
+                isActive: isDeleted ? false : isActive,
+                permissions: permissions,
+                department: selectedDepartment.trim(),
+                designation: selectedDesignation.trim(),
+                accessScope: selectedAccessScope.trim(),
+              );
+
+              if (!context.mounted) return;
+
+              Navigator.pop(context);
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text('User updated successfully'),
+                  backgroundColor: successColor,
+                ),
+              );
+            } catch (e) {
+              if (!context.mounted) return;
+
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text(_friendlySaveError(e)),
+                  backgroundColor: dangerColor,
+                ),
+              );
+            } finally {
+              if (context.mounted) {
+                setLocalState(() {
+                  isSaving = false;
+                });
+              }
+            }
+          }
+
+          final visiblePermissions = _buildUiPermissionState(
+            role: selectedRole,
+            permissions: permissions,
+          );
+
           return Dialog(
             insetPadding:
             const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
@@ -175,7 +233,9 @@ Future<void> showEditUserDialog({
                                 ),
                               ),
                               OutlinedButton.icon(
-                                onPressed: () => Navigator.pop(context),
+                                onPressed: isSaving
+                                    ? null
+                                    : () => Navigator.pop(context),
                                 icon: const Icon(Icons.close_rounded),
                                 label: const Text('Close'),
                                 style: OutlinedButton.styleFrom(
@@ -247,7 +307,11 @@ Future<void> showEditUserDialog({
                                       onChanged: (value) {
                                         if (value == null) return;
                                         setLocalState(() {
-                                          selectedRole = value;
+                                          selectedRole = _normalizeRoleValue(value);
+                                          permissions = _buildUiPermissionState(
+                                            role: selectedRole,
+                                            permissions: permissions,
+                                          );
                                         });
                                       },
                                     ),
@@ -289,14 +353,15 @@ Future<void> showEditUserDialog({
                                     right: _buildDropdownField(
                                       label: 'Access Scope',
                                       value: selectedAccessScope,
-                                      options: accessScopeLabels.keys.toList(),
+                                      options: accessScopeList,
                                       icon: Icons.lock_open_outlined,
                                       labelBuilder: (value) =>
                                       accessScopeLabels[value] ?? value,
                                       onChanged: (value) {
                                         if (value == null) return;
                                         setLocalState(() {
-                                          selectedAccessScope = value;
+                                          selectedAccessScope =
+                                              _normalizeAccessScopeValue(value);
                                         });
                                       },
                                     ),
@@ -319,7 +384,7 @@ Future<void> showEditUserDialog({
                                 ),
                                 child: SwitchListTile.adaptive(
                                   value: isDeleted ? false : isActive,
-                                  onChanged: (isSelfUser || isDeleted)
+                                  onChanged: (isSelfUser || isDeleted || isSaving)
                                       ? null
                                       : (value) {
                                     setLocalState(() {
@@ -362,31 +427,52 @@ Future<void> showEditUserDialog({
                                 selectedDesignation: selectedDesignation,
                                 selectedAccessScope: selectedAccessScope,
                                 selectedPermissionsCount:
-                                _selectedPermissionCount(permissions),
+                                _selectedPermissionCount(visiblePermissions),
                               ),
                             ),
                             const SizedBox(height: 18),
                             _buildSectionCard(
                               title: 'Module Permissions',
                               subtitle:
-                              'Permissions are aligned with QUIK ERP modules and submodules.',
+                              'Permissions are aligned with QUIK ERP modules, submodules, and actions.',
                               trailing: TextButton(
-                                onPressed: () {
+                                onPressed: isSaving
+                                    ? null
+                                    : () {
                                   setLocalState(() {
-                                    permissions =
-                                        _applyRoleDefaults(selectedRole);
+                                    permissions = _buildUiPermissionState(
+                                      role: selectedRole,
+                                      permissions: getDefaultPermissions(
+                                        selectedRole,
+                                      ),
+                                    );
                                   });
                                 },
                                 child: const Text('Apply Role Defaults'),
                               ),
                               child: Column(
-                                children: permissions.entries.map((entry) {
+                                children:
+                                permissionModuleOrder.map((moduleKey) {
                                   return _buildPermissionModuleCard(
-                                    moduleKey: entry.key,
-                                    submodules: entry.value,
-                                    onChanged: (value, key) {
+                                    moduleKey: moduleKey,
+                                    modulePermissions: _readModulePermissions(
+                                      visiblePermissions,
+                                      moduleKey,
+                                    ),
+                                    onActionChanged: (
+                                        String module,
+                                        String? submodule,
+                                        String action,
+                                        bool value,
+                                        ) {
                                       setLocalState(() {
-                                        permissions[entry.key]![key] = value;
+                                        permissions = _setPermissionValue(
+                                          permissions: permissions,
+                                          moduleKey: module,
+                                          submoduleKey: submodule,
+                                          action: action,
+                                          value: value,
+                                        );
                                       });
                                     },
                                   );
@@ -418,8 +504,9 @@ Future<void> showEditUserDialog({
                                         SizedBox(
                                           width: double.infinity,
                                           child: OutlinedButton(
-                                            onPressed: () =>
-                                                Navigator.pop(context),
+                                            onPressed: isSaving
+                                                ? null
+                                                : () => Navigator.pop(context),
                                             style: OutlinedButton.styleFrom(
                                               foregroundColor:
                                               _editHeadingTextColor,
@@ -442,39 +529,7 @@ Future<void> showEditUserDialog({
                                         SizedBox(
                                           width: double.infinity,
                                           child: ElevatedButton(
-                                            onPressed: () async {
-                                              await onSaveUser(
-                                                companyId: companyId,
-                                                userUid: doc.id,
-                                                role: selectedRole,
-                                                isActive:
-                                                isDeleted ? false : isActive,
-                                                permissions:
-                                                _flattenPermissionsForPayload(
-                                                  permissions,
-                                                ),
-                                                department:
-                                                selectedDepartment.trim(),
-                                                designation:
-                                                selectedDesignation.trim(),
-                                                accessScope:
-                                                selectedAccessScope.trim(),
-                                              );
-
-                                              if (!context.mounted) return;
-
-                                              Navigator.pop(context);
-                                              ScaffoldMessenger.of(context)
-                                                  .showSnackBar(
-                                                const SnackBar(
-                                                  content: Text(
-                                                    'User updated successfully',
-                                                  ),
-                                                  backgroundColor:
-                                                  successColor,
-                                                ),
-                                              );
-                                            },
+                                            onPressed: isSaving ? null : saveUser,
                                             style: ElevatedButton.styleFrom(
                                               backgroundColor:
                                               _editPrimaryColor,
@@ -489,10 +544,25 @@ Future<void> showEditUserDialog({
                                               ),
                                               elevation: 0,
                                             ),
-                                            child: const Text(
+                                            child: isSaving
+                                                ? const SizedBox(
+                                              height: 18,
+                                              width: 18,
+                                              child:
+                                              CircularProgressIndicator(
+                                                strokeWidth: 2,
+                                                valueColor:
+                                                AlwaysStoppedAnimation<
+                                                    Color>(
+                                                  Colors.white,
+                                                ),
+                                              ),
+                                            )
+                                                : const Text(
                                               'Save Changes',
                                               style: TextStyle(
-                                                fontWeight: FontWeight.w600,
+                                                fontWeight:
+                                                FontWeight.w600,
                                               ),
                                             ),
                                           ),
@@ -504,8 +574,9 @@ Future<void> showEditUserDialog({
                                   return Row(
                                     children: [
                                       OutlinedButton(
-                                        onPressed: () =>
-                                            Navigator.pop(context),
+                                        onPressed: isSaving
+                                            ? null
+                                            : () => Navigator.pop(context),
                                         style: OutlinedButton.styleFrom(
                                           foregroundColor:
                                           _editHeadingTextColor,
@@ -525,38 +596,7 @@ Future<void> showEditUserDialog({
                                       ),
                                       const Spacer(),
                                       ElevatedButton(
-                                        onPressed: () async {
-                                          await onSaveUser(
-                                            companyId: companyId,
-                                            userUid: doc.id,
-                                            role: selectedRole,
-                                            isActive:
-                                            isDeleted ? false : isActive,
-                                            permissions:
-                                            _flattenPermissionsForPayload(
-                                              permissions,
-                                            ),
-                                            department:
-                                            selectedDepartment.trim(),
-                                            designation:
-                                            selectedDesignation.trim(),
-                                            accessScope:
-                                            selectedAccessScope.trim(),
-                                          );
-
-                                          if (!context.mounted) return;
-
-                                          Navigator.pop(context);
-                                          ScaffoldMessenger.of(context)
-                                              .showSnackBar(
-                                            const SnackBar(
-                                              content: Text(
-                                                'User updated successfully',
-                                              ),
-                                              backgroundColor: successColor,
-                                            ),
-                                          );
-                                        },
+                                        onPressed: isSaving ? null : saveUser,
                                         style: ElevatedButton.styleFrom(
                                           backgroundColor: _editPrimaryColor,
                                           foregroundColor: Colors.white,
@@ -570,7 +610,19 @@ Future<void> showEditUserDialog({
                                           ),
                                           elevation: 0,
                                         ),
-                                        child: const Text(
+                                        child: isSaving
+                                            ? const SizedBox(
+                                          height: 18,
+                                          width: 18,
+                                          child:
+                                          CircularProgressIndicator(
+                                            strokeWidth: 2,
+                                            valueColor:
+                                            AlwaysStoppedAnimation<
+                                                Color>(Colors.white),
+                                          ),
+                                        )
+                                            : const Text(
                                           'Save Changes',
                                           style: TextStyle(
                                             fontWeight: FontWeight.w600,
@@ -601,7 +653,9 @@ Widget _buildHeaderCard(Map<String, dynamic> data) {
   final name = _readDisplayName(data);
   final email = (data['email'] ?? '').toString().trim();
   final phone = (data['phone'] ?? '').toString().trim();
-  final role = (data['role'] ?? UserRoles.sales).toString().trim();
+  final role = _normalizeRoleValue(
+    (data['role'] ?? UserRoles.sales).toString(),
+  );
   final department = (data['department'] ?? '').toString().trim();
   final designation = (data['designation'] ?? '').toString().trim();
 
@@ -896,11 +950,23 @@ Widget _buildEditSummary({
 
 Widget _buildPermissionModuleCard({
   required String moduleKey,
-  required Map<String, bool> submodules,
-  required void Function(bool value, String key) onChanged,
+  required Map<String, dynamic> modulePermissions,
+  required void Function(
+      String moduleKey,
+      String? submoduleKey,
+      String action,
+      bool value,
+      ) onActionChanged,
 }) {
-  final selectedCount = submodules.values.where((e) => e).length;
-  final totalCount = submodules.length;
+  final moduleLabel = formatModuleLabel(moduleKey);
+  final selectedCount = _countEnabledActionsInModule(
+    moduleKey: moduleKey,
+    modulePermissions: modulePermissions,
+  );
+  final totalCount = _countTotalActionsInModule(
+    moduleKey: moduleKey,
+    modulePermissions: modulePermissions,
+  );
 
   return Container(
     margin: const EdgeInsets.only(bottom: 14),
@@ -922,7 +988,7 @@ Widget _buildPermissionModuleCard({
           children: [
             Expanded(
               child: Text(
-                _moduleLabel(moduleKey),
+                moduleLabel,
                 style: const TextStyle(
                   fontSize: 15,
                   fontWeight: FontWeight.w700,
@@ -951,466 +1017,248 @@ Widget _buildPermissionModuleCard({
             ),
           ],
         ),
-        children: [
-          Wrap(
-            spacing: 12,
-            runSpacing: 12,
-            children: submodules.entries.map((entry) {
-              return _PermissionChip(
-                label: _submoduleLabel(entry.key),
-                value: entry.value,
-                onChanged: (value) => onChanged(value, entry.key),
-              );
-            }).toList(),
+        children: moduleKey == PermissionModules.dashboard
+            ? [
+          _buildActionGroup(
+            title: 'Dashboard',
+            actions: Map<String, bool>.from(modulePermissions),
+            onChanged: (action, value) => onActionChanged(
+              moduleKey,
+              null,
+              action,
+              value,
+            ),
           ),
-        ],
+        ]
+            : (permissionSubmoduleMap[moduleKey] ?? const <String>[])
+            .map((submoduleKey) {
+          final submodulePermissions =
+          Map<String, bool>.from(modulePermissions[submoduleKey] ?? {});
+          return Container(
+            margin: const EdgeInsets.only(bottom: 12),
+            padding: const EdgeInsets.all(14),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: const Color(0xFFE2E8F0)),
+            ),
+            child: _buildActionGroup(
+              title: formatSubmoduleLabel(submoduleKey),
+              actions: submodulePermissions,
+              onChanged: (action, value) => onActionChanged(
+                moduleKey,
+                submoduleKey,
+                action,
+                value,
+              ),
+            ),
+          );
+        }).toList(),
       ),
     ),
   );
 }
 
-Map<String, Map<String, bool>> _emptyPermissionMap() {
-  return {
-    'dashboard': {
-      'dashboard': false,
-    },
-    'sales': {
-      'inquiries': false,
-      'quotations': false,
-      'salesOrder': false,
-      'followUps': false,
-      'tasks': false,
-      'meetings': false,
-    },
-    'crm': {
-      'customers': false,
-      'contacts': false,
-      'customerVisits': false,
-      'communicationHistory': false,
-    },
-    'purchase': {
-      'vendors': false,
-      'purchaseOrders': false,
-      'grnMaterialReceipt': false,
-      'vendorLedger': false,
-    },
-    'inventory': {
-      'products': false,
-      'stockSummary': false,
-      'stockIn': false,
-      'stockOut': false,
-      'warehouse': false,
-      'lowStockAlerts': false,
-    },
-    'dispatch': {
-      'readyForDispatch': false,
-      'dispatchChallans': false,
-      'shipmentTracking': false,
-      'deliveredOrders': false,
-    },
-    'finance': {
-      'proformaInvoice': false,
-      'taxInvoice': false,
-      'paymentReceived': false,
-      'outstanding': false,
-      'expenseEntries': false,
-    },
-    'reports': {
-      'salesReport': false,
-      'inquiryReport': false,
-      'customerReport': false,
-      'productReport': false,
-      'paymentReport': false,
-    },
-    'administration': {
-      'users': false,
-      'rolesPermissions': false,
-      'companyProfile': false,
-      'branches': false,
-      'auditLogs': false,
-    },
-  };
+Widget _buildActionGroup({
+  required String title,
+  required Map<String, bool> actions,
+  required void Function(String action, bool value) onChanged,
+}) {
+  final selectedCount = actions.values.where((e) => e).length;
+  final totalCount = actions.length;
+
+  return Column(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      Row(
+        children: [
+          Expanded(
+            child: Text(
+              title,
+              style: const TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w700,
+                color: _editHeadingTextColor,
+              ),
+            ),
+          ),
+          Text(
+            '$selectedCount / $totalCount',
+            style: const TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+              color: _editMutedTextColor,
+            ),
+          ),
+        ],
+      ),
+      const SizedBox(height: 12),
+      Wrap(
+        spacing: 12,
+        runSpacing: 12,
+        children: actions.entries.map((entry) {
+          return _PermissionChip(
+            label: formatPermissionActionLabel(entry.key),
+            value: entry.value,
+            onChanged: (value) => onChanged(entry.key, value),
+          );
+        }).toList(),
+      ),
+    ],
+  );
 }
 
-Map<String, Map<String, bool>> _inflatePermissionsFromExisting(
-    Map<String, dynamic> existingPermissions,
+Map<String, dynamic> _buildUiPermissionState({
+  required String role,
+  required Map<String, dynamic>? permissions,
+}) {
+  return mergePermissionsWithCanonicalShape(
+    permissions ?? getDefaultPermissions(role),
+  );
+}
+
+Map<String, dynamic> _readModulePermissions(
+    Map<String, dynamic> permissions,
+    String moduleKey,
     ) {
-  final permissions = _emptyPermissionMap();
+  final moduleValue = permissions[moduleKey];
 
-  for (final entry in existingPermissions.entries) {
-    final key = entry.key;
-    final value = entry.value == true;
-
-    if (key.contains('.')) {
-      final parts = key.split('.');
-      if (parts.length == 2) {
-        final moduleKey = parts[0];
-        final subKey = parts[1];
-
-        if (permissions.containsKey(moduleKey) &&
-            permissions[moduleKey]!.containsKey(subKey)) {
-          permissions[moduleKey]![subKey] = value;
-        }
-      }
-    }
+  if (moduleKey == PermissionModules.dashboard) {
+    return moduleValue is Map<String, dynamic>
+        ? Map<String, dynamic>.from(moduleValue)
+        : <String, dynamic>{};
   }
 
-  const legacyKeyMapping = {
-    'dashboard': 'dashboard.dashboard',
-    'customers': 'crm.customers',
-    'contacts': 'crm.contacts',
-    'customerVisits': 'crm.customerVisits',
-    'communicationHistory': 'crm.communicationHistory',
-    'inquiries': 'sales.inquiries',
-    'quotations': 'sales.quotations',
-    'salesOrder': 'sales.salesOrder',
-    'followUps': 'sales.followUps',
-    'tasks': 'sales.tasks',
-    'meetings': 'sales.meetings',
-    'vendors': 'purchase.vendors',
-    'purchaseOrders': 'purchase.purchaseOrders',
-    'grn': 'purchase.grnMaterialReceipt',
-    'grnMaterialReceipt': 'purchase.grnMaterialReceipt',
-    'vendorLedger': 'purchase.vendorLedger',
-    'products': 'inventory.products',
-    'stockSummary': 'inventory.stockSummary',
-    'stockIn': 'inventory.stockIn',
-    'stockOut': 'inventory.stockOut',
-    'warehouse': 'inventory.warehouse',
-    'lowStockAlerts': 'inventory.lowStockAlerts',
-    'readyForDispatch': 'dispatch.readyForDispatch',
-    'dispatchChallans': 'dispatch.dispatchChallans',
-    'shipmentTracking': 'dispatch.shipmentTracking',
-    'deliveredOrders': 'dispatch.deliveredOrders',
-    'invoice': 'finance.taxInvoice',
-    'proformaInvoice': 'finance.proformaInvoice',
-    'taxInvoice': 'finance.taxInvoice',
-    'payments': 'finance.paymentReceived',
-    'paymentReceived': 'finance.paymentReceived',
-    'outstanding': 'finance.outstanding',
-    'expenses': 'finance.expenseEntries',
-    'expenseEntries': 'finance.expenseEntries',
-    'reports': 'reports.salesReport',
-    'salesReport': 'reports.salesReport',
-    'inquiryReport': 'reports.inquiryReport',
-    'customerReport': 'reports.customerReport',
-    'productReport': 'reports.productReport',
-    'paymentReport': 'reports.paymentReport',
-    'userManagement': 'administration.users',
-    'users': 'administration.users',
-    'rolesPermissions': 'administration.rolesPermissions',
-    'companyProfile': 'administration.companyProfile',
-    'branches': 'administration.branches',
-    'auditLogs': 'administration.auditLogs',
-  };
-
-  for (final entry in legacyKeyMapping.entries) {
-    if (existingPermissions[entry.key] == true) {
-      final parts = entry.value.split('.');
-      if (parts.length == 2) {
-        final moduleKey = parts[0];
-        final subKey = parts[1];
-        if (permissions.containsKey(moduleKey) &&
-            permissions[moduleKey]!.containsKey(subKey)) {
-          permissions[moduleKey]![subKey] = true;
-        }
-      }
-    }
-  }
-
-  return permissions;
+  return moduleValue is Map<String, dynamic>
+      ? Map<String, dynamic>.from(moduleValue)
+      : <String, dynamic>{};
 }
 
-Map<String, Map<String, bool>> _applyRoleDefaults(String role) {
-  final permissions = _emptyPermissionMap();
-  final normalizedRole = role.trim().toLowerCase();
+Map<String, dynamic> _setPermissionValue({
+  required Map<String, dynamic> permissions,
+  required String moduleKey,
+  required String? submoduleKey,
+  required String action,
+  required bool value,
+}) {
+  final updated = _deepCopyPermissions(permissions);
 
-  void setModulePermissions(String moduleKey, List<String> enabledKeys) {
-    if (!permissions.containsKey(moduleKey)) return;
-    for (final subKey in permissions[moduleKey]!.keys) {
-      permissions[moduleKey]![subKey] = enabledKeys.contains(subKey);
+  if (submoduleKey == null || submoduleKey.isEmpty) {
+    final moduleActions = Map<String, dynamic>.from(updated[moduleKey] ?? {});
+    moduleActions[action] = value;
+    updated[moduleKey] = moduleActions;
+    return updated;
+  }
+
+  final moduleMap = Map<String, dynamic>.from(updated[moduleKey] ?? {});
+  final submoduleMap = Map<String, dynamic>.from(moduleMap[submoduleKey] ?? {});
+  submoduleMap[action] = value;
+  moduleMap[submoduleKey] = submoduleMap;
+  updated[moduleKey] = moduleMap;
+
+  return updated;
+}
+
+Map<String, dynamic> _deepCopyPermissions(Map<String, dynamic> input) {
+  final result = <String, dynamic>{};
+
+  for (final entry in input.entries) {
+    final value = entry.value;
+    if (value is Map) {
+      result[entry.key] = _deepCopyPermissions(
+        Map<String, dynamic>.from(value),
+      );
+    } else {
+      result[entry.key] = value;
     }
   }
 
-  void setAllPermissions(bool value) {
-    permissions.forEach((_, submodules) {
-      for (final subKey in submodules.keys) {
-        submodules[subKey] = value;
-      }
-    });
-  }
-
-  switch (normalizedRole) {
-    case 'admin':
-      setAllPermissions(true);
-      break;
-
-    case 'manager':
-      setModulePermissions('dashboard', ['dashboard']);
-      setModulePermissions('sales', [
-        'inquiries',
-        'quotations',
-        'salesOrder',
-        'followUps',
-        'tasks',
-        'meetings',
-      ]);
-      setModulePermissions('crm', [
-        'customers',
-        'contacts',
-        'customerVisits',
-        'communicationHistory',
-      ]);
-      setModulePermissions('purchase', [
-        'vendors',
-        'purchaseOrders',
-        'grnMaterialReceipt',
-        'vendorLedger',
-      ]);
-      setModulePermissions('inventory', [
-        'products',
-        'stockSummary',
-        'stockIn',
-        'stockOut',
-        'warehouse',
-        'lowStockAlerts',
-      ]);
-      setModulePermissions('dispatch', [
-        'readyForDispatch',
-        'dispatchChallans',
-        'shipmentTracking',
-        'deliveredOrders',
-      ]);
-      setModulePermissions('finance', [
-        'proformaInvoice',
-        'taxInvoice',
-        'paymentReceived',
-        'outstanding',
-      ]);
-      setModulePermissions('reports', [
-        'salesReport',
-        'inquiryReport',
-        'customerReport',
-        'productReport',
-        'paymentReport',
-      ]);
-      setModulePermissions('administration', [
-        'users',
-        'companyProfile',
-        'branches',
-      ]);
-      break;
-
-    case 'sales':
-      setModulePermissions('dashboard', ['dashboard']);
-      setModulePermissions('sales', [
-        'inquiries',
-        'quotations',
-        'salesOrder',
-        'followUps',
-        'tasks',
-        'meetings',
-      ]);
-      setModulePermissions('crm', [
-        'customers',
-        'contacts',
-        'customerVisits',
-        'communicationHistory',
-      ]);
-      setModulePermissions('inventory', ['products']);
-      setModulePermissions('reports', [
-        'salesReport',
-        'inquiryReport',
-        'customerReport',
-        'productReport',
-      ]);
-      break;
-
-    case 'service':
-      setModulePermissions('dashboard', ['dashboard']);
-      setModulePermissions('crm', [
-        'customers',
-        'contacts',
-        'communicationHistory',
-      ]);
-      setModulePermissions('inventory', [
-        'products',
-        'stockSummary',
-      ]);
-      setModulePermissions('dispatch', [
-        'shipmentTracking',
-        'deliveredOrders',
-      ]);
-      break;
-
-    case 'accounts':
-      setModulePermissions('dashboard', ['dashboard']);
-      setModulePermissions('finance', [
-        'proformaInvoice',
-        'taxInvoice',
-        'paymentReceived',
-        'outstanding',
-        'expenseEntries',
-      ]);
-      setModulePermissions('reports', [
-        'salesReport',
-        'paymentReport',
-        'customerReport',
-      ]);
-      setModulePermissions('crm', [
-        'customers',
-        'contacts',
-      ]);
-      break;
-
-    case 'dispatch':
-      setModulePermissions('dashboard', ['dashboard']);
-      setModulePermissions('dispatch', [
-        'readyForDispatch',
-        'dispatchChallans',
-        'shipmentTracking',
-        'deliveredOrders',
-      ]);
-      setModulePermissions('inventory', [
-        'products',
-        'stockSummary',
-        'warehouse',
-      ]);
-      setModulePermissions('sales', [
-        'salesOrder',
-      ]);
-      break;
-
-    case 'viewer':
-      setModulePermissions('dashboard', ['dashboard']);
-      setModulePermissions('sales', [
-        'inquiries',
-        'quotations',
-      ]);
-      setModulePermissions('crm', [
-        'customers',
-        'contacts',
-      ]);
-      setModulePermissions('inventory', [
-        'products',
-        'stockSummary',
-      ]);
-      setModulePermissions('reports', [
-        'salesReport',
-        'inquiryReport',
-      ]);
-      break;
-
-    default:
-      setModulePermissions('dashboard', ['dashboard']);
-      setModulePermissions('sales', [
-        'inquiries',
-        'quotations',
-        'followUps',
-      ]);
-      setModulePermissions('crm', [
-        'customers',
-        'contacts',
-      ]);
-  }
-
-  return permissions;
+  return result;
 }
 
-Map<String, dynamic> _flattenPermissionsForPayload(
-    Map<String, Map<String, bool>> permissions,
-    ) {
-  final Map<String, dynamic> flat = {};
-
-  permissions.forEach((moduleKey, submodules) {
-    for (final entry in submodules.entries) {
-      flat['$moduleKey.${entry.key}'] = entry.value;
-    }
-  });
-
-  return flat;
-}
-
-int _selectedPermissionCount(Map<String, Map<String, bool>> permissions) {
+int _selectedPermissionCount(Map<String, dynamic> permissions) {
   int count = 0;
-  permissions.forEach((_, submodules) {
-    for (final value in submodules.values) {
-      if (value) count++;
+
+  for (final moduleKey in permissionModuleOrder) {
+    final moduleValue = permissions[moduleKey];
+
+    if (moduleKey == PermissionModules.dashboard) {
+      if (moduleValue is Map) {
+        for (final value in moduleValue.values) {
+          if (value == true) count++;
+        }
+      }
+      continue;
     }
-  });
+
+    if (moduleValue is Map) {
+      for (final submoduleValue in moduleValue.values) {
+        if (submoduleValue is Map) {
+          for (final actionValue in submoduleValue.values) {
+            if (actionValue == true) count++;
+          }
+        }
+      }
+    }
+  }
+
   return count;
 }
 
-String _moduleLabel(String moduleKey) {
-  switch (moduleKey) {
-    case 'dashboard':
-      return 'Dashboard';
-    case 'sales':
-      return 'Sales';
-    case 'crm':
-      return 'CRM';
-    case 'purchase':
-      return 'Purchase';
-    case 'inventory':
-      return 'Inventory';
-    case 'dispatch':
-      return 'Dispatch';
-    case 'finance':
-      return 'Finance';
-    case 'reports':
-      return 'Reports';
-    case 'administration':
-      return 'Administration';
-    default:
-      return moduleKey;
+int _countEnabledActionsInModule({
+  required String moduleKey,
+  required Map<String, dynamic> modulePermissions,
+}) {
+  int count = 0;
+
+  if (moduleKey == PermissionModules.dashboard) {
+    for (final value in modulePermissions.values) {
+      if (value == true) count++;
+    }
+    return count;
   }
+
+  for (final submoduleValue in modulePermissions.values) {
+    if (submoduleValue is Map) {
+      for (final actionValue in submoduleValue.values) {
+        if (actionValue == true) count++;
+      }
+    }
+  }
+
+  return count;
 }
 
-String _submoduleLabel(String key) {
-  const labels = {
-    'dashboard': 'Dashboard',
-    'inquiries': 'Inquiries',
-    'quotations': 'Quotations',
-    'salesOrder': 'Sales Order',
-    'followUps': 'Follow-ups',
-    'tasks': 'Tasks',
-    'meetings': 'Meetings',
-    'customers': 'Customers',
-    'contacts': 'Contacts',
-    'customerVisits': 'Customer Visits',
-    'communicationHistory': 'Communication History',
-    'vendors': 'Vendors',
-    'purchaseOrders': 'Purchase Orders',
-    'grnMaterialReceipt': 'GRN / Material Receipt',
-    'vendorLedger': 'Vendor Ledger',
-    'products': 'Products',
-    'stockSummary': 'Stock Summary',
-    'stockIn': 'Stock In',
-    'stockOut': 'Stock Out',
-    'warehouse': 'Warehouse',
-    'lowStockAlerts': 'Low Stock Alerts',
-    'readyForDispatch': 'Ready for Dispatch',
-    'dispatchChallans': 'Dispatch Challans',
-    'shipmentTracking': 'Shipment Tracking',
-    'deliveredOrders': 'Delivered Orders',
-    'proformaInvoice': 'Proforma Invoice',
-    'taxInvoice': 'Tax Invoice',
-    'paymentReceived': 'Payment Received',
-    'outstanding': 'Outstanding',
-    'expenseEntries': 'Expense Entries',
-    'salesReport': 'Sales Report',
-    'inquiryReport': 'Inquiry Report',
-    'customerReport': 'Customer Report',
-    'productReport': 'Product Report',
-    'paymentReport': 'Payment Report',
-    'users': 'Users',
-    'rolesPermissions': 'Roles & Permissions',
-    'companyProfile': 'Company Profile',
-    'branches': 'Branches',
-    'auditLogs': 'Audit Logs',
-  };
+int _countTotalActionsInModule({
+  required String moduleKey,
+  required Map<String, dynamic> modulePermissions,
+}) {
+  int count = 0;
 
-  return labels[key] ?? key;
+  if (moduleKey == PermissionModules.dashboard) {
+    return modulePermissions.length;
+  }
+
+  for (final submoduleValue in modulePermissions.values) {
+    if (submoduleValue is Map) {
+      count += submoduleValue.length;
+    }
+  }
+
+  return count;
+}
+
+String _friendlySaveError(Object error) {
+  final message = error.toString().trim();
+  if (message.isEmpty) {
+    return 'Failed to update user.';
+  }
+
+  if (message.startsWith('Exception: ')) {
+    return message.replaceFirst('Exception: ', '');
+  }
+
+  return message;
 }
 
 String _readDisplayName(Map<String, dynamic> data) {
@@ -1457,6 +1305,22 @@ String _normalizeDesignationForDropdown({
   return allowedOptions.first;
 }
 
+String _normalizeRoleValue(String role) {
+  final normalized = role.trim().toLowerCase();
+  if (userRolesList.contains(normalized)) {
+    return normalized;
+  }
+  return UserRoles.sales;
+}
+
+String _normalizeAccessScopeValue(String accessScope) {
+  final normalized = accessScope.trim().toLowerCase();
+  if (accessScopeList.contains(normalized)) {
+    return normalized;
+  }
+  return AccessScope.company;
+}
+
 class _PermissionChip extends StatelessWidget {
   final String label;
   final bool value;
@@ -1497,9 +1361,8 @@ class _PermissionChip extends StatelessWidget {
               style: TextStyle(
                 fontSize: 13,
                 fontWeight: FontWeight.w600,
-                color: value
-                    ? const Color(0xFF1E3A8A)
-                    : _editHeadingTextColor,
+                color:
+                value ? const Color(0xFF1E3A8A) : _editHeadingTextColor,
               ),
             ),
           ],

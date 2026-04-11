@@ -61,13 +61,16 @@ UserQueryParams buildUserQueryParams(UserFilterState state) {
   final normalizedDepartment = _normalize(state.selectedDepartment);
   final normalizedBranchId = _normalize(state.selectedBranchId);
 
+  final isArchivedFilter =
+      normalizedStatus == 'archived' || normalizedStatus == 'deleted';
+
   return UserQueryParams(
     status: normalizedStatus == 'all' ? null : normalizedStatus,
     role: normalizedRole == 'all' ? null : normalizedRole,
     department: normalizedDepartment == 'all' ? null : normalizedDepartment,
     branchId: normalizedBranchId.isEmpty ? null : normalizedBranchId,
-    includeArchived: normalizedStatus == 'archived',
-    isActive: null,
+    includeArchived: isArchivedFilter,
+    isActive: _mapStatusToIsActive(normalizedStatus),
     limit: state.limit,
     orderByField: _mapSortFieldForBackend(state.sortField),
     descending: !state.sortAscending,
@@ -85,6 +88,7 @@ List<UserDoc> filterUsersLocally({
   final normalizedRole = _normalize(state.selectedRole);
   final normalizedStatus = _normalize(state.selectedStatus);
   final normalizedDepartment = _normalize(state.selectedDepartment);
+  final normalizedBranchId = _normalize(state.selectedBranchId);
 
   final filtered = docs.where((doc) {
     final data = doc.data();
@@ -97,6 +101,7 @@ List<UserDoc> filterUsersLocally({
     final designation = _normalize(data['designation']);
     final employeeCode = _normalize(data['employeeCode']);
     final branchName = _normalize(data['branchName']);
+    final branchId = _normalize(data['branchId']);
     final reportingManagerName = _normalize(data['reportingManagerName']);
 
     final currentStatus = _readNormalizedStatus(data);
@@ -110,6 +115,7 @@ List<UserDoc> filterUsersLocally({
         designation.contains(normalizedQuery) ||
         employeeCode.contains(normalizedQuery) ||
         branchName.contains(normalizedQuery) ||
+        branchId.contains(normalizedQuery) ||
         reportingManagerName.contains(normalizedQuery);
 
     final matchesRole = normalizedRole == 'all' || role == normalizedRole;
@@ -120,10 +126,15 @@ List<UserDoc> filterUsersLocally({
     final matchesDepartment = normalizedDepartment == 'all' ||
         department == normalizedDepartment;
 
+    final matchesBranch = normalizedBranchId.isEmpty ||
+        normalizedBranchId == 'all' ||
+        branchId == normalizedBranchId;
+
     return matchesSearch &&
         matchesRole &&
         matchesStatus &&
-        matchesDepartment;
+        matchesDepartment &&
+        matchesBranch;
   }).toList();
 
   filtered.sort(

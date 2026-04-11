@@ -57,7 +57,7 @@ class _ScreenUserManagementState extends State<ScreenUserManagement> {
   }
 
   Stream<QuerySnapshot<Map<String, dynamic>>> get _pendingInvitesStream {
-    return _userManagementService.watchInvitesBase(
+    return _userManagementService.watchPendingInvites(
       companyId: widget.companyId,
     );
   }
@@ -78,6 +78,187 @@ class _ScreenUserManagementState extends State<ScreenUserManagement> {
         ),
       ),
     );
+  }
+
+  Future<void> _confirmDeleteUser(
+      BuildContext context,
+      QueryDocumentSnapshot<Map<String, dynamic>> doc,
+      ) async {
+    final data = doc.data();
+    final name = (data['displayName'] ?? data['name'] ?? 'User').toString();
+
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) {
+        return AlertDialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(18),
+          ),
+          title: const Text('Archive User'),
+          content: Text(
+            'Do you want to archive $name?\n\n'
+                'This will remove the user from active operations and mark the record as archived.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext, false),
+              child: const Text('Cancel'),
+            ),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: dangerColor,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(10),
+                ),
+              ),
+              onPressed: () => Navigator.pop(dialogContext, true),
+              child: const Text(
+                'Archive',
+                style: TextStyle(color: Colors.white),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (confirm != true) return;
+
+    try {
+      await _userManagementService.deleteUser(
+        companyId: widget.companyId,
+        userUid: doc.id,
+        deletedByUid: widget.currentUid,
+      );
+
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('User archived successfully'),
+          backgroundColor: successColor,
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(_friendlyError(e)),
+          backgroundColor: dangerColor,
+        ),
+      );
+    }
+  }
+
+  Future<void> _confirmCancelInvite(
+      BuildContext context,
+      QueryDocumentSnapshot<Map<String, dynamic>> doc,
+      ) async {
+    final data = doc.data();
+    final email = (data['email'] ?? '').toString().trim();
+    final name = (data['name'] ?? '').toString().trim();
+    final target =
+    name.isNotEmpty ? name : (email.isNotEmpty ? email : 'this invite');
+
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) {
+        return AlertDialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
+          title: const Text('Cancel Invite'),
+          content: Text('Do you want to cancel invite for $target?'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext, false),
+              child: const Text('No'),
+            ),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: dangerColor,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(10),
+                ),
+              ),
+              onPressed: () => Navigator.pop(dialogContext, true),
+              child: const Text(
+                'Cancel Invite',
+                style: TextStyle(color: Colors.white),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (confirm != true) return;
+
+    try {
+      await _userManagementService.cancelInvite(
+        companyId: widget.companyId,
+        inviteId: doc.id,
+        cancelledByUid: widget.currentUid,
+      );
+
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Invite cancelled successfully'),
+          backgroundColor: successColor,
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(_friendlyError(e)),
+          backgroundColor: dangerColor,
+        ),
+      );
+    }
+  }
+
+  void _onSearchChanged(String value) {
+    setState(() {
+      _filterState = _filterState.copyWith(
+        searchQuery: value.trim(),
+      );
+    });
+  }
+
+  void _onSort({
+    required int columnIndex,
+    required String field,
+  }) {
+    setState(() {
+      final sameField = _filterState.sortField == field;
+      _filterState = _filterState.copyWith(
+        sortField: field,
+        sortAscending: sameField ? !_filterState.sortAscending : true,
+      );
+      _sortColumnIndex = columnIndex;
+    });
+  }
+
+  void _resetFilters() {
+    _searchController.clear();
+
+    setState(() {
+      _filterState = UserFilterState(
+        searchQuery: '',
+        selectedRole: 'all',
+        selectedStatus: 'all',
+        selectedDepartment: 'all',
+        sortField: 'createdAt',
+        sortAscending: false,
+        limit: _filterState.limit,
+      );
+      _sortColumnIndex = null;
+    });
   }
 
   Future<void> _handleViewUser(
@@ -127,11 +308,22 @@ class _ScreenUserManagementState extends State<ScreenUserManagement> {
   Future<void> _handleToggleUser({
     required QueryDocumentSnapshot<Map<String, dynamic>> doc,
   }) async {
-    await _userManagementService.toggleUserStatus(
-      companyId: widget.companyId,
-      userUid: doc.id,
-      updatedByUid: widget.currentUid,
-    );
+    try {
+      await _userManagementService.toggleUserStatus(
+        companyId: widget.companyId,
+        userUid: doc.id,
+        updatedByUid: widget.currentUid,
+      );
+    } catch (e) {
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(_friendlyError(e)),
+          backgroundColor: dangerColor,
+        ),
+      );
+    }
   }
 
   Future<void> _confirmDeleteUser(
@@ -876,7 +1068,7 @@ class _ScreenUserManagementState extends State<ScreenUserManagement> {
                 ),
                 child: Text(
                   _filterState.searchQuery.trim().isEmpty
-                      ? '${users.length} shown'
+                      ? '${pageDocs.length} shown'
                       : '${locallySearchedUsers.length} matched locally',
                   style: const TextStyle(
                     fontWeight: FontWeight.w700,
@@ -1007,6 +1199,180 @@ class _ScreenUserManagementState extends State<ScreenUserManagement> {
     );
   }
 
+<<<<<<< HEAD
+=======
+  List<DropdownMenuItem<String>> _buildRoleFilterItems() {
+    return [
+      const DropdownMenuItem(
+        value: 'all',
+        child: Text('All Roles'),
+      ),
+      ...userRolesList.map(
+            (role) => DropdownMenuItem(
+          value: role,
+          child: Text(formatRole(role)),
+        ),
+      ),
+    ];
+  }
+
+  void _openFilterSheet(List<String> departments) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(22)),
+      ),
+      builder: (_) {
+        return StatefulBuilder(
+          builder: (context, modalSetState) {
+            return SafeArea(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(18, 18, 18, 24),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'User Filters',
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w800,
+                        color: primaryColor,
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    const Text(
+                      'Refine user records by role, department, and account status.',
+                      style: TextStyle(
+                        fontSize: 13,
+                        color: mutedTextColor,
+                      ),
+                    ),
+                    const SizedBox(height: 18),
+                    FilterDropdown(
+                      label: 'Role',
+                      value: _filterState.selectedRole,
+                      width: double.infinity,
+                      items: _buildRoleFilterItems(),
+                      onChanged: (value) {
+                        if (value == null) return;
+                        modalSetState(() {});
+                        setState(() {
+                          _filterState =
+                              _filterState.copyWith(selectedRole: value);
+                        });
+                      },
+                    ),
+                    const SizedBox(height: 12),
+                    FilterDropdown(
+                      label: 'Department',
+                      value: _filterState.selectedDepartment,
+                      width: double.infinity,
+                      items: [
+                        const DropdownMenuItem(
+                          value: 'all',
+                          child: Text('All Departments'),
+                        ),
+                        ...departments.map(
+                              (dept) => DropdownMenuItem(
+                            value: dept.toLowerCase(),
+                            child: Text(dept),
+                          ),
+                        ),
+                      ],
+                      onChanged: (value) {
+                        if (value == null) return;
+                        modalSetState(() {});
+                        setState(() {
+                          _filterState =
+                              _filterState.copyWith(selectedDepartment: value);
+                        });
+                      },
+                    ),
+                    const SizedBox(height: 12),
+                    FilterDropdown(
+                      label: 'Status',
+                      value: _filterState.selectedStatus,
+                      width: double.infinity,
+                      items: const [
+                        DropdownMenuItem(
+                          value: 'all',
+                          child: Text('All Status'),
+                        ),
+                        DropdownMenuItem(
+                          value: UserStatus.active,
+                          child: Text('Active'),
+                        ),
+                        DropdownMenuItem(
+                          value: UserStatus.inactive,
+                          child: Text('Inactive'),
+                        ),
+                        DropdownMenuItem(
+                          value: UserStatus.archived,
+                          child: Text('Archived'),
+                        ),
+                      ],
+                      onChanged: (value) {
+                        if (value == null) return;
+                        modalSetState(() {});
+                        setState(() {
+                          _filterState =
+                              _filterState.copyWith(selectedStatus: value);
+                        });
+                      },
+                    ),
+                    const SizedBox(height: 18),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: OutlinedButton(
+                            onPressed: () {
+                              _resetFilters();
+                              Navigator.pop(context);
+                            },
+                            style: OutlinedButton.styleFrom(
+                              foregroundColor: primaryColor,
+                              side: const BorderSide(color: cardBorderColor),
+                              padding: const EdgeInsets.symmetric(vertical: 14),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(14),
+                              ),
+                            ),
+                            child: const Text('Reset'),
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: ElevatedButton(
+                            onPressed: () => Navigator.pop(context),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: primaryColor,
+                              padding: const EdgeInsets.symmetric(vertical: 14),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(14),
+                              ),
+                            ),
+                            child: const Text(
+                              'Apply',
+                              style: TextStyle(color: Colors.white),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
+>>>>>>> Bug-Fix
   Widget _buildDesktopLayout({
     required int totalUsers,
     required int activeUsers,
@@ -1088,6 +1454,17 @@ class _ScreenUserManagementState extends State<ScreenUserManagement> {
     );
   }
 
+  String _friendlyError(Object error) {
+    final message = error.toString().trim();
+    if (message.isEmpty) {
+      return 'Something went wrong. Please try again.';
+    }
+    if (message.startsWith('Exception: ')) {
+      return message.replaceFirst('Exception: ', '');
+    }
+    return message;
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -1142,12 +1519,19 @@ class _ScreenUserManagementState extends State<ScreenUserManagement> {
                 state: _filterState,
               );
 
+<<<<<<< HEAD
               final List<QueryDocumentSnapshot<Map<String, dynamic>>> locallySearchedUsers =
                   filteredUsers;
               final List<QueryDocumentSnapshot<Map<String, dynamic>>> users =
                   filteredUsers;
               final List<QueryDocumentSnapshot<Map<String, dynamic>>> pageDocs =
                   locallySearchedUsers;
+=======
+              final locallySearchedUsers = filteredUsers;
+              final users = filteredUsers;
+              final pageDocs =
+              locallySearchedUsers.take(_filterState.limit).toList();
+>>>>>>> Bug-Fix
 
               final List<String> departments = extractDepartments(allUsers);
 
@@ -1168,6 +1552,7 @@ class _ScreenUserManagementState extends State<ScreenUserManagement> {
                     (data['isDeleted'] ?? false) == false;
               }).length;
 
+<<<<<<< HEAD
               final List<QueryDocumentSnapshot<Map<String, dynamic>>> allInvites =
                   inviteSnapshot.data?.docs ?? [];
 
@@ -1191,6 +1576,9 @@ class _ScreenUserManagementState extends State<ScreenUserManagement> {
 
                       return bDate.compareTo(aDate);
                     });
+=======
+              final pendingInvites = inviteSnapshot.data?.docs ?? [];
+>>>>>>> Bug-Fix
 
               return LayoutBuilder(
                 builder: (context, constraints) {

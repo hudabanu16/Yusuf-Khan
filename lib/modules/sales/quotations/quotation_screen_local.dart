@@ -694,6 +694,10 @@ class _QuotationScreenLocalState extends State<QuotationScreenLocal> {
 
   void _showAddItemModal([Item? itemToEdit, int? index]) {
     final nameController = TextEditingController(text: itemToEdit?.name ?? '');
+    String currentId = itemToEdit?.id ?? DateTime.now().millisecondsSinceEpoch.toString();
+    String currentCompanyId = itemToEdit?.companyId ?? _companyId ?? '';
+
+    final nameController = TextEditingController(text: itemToEdit?.name);
     final descriptionController =
         TextEditingController(text: itemToEdit?.description ?? '');
     final quantityController = TextEditingController(
@@ -740,7 +744,19 @@ class _QuotationScreenLocalState extends State<QuotationScreenLocal> {
                       TextButton.icon(
                         onPressed: () async {
                           final productData = await _selectProductDialog();
+<<<<<<< HEAD
                           if (productData == null) return;
+=======
+                          if (productData != null) {
+                            currentId = (productData['id'] ?? currentId).toString();
+                            nameController.text =
+                                (productData['name'] ?? '').toString();
+                            descriptionController.text =
+                                (productData['description'] ?? '').toString();
+                            priceController.text =
+                                (productData['unitPrice'] ?? 0).toString();
+                            quantityController.text = '1';
+>>>>>>> Bug-Fix
 
                           nameController.text =
                               (productData['name'] ?? '').toString();
@@ -806,7 +822,23 @@ class _QuotationScreenLocalState extends State<QuotationScreenLocal> {
                   const SizedBox(height: 10),
                   ElevatedButton(
                     onPressed: () {
+<<<<<<< HEAD
                       if (!modalFormKey.currentState!.validate()) return;
+=======
+                      if (modalFormKey.currentState!.validate()) {
+                        final newItem = Item(
+                          id: currentId,
+                          companyId: currentCompanyId,
+                          name: nameController.text.trim(),
+                          description: descriptionController.text.trim(),
+                          quantity: double.parse(quantityController.text),
+                          unitPrice: double.parse(priceController.text),
+                          isActive: itemToEdit?.isActive ?? true,
+                          isDeleted: itemToEdit?.isDeleted ?? false,
+                          createdAt: itemToEdit?.createdAt ?? DateTime.now(),
+                          createdBy: itemToEdit?.createdBy ?? _currentUserUid ?? '',
+                        );
+>>>>>>> Bug-Fix
 
                       final newItem = Item(
                         name: nameController.text.trim(),

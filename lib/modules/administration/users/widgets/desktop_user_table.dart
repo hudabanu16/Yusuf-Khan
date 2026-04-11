@@ -36,6 +36,14 @@ class DesktopUserTable extends StatelessWidget {
 
   static const double _tableMinWidth = 1040;
 
+  String _normalizeText(String? value) {
+    return (value ?? '').trim();
+  }
+
+  String _normalizeRole(String? value) {
+    return _normalizeText(value).toLowerCase();
+  }
+
   @override
   Widget build(BuildContext context) {
     return Container(
@@ -123,14 +131,14 @@ class DesktopUserTable extends StatelessWidget {
     final data = doc.data();
 
     final displayName = _readDisplayName(data);
-    final email = (data['email'] ?? '').toString().trim();
-    final role = (data['role'] ?? '').toString().trim();
-    final department = (data['department'] ?? '').toString().trim();
-    final designation = (data['designation'] ?? '').toString().trim();
+    final email = _normalizeText(data['email']);
+    final role = _normalizeRole(data['role']);
+    final department = _normalizeText(data['department']);
+    final designation = _normalizeText(data['designation']);
 
     final isActive = (data['isActive'] ?? true) == true;
     final isDeleted = (data['isDeleted'] ?? false) == true;
-    final storedStatus = (data['status'] ?? '').toString().trim();
+    final storedStatus = _normalizeText(data['status']);
 
     final isSelfUser = doc.id == currentUid;
 
@@ -357,7 +365,7 @@ class DesktopUserTable extends StatelessWidget {
                 value: 'delete',
                 enabled: canDelete,
                 child: Text(
-                  isDeleted ? 'Deleted' : 'Delete',
+                  isDeleted ? 'Archived' : 'Delete',
                   style: TextStyle(
                     color: canDelete ? dangerColor : mutedTextColor,
                     fontWeight: FontWeight.w600,
@@ -386,10 +394,10 @@ class DesktopUserTable extends StatelessWidget {
   }
 
   String _readDisplayName(Map<String, dynamic> data) {
-    final displayName = (data['displayName'] ?? '').toString().trim();
+    final displayName = _normalizeText(data['displayName']);
     if (displayName.isNotEmpty) return displayName;
 
-    final legacyName = (data['name'] ?? '').toString().trim();
+    final legacyName = _normalizeText(data['name']);
     if (legacyName.isNotEmpty) return legacyName;
 
     return 'Unnamed User';

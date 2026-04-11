@@ -29,22 +29,77 @@ class _ScreensCustomerListState extends State<ScreensCustomerList> {
   String _followUpFilter = '';
 
   Future<Map<String, dynamic>?> _loadCurrentUserProfile(String uid) async {
-    final doc =
-    await FirebaseFirestore.instance.collection('users').doc(uid).get();
-    return doc.data();
+    final firestore = FirebaseFirestore.instance;
+
+    // 1. Fetch Global User
+    final globalDoc = await firestore.collection('users').doc(uid).get();
+    final globalData = globalDoc.data() ?? <String, dynamic>{};
+
+    // 2. Safely extract dynamic companyId
+    String companyId = (globalData['companyId'] ?? '').toString();
+    if (companyId.isEmpty) {
+      final companyIds = globalData['companyIds'];
+      if (companyIds is List && companyIds.isNotEmpty) {
+        companyId = companyIds.first.toString();
+      } else {
+        final memberships = globalData['memberships'];
+        if (memberships is Map && memberships.isNotEmpty) {
+          companyId = memberships.keys.first.toString();
+        }
+      }
+    }
+
+    if (companyId.isEmpty) return globalData;
+
+    // 3. Fetch Company-Scoped User Document (This holds the REAL permissions map)
+    final companyUserDoc = await firestore
+        .collection('companies')
+        .doc(companyId)
+        .collection('users')
+        .doc(uid)
+        .get();
+
+    final companyData = companyUserDoc.data() ?? <String, dynamic>{};
+
+    // 4. Merge data (Company data overrides global defaults)
+    return {
+      ...globalData,
+      ...companyData,
+      'companyId': companyId,
+    };
   }
 
   bool _isAdminOrManager(String role) {
-    return role == 'admin' || role == 'manager';
+    final r = role.toLowerCase().trim();
+    return r == 'owner' ||
+        r == 'founder' ||
+        r == 'ceo' ||
+        r == 'superadmin' ||
+        r == 'admin' ||
+        r == 'manager';
   }
 
-  bool _hasCustomerPermission(Map<String, dynamic> userData) {
+  bool _hasCustomerPermission(Map<String, dynamic> userData, {String action = 'view'}) {
     final role = (userData['role'] ?? '').toString();
     if (_isAdminOrManager(role)) return true;
 
-    final permissions =
-    Map<String, dynamic>.from(userData['permissions'] ?? {});
-    return permissions['customers'] == true;
+    final permissions = userData['permissions'];
+    if (permissions is! Map) return false;
+
+    // New nested structure check: ['crm']['customers']['view']
+    final crm = permissions['crm'];
+    if (crm is Map) {
+      final customers = crm['customers'];
+      if (customers is Map && customers[action] == true) {
+        return true;
+      }
+    }
+
+    // Legacy fallback check
+    if (permissions['customers'] == true && action == 'view') return true;
+    if (permissions['customers'] is Map && permissions['customers'][action] == true) return true;
+
+    return false;
   }
 
   List<QueryDocumentSnapshot<Map<String, dynamic>>> _visibleDocsByRole({
@@ -641,13 +696,19 @@ class _ScreensCustomerListState extends State<ScreensCustomerList> {
           );
         }
 
-        if (!_hasCustomerPermission(userData)) {
+        // 1. Check if user can VIEW the page at all
+        if (!_hasCustomerPermission(userData, action: 'view')) {
           return const Scaffold(
             body: Center(
               child: Text('You do not have permission to view customers'),
             ),
           );
         }
+
+        // 2. Resolve Create, Edit, Delete Permissions
+        final bool canCreate = _hasCustomerPermission(userData, action: 'create');
+        final bool canEdit = _hasCustomerPermission(userData, action: 'edit');
+        final bool canDelete = _hasCustomerPermission(userData, action: 'delete');
 
         final customersRef = FirebaseFirestore.instance
             .collection('companies')
@@ -665,7 +726,8 @@ class _ScreensCustomerListState extends State<ScreensCustomerList> {
             toolbarHeight: 6,
             automaticallyImplyLeading: false,
           ),
-          floatingActionButton: FloatingActionButton(
+          floatingActionButton: canCreate
+              ? FloatingActionButton(
             tooltip: 'Add Customer',
             onPressed: () => _openAddCustomer(
               context: context,
@@ -674,7 +736,8 @@ class _ScreensCustomerListState extends State<ScreensCustomerList> {
               role: role,
             ),
             child: const Icon(Icons.add),
-          ),
+          )
+              : null,
           body: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
             stream: companyUsersRef.snapshots(),
             builder: (context, usersSnap) {
@@ -1003,9 +1066,22 @@ class _ScreensCustomerListState extends State<ScreensCustomerList> {
                               state.trim(),
                             ].where((e) => e.isNotEmpty).join(', ');
 
+                            // 🔴 STRICT RBAC OVERRIDE REMOVED HERE
+                            // If they don't have the global 'edit' box checked,
+                            // they cannot edit, even if they own the record.
+                            final userCanEdit = canEdit;
+                            final userCanDelete = canDelete;
+
                             return InkWell(
                               borderRadius: BorderRadius.circular(14),
                               onTap: () {
+                                if (!userCanEdit) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    const SnackBar(content: Text('You do not have permission to edit this customer.')),
+                                  );
+                                  return;
+                                }
+
                                 Navigator.push(
                                   context,
                                   MaterialPageRoute(
@@ -1170,37 +1246,35 @@ class _ScreensCustomerListState extends State<ScreensCustomerList> {
                                               }
                                             },
                                             itemBuilder: (context) =>
-                                            const [
-                                              PopupMenuItem(
-                                                value: 'edit',
-                                                child:
-                                                Text('Edit Customer'),
-                                              ),
-                                              PopupMenuItem(
+                                            [
+                                              if (userCanEdit)
+                                                const PopupMenuItem(
+                                                  value: 'edit',
+                                                  child: Text('Edit Customer'),
+                                                ),
+                                              const PopupMenuItem(
                                                 value: 'contacts',
-                                                child:
-                                                Text('View Contacts'),
+                                                child: Text('View Contacts'),
                                               ),
-                                              PopupMenuItem(
+                                              const PopupMenuItem(
                                                 value: 'follow_ups',
-                                                child:
-                                                Text('View Follow-ups'),
+                                                child: Text('View Follow-ups'),
                                               ),
-                                              PopupMenuItem(
-                                                value: 'add_contact',
-                                                child:
-                                                Text('Add Contact'),
-                                              ),
-                                              PopupMenuDivider(),
-                                              PopupMenuItem(
-                                                value: 'delete',
-                                                child: Text(
-                                                  'Delete Customer',
-                                                  style: TextStyle(
-                                                    color: Colors.red,
+                                              if (userCanEdit)
+                                                const PopupMenuItem(
+                                                  value: 'add_contact',
+                                                  child: Text('Add Contact'),
+                                                ),
+                                              if (userCanDelete)
+                                                const PopupMenuDivider(),
+                                              if (userCanDelete)
+                                                const PopupMenuItem(
+                                                  value: 'delete',
+                                                  child: Text(
+                                                    'Delete Customer',
+                                                    style: TextStyle(color: Colors.red),
                                                   ),
                                                 ),
-                                              ),
                                             ],
                                           ),
                                         ],
@@ -1485,39 +1559,41 @@ class _ScreensCustomerListState extends State<ScreensCustomerList> {
                                               },
                                             ),
                                           ),
-                                          const SizedBox(width: 8),
-                                          Expanded(
-                                            child: ElevatedButton.icon(
-                                              style: ElevatedButton
-                                                  .styleFrom(
-                                                elevation: 0,
-                                                shape:
-                                                RoundedRectangleBorder(
-                                                  borderRadius:
-                                                  BorderRadius
-                                                      .circular(10),
-                                                ),
-                                              ),
-                                              icon: const Icon(
-                                                Icons.person_add_alt_1,
-                                                size: 18,
-                                              ),
-                                              label:
-                                              const Text('Add Contact'),
-                                              onPressed: () {
-                                                Navigator.push(
-                                                  context,
-                                                  MaterialPageRoute(
-                                                    builder: (_) =>
-                                                        ScreensAddContact(
-                                                          companyRef:
-                                                          doc.reference,
-                                                        ),
+                                          if (userCanEdit) ...[
+                                            const SizedBox(width: 8),
+                                            Expanded(
+                                              child: ElevatedButton.icon(
+                                                style: ElevatedButton
+                                                    .styleFrom(
+                                                  elevation: 0,
+                                                  shape:
+                                                  RoundedRectangleBorder(
+                                                    borderRadius:
+                                                    BorderRadius
+                                                        .circular(10),
                                                   ),
-                                                );
-                                              },
+                                                ),
+                                                icon: const Icon(
+                                                  Icons.person_add_alt_1,
+                                                  size: 18,
+                                                ),
+                                                label:
+                                                const Text('Add Contact'),
+                                                onPressed: () {
+                                                  Navigator.push(
+                                                    context,
+                                                    MaterialPageRoute(
+                                                      builder: (_) =>
+                                                          ScreensAddContact(
+                                                            companyRef:
+                                                            doc.reference,
+                                                          ),
+                                                    ),
+                                                  );
+                                                },
+                                              ),
                                             ),
-                                          ),
+                                          ],
                                         ],
                                       ),
                                     ],
