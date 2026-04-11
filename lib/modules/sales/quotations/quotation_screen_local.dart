@@ -17,10 +17,7 @@ const Color accentColor = Color(0xFF3B82F6);
 class QuotationScreenLocal extends StatefulWidget {
   final int userId;
 
-  const QuotationScreenLocal({
-    super.key,
-    required this.userId,
-  });
+  const QuotationScreenLocal({super.key, required this.userId});
 
   @override
   State<QuotationScreenLocal> createState() => _QuotationScreenLocalState();
@@ -96,12 +93,10 @@ class _QuotationScreenLocalState extends State<QuotationScreenLocal> {
   double _taxRate = 18.0;
   double _discount = 0.0;
 
-  final TextEditingController _deliveryTimeController =
-      TextEditingController();
+  final TextEditingController _deliveryTimeController = TextEditingController();
   final TextEditingController _validityController = TextEditingController();
   final TextEditingController _priceBasisController = TextEditingController();
-  final TextEditingController _paymentTermsController =
-      TextEditingController();
+  final TextEditingController _paymentTermsController = TextEditingController();
   bool _packingChargesExtra = true;
 
   final TextEditingController _extraTermController = TextEditingController();
@@ -117,8 +112,7 @@ class _QuotationScreenLocalState extends State<QuotationScreenLocal> {
     _deliveryTimeController.text = 'Within 4-6 weeks from PO and advance.';
     _validityController.text = '30 days from date of quotation.';
     _priceBasisController.text = 'Ex-works Mumbai, packing extra.';
-    _paymentTermsController.text =
-        '50% advance with PO, balance against PI.';
+    _paymentTermsController.text = '50% advance with PO, balance against PI.';
     _initializeScreen();
   }
 
@@ -146,13 +140,11 @@ class _QuotationScreenLocalState extends State<QuotationScreenLocal> {
     _gstController.dispose();
     _quoteNumberController.dispose();
     _inquiryRefNoteController.dispose();
-
     _deliveryTimeController.dispose();
     _validityController.dispose();
     _priceBasisController.dispose();
     _paymentTermsController.dispose();
     _extraTermController.dispose();
-
     _signCompanyController.dispose();
     _signNameController.dispose();
     _signPhoneController.dispose();
@@ -260,19 +252,19 @@ class _QuotationScreenLocalState extends State<QuotationScreenLocal> {
           .collection('quotationSettings')
           .doc(user.uid)
           .set({
-        'companyId': _companyId,
-        'letterheadUrl': _letterheadUrl,
-        'taxRate': _taxRate,
-        'packingChargesExtra': _packingChargesExtra,
-        'deliveryTime': _deliveryTimeController.text.trim(),
-        'validity': _validityController.text.trim(),
-        'priceBasis': _priceBasisController.text.trim(),
-        'paymentTerms': _paymentTermsController.text.trim(),
-        'signatureCompany': _signCompanyController.text.trim(),
-        'signatureName': _signNameController.text.trim(),
-        'signaturePhone': _signPhoneController.text.trim(),
-        'updatedAt': FieldValue.serverTimestamp(),
-      }, SetOptions(merge: true));
+            'companyId': _companyId,
+            'letterheadUrl': _letterheadUrl,
+            'taxRate': _taxRate,
+            'packingChargesExtra': _packingChargesExtra,
+            'deliveryTime': _deliveryTimeController.text.trim(),
+            'validity': _validityController.text.trim(),
+            'priceBasis': _priceBasisController.text.trim(),
+            'paymentTerms': _paymentTermsController.text.trim(),
+            'signatureCompany': _signCompanyController.text.trim(),
+            'signatureName': _signNameController.text.trim(),
+            'signaturePhone': _signPhoneController.text.trim(),
+            'updatedAt': FieldValue.serverTimestamp(),
+          }, SetOptions(merge: true));
     } catch (e) {
       _setError('Failed to save settings: $e');
     }
@@ -404,16 +396,20 @@ class _QuotationScreenLocalState extends State<QuotationScreenLocal> {
                                     .toLowerCase();
 
                             final contactPerson =
-                                (data['contactPerson'] ?? data['contactName'] ?? '')
+                                (data['contactPerson'] ??
+                                        data['contactName'] ??
+                                        '')
                                     .toString()
                                     .toLowerCase();
 
-                            final phone = (data['mobile'] ?? data['phone'] ?? '')
+                            final phone =
+                                (data['mobile'] ?? data['phone'] ?? '')
+                                    .toString()
+                                    .toLowerCase();
+
+                            final email = (data['email'] ?? '')
                                 .toString()
                                 .toLowerCase();
-
-                            final email =
-                                (data['email'] ?? '').toString().toLowerCase();
 
                             if (searchText.isEmpty) return true;
 
@@ -441,16 +437,16 @@ class _QuotationScreenLocalState extends State<QuotationScreenLocal> {
                                   (data['companyName'] ?? data['name'] ?? '')
                                       .toString();
                               final contactPerson =
-                                  (data['contactPerson'] ?? data['contactName'] ?? '')
+                                  (data['contactPerson'] ??
+                                          data['contactName'] ??
+                                          '')
                                       .toString();
                               final mobile =
                                   (data['mobile'] ?? data['phone'] ?? '')
                                       .toString();
-                              final email =
-                                  (data['email'] ?? '').toString();
-                              final gst =
-                                  (data['gstNo'] ?? data['gst'] ?? '')
-                                      .toString();
+                              final email = (data['email'] ?? '').toString();
+                              final gst = (data['gstNo'] ?? data['gst'] ?? '')
+                                  .toString();
 
                               final subtitle = <String>[];
                               if (contactPerson.isNotEmpty) {
@@ -477,13 +473,10 @@ class _QuotationScreenLocalState extends State<QuotationScreenLocal> {
                                 ),
                                 subtitle: Text(subtitle.join(' | ')),
                                 onTap: () {
-                                  Navigator.pop<Map<String, dynamic>>(
-                                    context,
-                                    {
-                                      'id': doc.id,
-                                      ...data,
-                                    },
-                                  );
+                                  Navigator.pop<Map<String, dynamic>>(context, {
+                                    'id': doc.id,
+                                    ...data,
+                                  });
                                 },
                               );
                             },
@@ -517,12 +510,13 @@ class _QuotationScreenLocalState extends State<QuotationScreenLocal> {
       _addressController.text =
           (customer['address'] ?? customer['billingAddress'] ?? '').toString();
       _emailController.text = (customer['email'] ?? '').toString();
-      _mobileController.text =
-          (customer['mobile'] ?? customer['phone'] ?? '').toString();
+      _mobileController.text = (customer['mobile'] ?? customer['phone'] ?? '')
+          .toString();
       _contactPersonController.text =
-          (customer['contactPerson'] ?? customer['contactName'] ?? '').toString();
-      _gstController.text =
-          (customer['gstNo'] ?? customer['gst'] ?? '').toString();
+          (customer['contactPerson'] ?? customer['contactName'] ?? '')
+              .toString();
+      _gstController.text = (customer['gstNo'] ?? customer['gst'] ?? '')
+          .toString();
     });
   }
 
@@ -554,8 +548,10 @@ class _QuotationScreenLocalState extends State<QuotationScreenLocal> {
         .collection('products');
 
     if (!_isAdminOrManager && _currentUserUid != null) {
-      query:
-      productQuery = productQuery.where('createdBy', isEqualTo: _currentUserUid);
+      productQuery = productQuery.where(
+        'createdBy',
+        isEqualTo: _currentUserUid,
+      );
     }
 
     return showDialog<Map<String, dynamic>>(
@@ -604,10 +600,12 @@ class _QuotationScreenLocalState extends State<QuotationScreenLocal> {
                           final docs = snapshot.data?.docs ?? [];
                           final filtered = docs.where((doc) {
                             final data = doc.data();
-                            final name =
-                                (data['name'] ?? '').toString().toLowerCase();
-                            final itemCode =
-                                (data['itemCode'] ?? '').toString().toLowerCase();
+                            final name = (data['name'] ?? '')
+                                .toString()
+                                .toLowerCase();
+                            final itemCode = (data['itemCode'] ?? '')
+                                .toString()
+                                .toLowerCase();
 
                             if (searchText.isEmpty) return true;
 
@@ -630,15 +628,15 @@ class _QuotationScreenLocalState extends State<QuotationScreenLocal> {
                               final data = doc.data();
 
                               final name = (data['name'] ?? '').toString();
-                              final hsnCode =
-                                  (data['hsnCode'] ?? '').toString();
-                              final itemCode =
-                                  (data['itemCode'] ?? '').toString();
+                              final hsnCode = (data['hsnCode'] ?? '')
+                                  .toString();
+                              final itemCode = (data['itemCode'] ?? '')
+                                  .toString();
                               final uom = (data['uom'] ?? '').toString();
-                              final unitPrice =
-                                  (data['unitPrice'] ?? 0).toString();
-                              final gst =
-                                  (data['gstPercentage'] ?? 0).toString();
+                              final unitPrice = (data['unitPrice'] ?? 0)
+                                  .toString();
+                              final gst = (data['gstPercentage'] ?? 0)
+                                  .toString();
 
                               final subtitleLines = <String>[];
                               if (itemCode.isNotEmpty) {
@@ -650,8 +648,9 @@ class _QuotationScreenLocalState extends State<QuotationScreenLocal> {
                               if (uom.isNotEmpty) {
                                 subtitleLines.add('UOM: $uom');
                               }
-                              subtitleLines
-                                  .add('Price: Rs $unitPrice | GST: $gst%');
+                              subtitleLines.add(
+                                'Price: Rs $unitPrice | GST: $gst%',
+                              );
 
                               return ListTile(
                                 title: Text(
@@ -662,13 +661,10 @@ class _QuotationScreenLocalState extends State<QuotationScreenLocal> {
                                 ),
                                 subtitle: Text(subtitleLines.join(' | ')),
                                 onTap: () {
-                                  Navigator.pop<Map<String, dynamic>>(
-                                    context,
-                                    {
-                                      'id': doc.id,
-                                      ...data,
-                                    },
-                                  );
+                                  Navigator.pop<Map<String, dynamic>>(context, {
+                                    'id': doc.id,
+                                    ...data,
+                                  });
                                 },
                               );
                             },
@@ -693,20 +689,22 @@ class _QuotationScreenLocalState extends State<QuotationScreenLocal> {
   }
 
   void _showAddItemModal([Item? itemToEdit, int? index]) {
-    final nameController = TextEditingController(text: itemToEdit?.name ?? '');
-    String currentId = itemToEdit?.id ?? DateTime.now().millisecondsSinceEpoch.toString();
-    String currentCompanyId = itemToEdit?.companyId ?? _companyId ?? '';
+    final modalFormKey = GlobalKey<FormState>();
 
-    final nameController = TextEditingController(text: itemToEdit?.name);
-    final descriptionController =
-        TextEditingController(text: itemToEdit?.description ?? '');
+    final nameController = TextEditingController(text: itemToEdit?.name ?? '');
+    final descriptionController = TextEditingController(
+      text: itemToEdit?.description ?? '',
+    );
     final quantityController = TextEditingController(
       text: itemToEdit != null ? itemToEdit.quantity.toString() : '',
     );
     final priceController = TextEditingController(
       text: itemToEdit != null ? itemToEdit.unitPrice.toString() : '',
     );
-    final modalFormKey = GlobalKey<FormState>();
+
+    String currentId =
+        itemToEdit?.id ?? DateTime.now().millisecondsSinceEpoch.toString();
+    String currentCompanyId = itemToEdit?.companyId ?? (_companyId ?? '');
 
     showModalBottomSheet(
       context: context,
@@ -732,9 +730,7 @@ class _QuotationScreenLocalState extends State<QuotationScreenLocal> {
                   Row(
                     children: [
                       Text(
-                        itemToEdit == null
-                            ? 'Add Line Item'
-                            : 'Edit Line Item',
+                        itemToEdit == null ? 'Add Line Item' : 'Edit Line Item',
                         style: const TextStyle(
                           fontSize: 20,
                           fontWeight: FontWeight.bold,
@@ -744,26 +740,17 @@ class _QuotationScreenLocalState extends State<QuotationScreenLocal> {
                       TextButton.icon(
                         onPressed: () async {
                           final productData = await _selectProductDialog();
-<<<<<<< HEAD
                           if (productData == null) return;
-=======
-                          if (productData != null) {
-                            currentId = (productData['id'] ?? currentId).toString();
-                            nameController.text =
-                                (productData['name'] ?? '').toString();
-                            descriptionController.text =
-                                (productData['description'] ?? '').toString();
-                            priceController.text =
-                                (productData['unitPrice'] ?? 0).toString();
-                            quantityController.text = '1';
->>>>>>> Bug-Fix
 
-                          nameController.text =
-                              (productData['name'] ?? '').toString();
+                          currentId = (productData['id'] ?? currentId)
+                              .toString();
+
+                          nameController.text = (productData['name'] ?? '')
+                              .toString();
                           descriptionController.text =
                               (productData['description'] ?? '').toString();
-                          priceController.text =
-                              (productData['unitPrice'] ?? 0).toString();
+                          priceController.text = (productData['unitPrice'] ?? 0)
+                              .toString();
                           quantityController.text = '1';
 
                           final gst = productData['gstPercentage'];
@@ -797,11 +784,15 @@ class _QuotationScreenLocalState extends State<QuotationScreenLocal> {
                           quantityController,
                           'Quantity',
                           keyboardType: TextInputType.number,
-                          validator: (v) => v == null ||
-                                  v.trim().isEmpty ||
-                                  double.tryParse(v) == null
-                              ? 'Valid quantity required'
-                              : null,
+                          validator: (v) {
+                            if (v == null || v.trim().isEmpty) {
+                              return 'Valid quantity required';
+                            }
+                            if (double.tryParse(v.trim()) == null) {
+                              return 'Valid quantity required';
+                            }
+                            return null;
+                          },
                         ),
                       ),
                       const SizedBox(width: 10),
@@ -810,11 +801,15 @@ class _QuotationScreenLocalState extends State<QuotationScreenLocal> {
                           priceController,
                           'Unit Price',
                           keyboardType: TextInputType.number,
-                          validator: (v) => v == null ||
-                                  v.trim().isEmpty ||
-                                  double.tryParse(v) == null
-                              ? 'Valid price required'
-                              : null,
+                          validator: (v) {
+                            if (v == null || v.trim().isEmpty) {
+                              return 'Valid price required';
+                            }
+                            if (double.tryParse(v.trim()) == null) {
+                              return 'Valid price required';
+                            }
+                            return null;
+                          },
                         ),
                       ),
                     ],
@@ -822,29 +817,20 @@ class _QuotationScreenLocalState extends State<QuotationScreenLocal> {
                   const SizedBox(height: 10),
                   ElevatedButton(
                     onPressed: () {
-<<<<<<< HEAD
                       if (!modalFormKey.currentState!.validate()) return;
-=======
-                      if (modalFormKey.currentState!.validate()) {
-                        final newItem = Item(
-                          id: currentId,
-                          companyId: currentCompanyId,
-                          name: nameController.text.trim(),
-                          description: descriptionController.text.trim(),
-                          quantity: double.parse(quantityController.text),
-                          unitPrice: double.parse(priceController.text),
-                          isActive: itemToEdit?.isActive ?? true,
-                          isDeleted: itemToEdit?.isDeleted ?? false,
-                          createdAt: itemToEdit?.createdAt ?? DateTime.now(),
-                          createdBy: itemToEdit?.createdBy ?? _currentUserUid ?? '',
-                        );
->>>>>>> Bug-Fix
 
                       final newItem = Item(
+                        id: currentId,
+                        companyId: currentCompanyId,
                         name: nameController.text.trim(),
                         description: descriptionController.text.trim(),
                         quantity: double.parse(quantityController.text.trim()),
                         unitPrice: double.parse(priceController.text.trim()),
+                        isActive: itemToEdit?.isActive ?? true,
+                        isDeleted: itemToEdit?.isDeleted ?? false,
+                        createdAt: itemToEdit?.createdAt ?? DateTime.now(),
+                        createdBy:
+                            itemToEdit?.createdBy ?? (_currentUserUid ?? ''),
                       );
 
                       setState(() {
@@ -862,7 +848,9 @@ class _QuotationScreenLocalState extends State<QuotationScreenLocal> {
                       foregroundColor: Colors.white,
                       padding: const EdgeInsets.symmetric(vertical: 15),
                     ),
-                    child: Text(itemToEdit == null ? 'Add Item' : 'Save Changes'),
+                    child: Text(
+                      itemToEdit == null ? 'Add Item' : 'Save Changes',
+                    ),
                   ),
                   const SizedBox(height: 20),
                 ],
@@ -908,21 +896,28 @@ class _QuotationScreenLocalState extends State<QuotationScreenLocal> {
   }
 
   void _openSettings() {
-    final deliveryController =
-        TextEditingController(text: _deliveryTimeController.text);
-    final validityController =
-        TextEditingController(text: _validityController.text);
-    final priceBasisController =
-        TextEditingController(text: _priceBasisController.text);
-    final paymentController =
-        TextEditingController(text: _paymentTermsController.text);
+    final deliveryController = TextEditingController(
+      text: _deliveryTimeController.text,
+    );
+    final validityController = TextEditingController(
+      text: _validityController.text,
+    );
+    final priceBasisController = TextEditingController(
+      text: _priceBasisController.text,
+    );
+    final paymentController = TextEditingController(
+      text: _paymentTermsController.text,
+    );
 
-    final signCompanyController =
-        TextEditingController(text: _signCompanyController.text);
-    final signNameController =
-        TextEditingController(text: _signNameController.text);
-    final signPhoneController =
-        TextEditingController(text: _signPhoneController.text);
+    final signCompanyController = TextEditingController(
+      text: _signCompanyController.text,
+    );
+    final signNameController = TextEditingController(
+      text: _signNameController.text,
+    );
+    final signPhoneController = TextEditingController(
+      text: _signPhoneController.text,
+    );
 
     double tempTaxRate = _taxRate;
     bool tempPackingExtra = _packingChargesExtra;
@@ -1067,9 +1062,7 @@ class _QuotationScreenLocalState extends State<QuotationScreenLocal> {
                     const SizedBox(height: 12),
                     Row(
                       children: [
-                        const Expanded(
-                          child: Text('Default GST (%)'),
-                        ),
+                        const Expanded(child: Text('Default GST (%)')),
                         SizedBox(
                           width: 180,
                           child: Slider(
@@ -1163,20 +1156,24 @@ class _QuotationScreenLocalState extends State<QuotationScreenLocal> {
                           setState(() {
                             _taxRate = tempTaxRate;
                             _packingChargesExtra = tempPackingExtra;
-                            _deliveryTimeController.text =
-                                deliveryController.text.trim();
-                            _validityController.text =
-                                validityController.text.trim();
-                            _priceBasisController.text =
-                                priceBasisController.text.trim();
-                            _paymentTermsController.text =
-                                paymentController.text.trim();
-                            _signCompanyController.text =
-                                signCompanyController.text.trim();
-                            _signNameController.text =
-                                signNameController.text.trim();
-                            _signPhoneController.text =
-                                signPhoneController.text.trim();
+                            _deliveryTimeController.text = deliveryController
+                                .text
+                                .trim();
+                            _validityController.text = validityController.text
+                                .trim();
+                            _priceBasisController.text = priceBasisController
+                                .text
+                                .trim();
+                            _paymentTermsController.text = paymentController
+                                .text
+                                .trim();
+                            _signCompanyController.text = signCompanyController
+                                .text
+                                .trim();
+                            _signNameController.text = signNameController.text
+                                .trim();
+                            _signPhoneController.text = signPhoneController.text
+                                .trim();
                           });
 
                           await _saveUserSettings();
@@ -1251,51 +1248,51 @@ class _QuotationScreenLocalState extends State<QuotationScreenLocal> {
           .doc(_companyId)
           .collection('quotations')
           .add({
-        'companyId': _companyId,
-        'userId': widget.userId,
-        'firebaseUserId': user?.uid,
-        'quoteNumber': _quoteNumberController.text.trim(),
-        'financialYear': _quoteNumberController.text.split('/').last,
-        'quoteDate': Timestamp.fromDate(_quoteDate),
-        'customerId': _selectedCustomerId,
-        'customerSnapshot': _customerSnapshotForSave(),
-        'clientName': _companyNameController.text.trim(),
-        'clientAddress': _addressController.text.trim(),
-        'clientEmail': _emailController.text.trim(),
-        'clientMobile': _mobileController.text.trim(),
-        'contactPerson': _contactPersonController.text.trim(),
-        'gstNo': _gstController.text.trim(),
-        'inquirySource': _selectedInquirySource,
-        'inquiryDate': Timestamp.fromDate(_inquiryDate),
-        'inquiryReference': _inquiryRefNoteController.text.trim(),
-        'taxRate': _taxRate,
-        'discountPercentage': _discount,
-        'subtotal': _subtotal,
-        'discountAmount': _discountAmount,
-        'taxableAmount': _taxableAmount,
-        'taxAmount': _taxAmount,
-        'grandTotal': _grandTotal,
-        'deliveryTime': _deliveryTimeController.text.trim(),
-        'validity': _validityController.text.trim(),
-        'priceBasis': _priceBasisController.text.trim(),
-        'paymentTerms': _paymentTermsController.text.trim(),
-        'packingChargesExtra': _packingChargesExtra,
-        'extraTerms': _extraTerms,
-        'letterheadUrl': _letterheadUrl,
-        'signatureCompany': _signCompanyController.text.trim(),
-        'signatureName': _signNameController.text.trim(),
-        'signaturePhone': _signPhoneController.text.trim(),
-        'items': itemsData,
-        'status': 'Draft',
-        'assignedToUid': _currentUserUid,
-        'assignedByUid': _currentUserUid,
-        'createdBy': _currentUserUid,
-        'createdByUid': _currentUserUid,
-        'createdAt': FieldValue.serverTimestamp(),
-        'updatedBy': _currentUserUid,
-        'updatedByUid': _currentUserUid,
-        'updatedAt': FieldValue.serverTimestamp(),
-      });
+            'companyId': _companyId,
+            'userId': widget.userId,
+            'firebaseUserId': user?.uid,
+            'quoteNumber': _quoteNumberController.text.trim(),
+            'financialYear': _quoteNumberController.text.split('/').last,
+            'quoteDate': Timestamp.fromDate(_quoteDate),
+            'customerId': _selectedCustomerId,
+            'customerSnapshot': _customerSnapshotForSave(),
+            'clientName': _companyNameController.text.trim(),
+            'clientAddress': _addressController.text.trim(),
+            'clientEmail': _emailController.text.trim(),
+            'clientMobile': _mobileController.text.trim(),
+            'contactPerson': _contactPersonController.text.trim(),
+            'gstNo': _gstController.text.trim(),
+            'inquirySource': _selectedInquirySource,
+            'inquiryDate': Timestamp.fromDate(_inquiryDate),
+            'inquiryReference': _inquiryRefNoteController.text.trim(),
+            'taxRate': _taxRate,
+            'discountPercentage': _discount,
+            'subtotal': _subtotal,
+            'discountAmount': _discountAmount,
+            'taxableAmount': _taxableAmount,
+            'taxAmount': _taxAmount,
+            'grandTotal': _grandTotal,
+            'deliveryTime': _deliveryTimeController.text.trim(),
+            'validity': _validityController.text.trim(),
+            'priceBasis': _priceBasisController.text.trim(),
+            'paymentTerms': _paymentTermsController.text.trim(),
+            'packingChargesExtra': _packingChargesExtra,
+            'extraTerms': _extraTerms,
+            'letterheadUrl': _letterheadUrl,
+            'signatureCompany': _signCompanyController.text.trim(),
+            'signatureName': _signNameController.text.trim(),
+            'signaturePhone': _signPhoneController.text.trim(),
+            'items': itemsData,
+            'status': 'Draft',
+            'assignedToUid': _currentUserUid,
+            'assignedByUid': _currentUserUid,
+            'createdBy': _currentUserUid,
+            'createdByUid': _currentUserUid,
+            'createdAt': FieldValue.serverTimestamp(),
+            'updatedBy': _currentUserUid,
+            'updatedByUid': _currentUserUid,
+            'updatedAt': FieldValue.serverTimestamp(),
+          });
 
       if (!mounted) return;
       _showSnack('Quotation saved successfully');
@@ -1484,9 +1481,7 @@ class _QuotationScreenLocalState extends State<QuotationScreenLocal> {
           Icons.confirmation_number_outlined,
           color: primaryColor.withOpacity(0.7),
         ),
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(10),
-        ),
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
         filled: true,
         fillColor: Colors.white,
         isDense: true,
@@ -1561,9 +1556,7 @@ class _QuotationScreenLocalState extends State<QuotationScreenLocal> {
             const SizedBox(height: 8),
             Row(
               children: [
-                Expanded(
-                  child: _buildQuotationNumberField(),
-                ),
+                Expanded(child: _buildQuotationNumberField()),
                 const SizedBox(width: 10),
                 Expanded(
                   child: _buildDateField(
@@ -1885,12 +1878,20 @@ class _QuotationScreenLocalState extends State<QuotationScreenLocal> {
         children: [
           Text(
             label,
-            style: TextStyle(fontSize: fontSize, fontWeight: weight, color: color),
+            style: TextStyle(
+              fontSize: fontSize,
+              fontWeight: weight,
+              color: color,
+            ),
           ),
           const Spacer(),
           Text(
             '$sign Rs ${amount.toStringAsFixed(2)}',
-            style: TextStyle(fontSize: fontSize, fontWeight: weight, color: color),
+            style: TextStyle(
+              fontSize: fontSize,
+              fontWeight: weight,
+              color: color,
+            ),
           ),
         ],
       ),
@@ -1914,9 +1915,7 @@ class _QuotationScreenLocalState extends State<QuotationScreenLocal> {
         decoration: InputDecoration(
           labelText: label,
           prefixIcon: Icon(icon, color: primaryColor.withOpacity(0.7)),
-          border: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(10),
-          ),
+          border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
           filled: true,
           fillColor: Colors.white,
         ),
@@ -1941,9 +1940,7 @@ class _QuotationScreenLocalState extends State<QuotationScreenLocal> {
       decoration: InputDecoration(
         labelText: label,
         prefixIcon: Icon(icon, color: primaryColor.withOpacity(0.7)),
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(10),
-        ),
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
         filled: true,
         fillColor: Colors.white,
         isDense: true,
@@ -1954,12 +1951,7 @@ class _QuotationScreenLocalState extends State<QuotationScreenLocal> {
           isExpanded: true,
           onChanged: onChanged,
           items: items
-              .map(
-                (e) => DropdownMenuItem<String>(
-                  value: e,
-                  child: Text(e),
-                ),
-              )
+              .map((e) => DropdownMenuItem<String>(value: e, child: Text(e)))
               .toList(),
         ),
       ),
@@ -1978,9 +1970,7 @@ class _QuotationScreenLocalState extends State<QuotationScreenLocal> {
         decoration: InputDecoration(
           labelText: label,
           prefixIcon: Icon(icon, color: primaryColor.withOpacity(0.7)),
-          border: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(10),
-          ),
+          border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
           filled: true,
           fillColor: Colors.white,
           isDense: true,
@@ -2129,50 +2119,35 @@ class QuotationPreviewScreen extends StatelessWidget {
       children: [
         pw.Text(
           label,
-          style: pw.TextStyle(
-            fontSize: 10,
-            fontWeight: pw.FontWeight.bold,
-          ),
+          style: pw.TextStyle(fontSize: 10, fontWeight: pw.FontWeight.bold),
         ),
         pw.SizedBox(width: 4),
         pw.Expanded(
-          child: pw.Text(
-            value ?? '',
-            style: const pw.TextStyle(fontSize: 10),
-          ),
+          child: pw.Text(value ?? '', style: const pw.TextStyle(fontSize: 10)),
         ),
       ],
     );
   }
 
   pw.Widget _cellCenter(String text) => pw.Padding(
-        padding: const pw.EdgeInsets.all(4),
-        child: pw.Center(
-          child: pw.Text(
-            text,
-            style: const pw.TextStyle(fontSize: 9),
-          ),
-        ),
-      );
+    padding: const pw.EdgeInsets.all(4),
+    child: pw.Center(
+      child: pw.Text(text, style: const pw.TextStyle(fontSize: 9)),
+    ),
+  );
 
   pw.Widget _cellLeft(String text) => pw.Padding(
-        padding: const pw.EdgeInsets.all(4),
-        child: pw.Text(
-          text,
-          style: const pw.TextStyle(fontSize: 9),
-        ),
-      );
+    padding: const pw.EdgeInsets.all(4),
+    child: pw.Text(text, style: const pw.TextStyle(fontSize: 9)),
+  );
 
   pw.Widget _cellRight(String text) => pw.Padding(
-        padding: const pw.EdgeInsets.all(4),
-        child: pw.Align(
-          alignment: pw.Alignment.centerRight,
-          child: pw.Text(
-            text,
-            style: const pw.TextStyle(fontSize: 9),
-          ),
-        ),
-      );
+    padding: const pw.EdgeInsets.all(4),
+    child: pw.Align(
+      alignment: pw.Alignment.centerRight,
+      child: pw.Text(text, style: const pw.TextStyle(fontSize: 9)),
+    ),
+  );
 
   pw.Widget _buildItemsTable() {
     final headers = [
@@ -2181,7 +2156,7 @@ class QuotationPreviewScreen extends StatelessWidget {
       'Qty',
       'UOM',
       'Unit Price',
-      'Amount'
+      'Amount',
     ];
 
     return pw.Table(
@@ -2240,11 +2215,7 @@ class QuotationPreviewScreen extends StatelessWidget {
     );
   }
 
-  pw.Widget _summaryRow(
-    String label,
-    double value, {
-    bool isBold = false,
-  }) {
+  pw.Widget _summaryRow(String label, double value, {bool isBold = false}) {
     return pw.Row(
       mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
       children: [
@@ -2329,10 +2300,7 @@ class QuotationPreviewScreen extends StatelessWidget {
       children: [
         pw.Text(
           'Terms and Conditions',
-          style: pw.TextStyle(
-            fontSize: 12,
-            fontWeight: pw.FontWeight.bold,
-          ),
+          style: pw.TextStyle(fontSize: 12, fontWeight: pw.FontWeight.bold),
         ),
         pw.SizedBox(height: 6),
         ...terms.asMap().entries.map((entry) {
@@ -2343,15 +2311,9 @@ class QuotationPreviewScreen extends StatelessWidget {
             child: pw.Row(
               crossAxisAlignment: pw.CrossAxisAlignment.start,
               children: [
-                pw.Text(
-                  '$idx. ',
-                  style: const pw.TextStyle(fontSize: 10),
-                ),
+                pw.Text('$idx. ', style: const pw.TextStyle(fontSize: 10)),
                 pw.Expanded(
-                  child: pw.Text(
-                    text,
-                    style: const pw.TextStyle(fontSize: 10),
-                  ),
+                  child: pw.Text(text, style: const pw.TextStyle(fontSize: 10)),
                 ),
               ],
             ),
@@ -2378,28 +2340,16 @@ class QuotationPreviewScreen extends StatelessWidget {
           if (company.isNotEmpty)
             pw.Text(
               'From $company',
-              style: pw.TextStyle(
-                fontSize: 11,
-                fontWeight: pw.FontWeight.bold,
-              ),
+              style: pw.TextStyle(fontSize: 11, fontWeight: pw.FontWeight.bold),
             ),
           if (name.isNotEmpty)
-            pw.Text(
-              name,
-              style: const pw.TextStyle(fontSize: 10),
-            ),
+            pw.Text(name, style: const pw.TextStyle(fontSize: 10)),
           if (phone.isNotEmpty)
-            pw.Text(
-              phone,
-              style: const pw.TextStyle(fontSize: 10),
-            ),
+            pw.Text(phone, style: const pw.TextStyle(fontSize: 10)),
           pw.SizedBox(height: 8),
           pw.Text(
             'Authorised Signatory',
-            style: pw.TextStyle(
-              fontSize: 9,
-              fontStyle: pw.FontStyle.italic,
-            ),
+            style: pw.TextStyle(fontSize: 9, fontStyle: pw.FontStyle.italic),
           ),
         ],
       ),
@@ -2426,10 +2376,7 @@ class QuotationPreviewScreen extends StatelessWidget {
         if (headerImage == null) return pw.SizedBox();
         return pw.FullPage(
           ignoreMargins: true,
-          child: pw.Image(
-            headerImage,
-            fit: pw.BoxFit.cover,
-          ),
+          child: pw.Image(headerImage, fit: pw.BoxFit.cover),
         );
       },
     );
@@ -2510,7 +2457,10 @@ class QuotationPreviewScreen extends StatelessWidget {
                       pw.SizedBox(height: 8),
                       _metaRow('No:', quotation['quoteNumber']?.toString()),
                       _metaRow('Date:', quotation['quoteDateStr']?.toString()),
-                      _metaRow('Inquiry:', quotation['inquirySource']?.toString()),
+                      _metaRow(
+                        'Inquiry:',
+                        quotation['inquirySource']?.toString(),
+                      ),
                       _metaRow(
                         'Inquiry Date:',
                         quotation['inquiryDateStr']?.toString(),
@@ -2546,10 +2496,7 @@ class QuotationPreviewScreen extends StatelessWidget {
         iconTheme: const IconThemeData(color: Colors.white),
         title: const Text(
           'Quotation Preview',
-          style: TextStyle(
-            color: Colors.white,
-            fontWeight: FontWeight.bold,
-          ),
+          style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
         ),
       ),
       body: PdfPreview(
