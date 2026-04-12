@@ -1,5 +1,9 @@
+// FILE PATH: lib/modules/administration/company/screen_create_invite.dart
+
 import 'package:flutter/material.dart';
 
+import 'package:QUIK/modules/administration/users/helpers/user_management_constants.dart';
+import 'package:QUIK/modules/administration/users/helpers/user_management_formatters.dart';
 import 'package:QUIK/modules/administration/users/services/user_management_service.dart';
 
 const Color _invitePrimaryColor = Color(0xFF17324D);
@@ -12,11 +16,13 @@ const Color _inviteHeadingTextColor = Color(0xFF0F172A);
 class ScreenCreateInvite extends StatefulWidget {
   final String companyId;
   final String currentUid;
+  final String? industry;
 
   const ScreenCreateInvite({
     super.key,
     required this.companyId,
     required this.currentUid,
+    this.industry,
   });
 
   @override
@@ -34,19 +40,12 @@ class _ScreenCreateInviteState extends State<ScreenCreateInvite> {
   bool isLoading = false;
   bool sendInviteNow = true;
 
-  String selectedRole = 'sales';
+  String selectedRole = UserRoles.sales;
   String selectedDepartment = 'Sales';
   String selectedDesignation = 'Sales Executive';
+  String selectedAccessScope = AccessScope.company;
 
-  final List<String> _roleOptions = const [
-    'admin',
-    'manager',
-    'sales',
-    'service',
-    'accounts',
-    'dispatch',
-    'viewer',
-  ];
+  bool get isExportImport => widget.industry == 'export_import';
 
   final List<String> _departmentOptions = const [
     'Sales',
@@ -114,12 +113,17 @@ class _ScreenCreateInviteState extends State<ScreenCreateInvite> {
     ],
   };
 
-  late Map<String, Map<String, bool>> permissions;
+  late Map<String, dynamic> permissions;
+
+  List<String> get activeModules {
+    return isExportImport
+        ? ['dashboard', 'sales', 'crm', 'finance', 'reports']
+        : permissionModuleOrder;
+  }
 
   @override
   void initState() {
     super.initState();
-    permissions = _emptyPermissionMap();
     _applyRoleDefaults(selectedRole);
     _setDefaultDesignationForDepartment(selectedDepartment);
   }
@@ -149,286 +153,195 @@ class _ScreenCreateInviteState extends State<ScreenCreateInvite> {
     return email.trim().toLowerCase();
   }
 
-  Map<String, Map<String, bool>> _emptyPermissionMap() {
-    return {
-      'dashboard': {
-        'dashboard': false,
-      },
-      'sales': {
-        'inquiries': false,
-        'quotations': false,
-        'salesOrder': false,
-        'followUps': false,
-        'tasks': false,
-        'meetings': false,
-      },
-      'crm': {
-        'customers': false,
-        'contacts': false,
-        'customerVisits': false,
-        'communicationHistory': false,
-      },
-      'purchase': {
-        'vendors': false,
-        'purchaseOrders': false,
-        'grnMaterialReceipt': false,
-        'vendorLedger': false,
-      },
-      'inventory': {
-        'products': false,
-        'stockSummary': false,
-        'stockIn': false,
-        'stockOut': false,
-        'warehouse': false,
-        'lowStockAlerts': false,
-      },
-      'dispatch': {
-        'readyForDispatch': false,
-        'dispatchChallans': false,
-        'shipmentTracking': false,
-        'deliveredOrders': false,
-      },
-      'finance': {
-        'proformaInvoice': false,
-        'taxInvoice': false,
-        'paymentReceived': false,
-        'outstanding': false,
-        'expenseEntries': false,
-      },
-      'reports': {
-        'salesReport': false,
-        'inquiryReport': false,
-        'customerReport': false,
-        'productReport': false,
-        'paymentReport': false,
-      },
-      'administration': {
-        'users': false,
-        'rolesPermissions': false,
-        'companyProfile': false,
-        'branches': false,
-        'auditLogs': false,
-      },
-    };
-  }
-
-  void _setAllPermissions(bool value) {
-    permissions.forEach((_, submodules) {
-      for (final subKey in submodules.keys) {
-        submodules[subKey] = value;
+  Map<String, dynamic> _getIndustryDefaultPermissions({
+    required String role,
+    required bool isExportImport,
+  }) {
+    if (isExportImport) {
+      if (role.toLowerCase() == 'admin') {
+        return {
+          'dashboard': {'dashboard': true},
+          'sales': {'inquiries': true, 'quotations': true},
+          'crm': {'customers': true},
+          'finance': {
+            'taxInvoice': true,
+            'paymentReceived': true,
+            'outstanding': true,
+            'expenseEntries': true
+          },
+          'reports': {
+            'salesReport': true,
+            'inquiryReport': true,
+            'customerReport': true,
+            'paymentReport': true
+          },
+        };
+      } else {
+        return {
+          'dashboard': {'dashboard': true},
+          'sales': {'inquiries': true, 'quotations': true},
+          'crm': {'customers': true},
+        };
       }
-    });
+    }
+    return getDefaultPermissions(role);
   }
 
-  void _setModulePermissions(String moduleKey, List<String> enabledKeys) {
-    if (!permissions.containsKey(moduleKey)) return;
-    for (final subKey in permissions[moduleKey]!.keys) {
-      permissions[moduleKey]![subKey] = enabledKeys.contains(subKey);
-    }
+  Map<String, dynamic> _buildUiPermissionState({
+    required String role,
+    required bool isExportImport,
+    required Map<String, dynamic>? permissions,
+  }) {
+    return mergePermissionsWithCanonicalShape(
+      permissions ??
+          _getIndustryDefaultPermissions(
+              role: role, isExportImport: isExportImport),
+    );
   }
 
   void _applyRoleDefaults(String role) {
-    final normalizedRole = role.trim().toLowerCase();
-    permissions = _emptyPermissionMap();
+    setState(() {
+      permissions = _buildUiPermissionState(
+        role: role,
+        isExportImport: isExportImport,
+        permissions: _getIndustryDefaultPermissions(
+          role: role,
+          isExportImport: isExportImport,
+        ),
+      );
+    });
+  }
 
-    switch (normalizedRole) {
-      case 'admin':
-        _setAllPermissions(true);
-        break;
+  Map<String, dynamic> _readModulePermissions(
+      Map<String, dynamic> permissionsMap,
+      String moduleKey,
+      ) {
+    final moduleValue = permissionsMap[moduleKey];
 
-      case 'manager':
-        _setModulePermissions('dashboard', ['dashboard']);
-        _setModulePermissions('sales', [
-          'inquiries',
-          'quotations',
-          'salesOrder',
-          'followUps',
-          'tasks',
-          'meetings',
-        ]);
-        _setModulePermissions('crm', [
-          'customers',
-          'contacts',
-          'customerVisits',
-          'communicationHistory',
-        ]);
-        _setModulePermissions('purchase', [
-          'vendors',
-          'purchaseOrders',
-          'grnMaterialReceipt',
-          'vendorLedger',
-        ]);
-        _setModulePermissions('inventory', [
-          'products',
-          'stockSummary',
-          'stockIn',
-          'stockOut',
-          'warehouse',
-          'lowStockAlerts',
-        ]);
-        _setModulePermissions('dispatch', [
-          'readyForDispatch',
-          'dispatchChallans',
-          'shipmentTracking',
-          'deliveredOrders',
-        ]);
-        _setModulePermissions('finance', [
-          'proformaInvoice',
-          'taxInvoice',
-          'paymentReceived',
-          'outstanding',
-        ]);
-        _setModulePermissions('reports', [
-          'salesReport',
-          'inquiryReport',
-          'customerReport',
-          'productReport',
-          'paymentReport',
-        ]);
-        _setModulePermissions('administration', [
-          'users',
-          'companyProfile',
-          'branches',
-        ]);
-        break;
-
-      case 'sales':
-        _setModulePermissions('dashboard', ['dashboard']);
-        _setModulePermissions('sales', [
-          'inquiries',
-          'quotations',
-          'salesOrder',
-          'followUps',
-          'tasks',
-          'meetings',
-        ]);
-        _setModulePermissions('crm', [
-          'customers',
-          'contacts',
-          'customerVisits',
-          'communicationHistory',
-        ]);
-        _setModulePermissions('inventory', [
-          'products',
-        ]);
-        _setModulePermissions('reports', [
-          'salesReport',
-          'inquiryReport',
-          'customerReport',
-          'productReport',
-        ]);
-        break;
-
-      case 'service':
-        _setModulePermissions('dashboard', ['dashboard']);
-        _setModulePermissions('crm', [
-          'customers',
-          'contacts',
-          'communicationHistory',
-        ]);
-        _setModulePermissions('inventory', [
-          'products',
-          'stockSummary',
-        ]);
-        _setModulePermissions('dispatch', [
-          'shipmentTracking',
-          'deliveredOrders',
-        ]);
-        break;
-
-      case 'accounts':
-        _setModulePermissions('dashboard', ['dashboard']);
-        _setModulePermissions('finance', [
-          'proformaInvoice',
-          'taxInvoice',
-          'paymentReceived',
-          'outstanding',
-          'expenseEntries',
-        ]);
-        _setModulePermissions('reports', [
-          'salesReport',
-          'paymentReport',
-          'customerReport',
-        ]);
-        _setModulePermissions('crm', [
-          'customers',
-          'contacts',
-        ]);
-        break;
-
-      case 'dispatch':
-        _setModulePermissions('dashboard', ['dashboard']);
-        _setModulePermissions('dispatch', [
-          'readyForDispatch',
-          'dispatchChallans',
-          'shipmentTracking',
-          'deliveredOrders',
-        ]);
-        _setModulePermissions('inventory', [
-          'products',
-          'stockSummary',
-          'warehouse',
-        ]);
-        _setModulePermissions('sales', [
-          'salesOrder',
-        ]);
-        break;
-
-      case 'viewer':
-        _setModulePermissions('dashboard', ['dashboard']);
-        _setModulePermissions('sales', [
-          'inquiries',
-          'quotations',
-        ]);
-        _setModulePermissions('crm', [
-          'customers',
-          'contacts',
-        ]);
-        _setModulePermissions('inventory', [
-          'products',
-          'stockSummary',
-        ]);
-        _setModulePermissions('reports', [
-          'salesReport',
-          'inquiryReport',
-        ]);
-        break;
-
-      default:
-        _setModulePermissions('dashboard', ['dashboard']);
-        _setModulePermissions('sales', [
-          'inquiries',
-          'quotations',
-          'followUps',
-        ]);
-        _setModulePermissions('crm', [
-          'customers',
-          'contacts',
-        ]);
+    if (moduleKey == PermissionModules.dashboard) {
+      return moduleValue is Map<String, dynamic>
+          ? Map<String, dynamic>.from(moduleValue)
+          : <String, dynamic>{};
     }
 
-    setState(() {});
+    return moduleValue is Map<String, dynamic>
+        ? Map<String, dynamic>.from(moduleValue)
+        : <String, dynamic>{};
   }
 
-  Map<String, dynamic> _flattenPermissionsForPayload() {
-    final Map<String, dynamic> flat = {};
+  Map<String, dynamic> _setPermissionValue({
+    required Map<String, dynamic> permissionsMap,
+    required String moduleKey,
+    required String? submoduleKey,
+    required String action,
+    required bool value,
+  }) {
+    final updated = _deepCopyPermissions(permissionsMap);
 
-    permissions.forEach((moduleKey, submodules) {
-      for (final entry in submodules.entries) {
-        flat['$moduleKey.${entry.key}'] = entry.value;
+    if (submoduleKey == null || submoduleKey.isEmpty) {
+      final moduleActions = Map<String, dynamic>.from(updated[moduleKey] ?? {});
+      moduleActions[action] = value;
+      updated[moduleKey] = moduleActions;
+      return updated;
+    }
+
+    final moduleMap = Map<String, dynamic>.from(updated[moduleKey] ?? {});
+    final submoduleMap =
+    Map<String, dynamic>.from(moduleMap[submoduleKey] ?? {});
+    submoduleMap[action] = value;
+    moduleMap[submoduleKey] = submoduleMap;
+    updated[moduleKey] = moduleMap;
+
+    return updated;
+  }
+
+  Map<String, dynamic> _deepCopyPermissions(Map<String, dynamic> input) {
+    final result = <String, dynamic>{};
+
+    for (final entry in input.entries) {
+      final value = entry.value;
+      if (value is Map) {
+        result[entry.key] = _deepCopyPermissions(
+          Map<String, dynamic>.from(value),
+        );
+      } else {
+        result[entry.key] = value;
       }
-    });
+    }
 
-    return flat;
+    return result;
   }
 
-  int _selectedPermissionCount() {
+  int _selectedPermissionCount(
+      Map<String, dynamic> permissionsMap, List<String> activeMods) {
     int count = 0;
-    permissions.forEach((_, submodules) {
-      for (final value in submodules.values) {
-        if (value) count++;
+
+    for (final moduleKey in activeMods) {
+      final moduleValue = permissionsMap[moduleKey];
+
+      if (moduleKey == PermissionModules.dashboard) {
+        if (moduleValue is Map) {
+          for (final value in moduleValue.values) {
+            if (value == true) count++;
+          }
+        }
+        continue;
       }
-    });
+
+      if (moduleValue is Map) {
+        for (final submoduleValue in moduleValue.values) {
+          if (submoduleValue is Map) {
+            for (final actionValue in submoduleValue.values) {
+              if (actionValue == true) count++;
+            }
+          }
+        }
+      }
+    }
+
+    return count;
+  }
+
+  int _countEnabledActionsInModule({
+    required String moduleKey,
+    required Map<String, dynamic> modulePermissions,
+  }) {
+    int count = 0;
+
+    if (moduleKey == PermissionModules.dashboard) {
+      for (final value in modulePermissions.values) {
+        if (value == true) count++;
+      }
+      return count;
+    }
+
+    for (final submoduleValue in modulePermissions.values) {
+      if (submoduleValue is Map) {
+        for (final actionValue in submoduleValue.values) {
+          if (actionValue == true) count++;
+        }
+      }
+    }
+
+    return count;
+  }
+
+  int _countTotalActionsInModule({
+    required String moduleKey,
+    required Map<String, dynamic> modulePermissions,
+  }) {
+    int count = 0;
+
+    if (moduleKey == PermissionModules.dashboard) {
+      return modulePermissions.length;
+    }
+
+    for (final submoduleValue in modulePermissions.values) {
+      if (submoduleValue is Map) {
+        count += submoduleValue.length;
+      }
+    }
+
     return count;
   }
 
@@ -442,12 +355,13 @@ class _ScreenCreateInviteState extends State<ScreenCreateInvite> {
         companyId: widget.companyId,
         email: _normalizeEmail(emailController.text),
         role: selectedRole,
-        permissions: _flattenPermissionsForPayload(),
+        permissions: permissions,
         invitedByUid: widget.currentUid,
         name: nameController.text.trim(),
         phone: phoneController.text.trim(),
         department: selectedDepartment,
         designation: selectedDesignation,
+        accessScope: selectedAccessScope,
       );
 
       if (!mounted) return;
@@ -462,10 +376,10 @@ class _ScreenCreateInviteState extends State<ScreenCreateInvite> {
           content: SelectableText(
             'Invite Code: ${result.inviteCode}\n\n'
                 'Valid for 7 days.\n'
-                'Role: ${_roleLabel(selectedRole)}\n'
+                'Role: ${formatRole(selectedRole)}\n'
                 'Department: $selectedDepartment\n'
                 'Designation: $selectedDesignation\n'
-                'Selected permissions: ${_selectedPermissionCount()}',
+                'Selected permissions: ${_selectedPermissionCount(permissions, activeModules)}',
           ),
           actions: [
             TextButton(
@@ -498,99 +412,6 @@ class _ScreenCreateInviteState extends State<ScreenCreateInvite> {
         setState(() => isLoading = false);
       }
     }
-  }
-
-  String _roleLabel(String role) {
-    switch (role) {
-      case 'admin':
-        return 'Admin';
-      case 'manager':
-        return 'Manager';
-      case 'sales':
-        return 'Sales';
-      case 'service':
-        return 'Service';
-      case 'accounts':
-        return 'Accounts';
-      case 'dispatch':
-        return 'Dispatch';
-      case 'viewer':
-        return 'Viewer';
-      default:
-        return role;
-    }
-  }
-
-  String _moduleLabel(String moduleKey) {
-    switch (moduleKey) {
-      case 'dashboard':
-        return 'Dashboard';
-      case 'sales':
-        return 'Sales';
-      case 'crm':
-        return 'CRM';
-      case 'purchase':
-        return 'Purchase';
-      case 'inventory':
-        return 'Inventory';
-      case 'dispatch':
-        return 'Dispatch';
-      case 'finance':
-        return 'Finance';
-      case 'reports':
-        return 'Reports';
-      case 'administration':
-        return 'Administration';
-      default:
-        return moduleKey;
-    }
-  }
-
-  String _submoduleLabel(String key) {
-    const labels = {
-      'dashboard': 'Dashboard',
-      'inquiries': 'Inquiries',
-      'quotations': 'Quotations',
-      'salesOrder': 'Sales Order',
-      'followUps': 'Follow-ups',
-      'tasks': 'Tasks',
-      'meetings': 'Meetings',
-      'customers': 'Customers',
-      'contacts': 'Contacts',
-      'customerVisits': 'Customer Visits',
-      'communicationHistory': 'Communication History',
-      'vendors': 'Vendors',
-      'purchaseOrders': 'Purchase Orders',
-      'grnMaterialReceipt': 'GRN / Material Receipt',
-      'vendorLedger': 'Vendor Ledger',
-      'products': 'Products',
-      'stockSummary': 'Stock Summary',
-      'stockIn': 'Stock In',
-      'stockOut': 'Stock Out',
-      'warehouse': 'Warehouse',
-      'lowStockAlerts': 'Low Stock Alerts',
-      'readyForDispatch': 'Ready for Dispatch',
-      'dispatchChallans': 'Dispatch Challans',
-      'shipmentTracking': 'Shipment Tracking',
-      'deliveredOrders': 'Delivered Orders',
-      'proformaInvoice': 'Proforma Invoice',
-      'taxInvoice': 'Tax Invoice',
-      'paymentReceived': 'Payment Received',
-      'outstanding': 'Outstanding',
-      'expenseEntries': 'Expense Entries',
-      'salesReport': 'Sales Report',
-      'inquiryReport': 'Inquiry Report',
-      'customerReport': 'Customer Report',
-      'productReport': 'Product Report',
-      'paymentReport': 'Payment Report',
-      'users': 'Users',
-      'rolesPermissions': 'Roles & Permissions',
-      'companyProfile': 'Company Profile',
-      'branches': 'Branches',
-      'auditLogs': 'Audit Logs',
-    };
-
-    return labels[key] ?? key;
   }
 
   InputDecoration _inputDecoration({
@@ -748,10 +569,24 @@ class _ScreenCreateInviteState extends State<ScreenCreateInvite> {
 
   Widget _buildPermissionModuleCard({
     required String moduleKey,
-    required Map<String, bool> submodules,
+    required bool isExportImport,
+    required Map<String, dynamic> modulePermissions,
+    required void Function(
+        String moduleKey,
+        String? submoduleKey,
+        String action,
+        bool value,
+        ) onActionChanged,
   }) {
-    final selectedCount = submodules.values.where((e) => e).length;
-    final totalCount = submodules.length;
+    final moduleLabel = formatModuleLabel(moduleKey);
+    final selectedCount = _countEnabledActionsInModule(
+      moduleKey: moduleKey,
+      modulePermissions: modulePermissions,
+    );
+    final totalCount = _countTotalActionsInModule(
+      moduleKey: moduleKey,
+      modulePermissions: modulePermissions,
+    );
 
     return Container(
       margin: const EdgeInsets.only(bottom: 14),
@@ -773,7 +608,7 @@ class _ScreenCreateInviteState extends State<ScreenCreateInvite> {
             children: [
               Expanded(
                 child: Text(
-                  _moduleLabel(moduleKey),
+                  moduleLabel,
                   style: const TextStyle(
                     fontSize: 15,
                     fontWeight: FontWeight.w700,
@@ -803,25 +638,120 @@ class _ScreenCreateInviteState extends State<ScreenCreateInvite> {
               ),
             ],
           ),
+          children: moduleKey == PermissionModules.dashboard
+              ? [
+            _buildActionGroup(
+              title: 'Dashboard',
+              actions: Map<String, bool>.from(modulePermissions),
+              onChanged: (action, value) => onActionChanged(
+                moduleKey,
+                null,
+                action,
+                value,
+              ),
+            ),
+          ]
+              : (permissionSubmoduleMap[moduleKey] ?? const <String>[])
+              .where((submoduleKey) {
+            if (isExportImport) {
+              if (moduleKey == 'sales') {
+                return submoduleKey == 'inquiries' ||
+                    submoduleKey == 'quotations';
+              }
+              if (moduleKey == 'crm') return submoduleKey == 'customers';
+              if (moduleKey == 'finance') {
+                return [
+                  'taxInvoice',
+                  'paymentReceived',
+                  'outstanding',
+                  'expenseEntries'
+                ].contains(submoduleKey);
+              }
+              if (moduleKey == 'reports') {
+                return [
+                  'salesReport',
+                  'inquiryReport',
+                  'customerReport',
+                  'paymentReport'
+                ].contains(submoduleKey);
+              }
+              return false;
+            }
+            return true;
+          }).map((submoduleKey) {
+            final submodulePermissions = Map<String, bool>.from(
+                modulePermissions[submoduleKey] ?? {});
+            return Container(
+              margin: const EdgeInsets.only(bottom: 12),
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: const Color(0xFFE2E8F0)),
+              ),
+              child: _buildActionGroup(
+                title: formatSubmoduleLabel(submoduleKey),
+                actions: submodulePermissions,
+                onChanged: (action, value) => onActionChanged(
+                  moduleKey,
+                  submoduleKey,
+                  action,
+                  value,
+                ),
+              ),
+            );
+          }).toList(),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildActionGroup({
+    required String title,
+    required Map<String, bool> actions,
+    required void Function(String action, bool value) onChanged,
+  }) {
+    final selectedCount = actions.values.where((e) => e).length;
+    final totalCount = actions.length;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
           children: [
-            Wrap(
-              spacing: 12,
-              runSpacing: 12,
-              children: submodules.entries.map((entry) {
-                return _PermissionChip(
-                  label: _submoduleLabel(entry.key),
-                  value: entry.value,
-                  onChanged: (value) {
-                    setState(() {
-                      permissions[moduleKey]![entry.key] = value;
-                    });
-                  },
-                );
-              }).toList(),
+            Expanded(
+              child: Text(
+                title,
+                style: const TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w700,
+                  color: _inviteHeadingTextColor,
+                ),
+              ),
+            ),
+            Text(
+              '$selectedCount / $totalCount',
+              style: const TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                color: _inviteMutedTextColor,
+              ),
             ),
           ],
         ),
-      ),
+        const SizedBox(height: 12),
+        Wrap(
+          spacing: 12,
+          runSpacing: 12,
+          children: actions.entries.map((entry) {
+            return _PermissionChip(
+              label: formatPermissionActionLabel(entry.key),
+              value: entry.value,
+              onChanged: (value) => onChanged(entry.key, value),
+            );
+          }).toList(),
+        ),
+      ],
     );
   }
 
@@ -852,7 +782,7 @@ class _ScreenCreateInviteState extends State<ScreenCreateInvite> {
                 ),
                 const SizedBox(height: 8),
                 Text(
-                  'Role: ${_roleLabel(selectedRole)} • Department: $selectedDepartment',
+                  'Role: ${formatRole(selectedRole)} • Department: $selectedDepartment',
                   style: const TextStyle(
                     fontSize: 13,
                     color: _inviteMutedTextColor,
@@ -860,7 +790,7 @@ class _ScreenCreateInviteState extends State<ScreenCreateInvite> {
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  'Designation: $selectedDesignation',
+                  'Designation: ${selectedDesignation.isEmpty ? 'Not Assigned' : selectedDesignation}',
                   style: const TextStyle(
                     fontSize: 13,
                     color: _inviteMutedTextColor,
@@ -868,7 +798,15 @@ class _ScreenCreateInviteState extends State<ScreenCreateInvite> {
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  'Selected permissions: ${_selectedPermissionCount()}',
+                  'Access Scope: ${accessScopeLabels[selectedAccessScope] ?? selectedAccessScope}',
+                  style: const TextStyle(
+                    fontSize: 13,
+                    color: _inviteMutedTextColor,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  'Selected permissions: ${_selectedPermissionCount(permissions, activeModules)}',
                   style: const TextStyle(
                     fontSize: 13,
                     color: _inviteMutedTextColor,
@@ -985,12 +923,14 @@ class _ScreenCreateInviteState extends State<ScreenCreateInvite> {
                           ),
                         ),
                         OutlinedButton.icon(
-                          onPressed: isLoading ? null : () => Navigator.pop(context),
+                          onPressed:
+                          isLoading ? null : () => Navigator.pop(context),
                           icon: const Icon(Icons.arrow_back_rounded),
                           label: const Text('Back'),
                           style: OutlinedButton.styleFrom(
                             foregroundColor: _inviteHeadingTextColor,
-                            side: const BorderSide(color: _inviteCardBorderColor),
+                            side: const BorderSide(
+                                color: _inviteCardBorderColor),
                             padding: const EdgeInsets.symmetric(
                               horizontal: 18,
                               vertical: 14,
@@ -1003,7 +943,6 @@ class _ScreenCreateInviteState extends State<ScreenCreateInvite> {
                       ],
                     ),
                     const SizedBox(height: 20),
-
                     _buildSectionCard(
                       title: 'Basic Details',
                       subtitle:
@@ -1052,23 +991,12 @@ class _ScreenCreateInviteState extends State<ScreenCreateInvite> {
                               icon: Icons.call_outlined,
                               keyboardType: TextInputType.phone,
                             ),
-                            right: _buildDropdownField(
-                              label: 'Designation',
-                              value: selectedDesignation,
-                              options: _designationOptionsForSelectedDepartment,
-                              icon: Icons.badge_outlined,
-                              onChanged: (value) {
-                                setState(() {
-                                  selectedDesignation = value ?? '';
-                                });
-                              },
-                            ),
+                            right: const SizedBox(),
                           ),
                         ],
                       ),
                     ),
                     const SizedBox(height: 18),
-
                     _buildSectionCard(
                       title: 'Department & Role',
                       subtitle:
@@ -1083,6 +1011,18 @@ class _ScreenCreateInviteState extends State<ScreenCreateInvite> {
                         children: [
                           _buildDesktopTwoColumn(
                             left: _buildDropdownField(
+                              label: 'Role',
+                              value: selectedRole,
+                              options: userRolesList,
+                              icon: Icons.admin_panel_settings_outlined,
+                              labelBuilder: formatRole,
+                              onChanged: (value) {
+                                final nextRole = value ?? UserRoles.sales;
+                                selectedRole = nextRole;
+                                _applyRoleDefaults(nextRole);
+                              },
+                            ),
+                            right: _buildDropdownField(
                               label: 'Department',
                               value: selectedDepartment,
                               options: _departmentOptions,
@@ -1092,16 +1032,32 @@ class _ScreenCreateInviteState extends State<ScreenCreateInvite> {
                                 _onDepartmentChanged(department);
                               },
                             ),
-                            right: _buildDropdownField(
-                              label: 'Role',
-                              value: selectedRole,
-                              options: _roleOptions,
-                              icon: Icons.admin_panel_settings_outlined,
-                              labelBuilder: _roleLabel,
+                          ),
+                          const SizedBox(height: 16),
+                          _buildDesktopTwoColumn(
+                            left: _buildDropdownField(
+                              label: 'Designation',
+                              value: selectedDesignation,
+                              options: _designationOptionsForSelectedDepartment,
+                              icon: Icons.badge_outlined,
                               onChanged: (value) {
-                                final nextRole = value ?? 'sales';
-                                selectedRole = nextRole;
-                                _applyRoleDefaults(nextRole);
+                                setState(() {
+                                  selectedDesignation = value ?? '';
+                                });
+                              },
+                            ),
+                            right: _buildDropdownField(
+                              label: 'Access Scope',
+                              value: selectedAccessScope,
+                              options: accessScopeList,
+                              icon: Icons.lock_open_outlined,
+                              labelBuilder: (value) =>
+                              accessScopeLabels[value] ?? value,
+                              onChanged: (value) {
+                                setState(() {
+                                  selectedAccessScope =
+                                      value ?? AccessScope.company;
+                                });
                               },
                             ),
                           ),
@@ -1133,22 +1089,40 @@ class _ScreenCreateInviteState extends State<ScreenCreateInvite> {
                       ),
                     ),
                     const SizedBox(height: 18),
-
                     _buildSectionCard(
                       title: 'Module Permissions',
                       subtitle:
                       'Permissions are aligned with your QUIK ERP modules and submodules.',
                       child: Column(
-                        children: permissions.entries.map((entry) {
+                        children: activeModules.map((moduleKey) {
                           return _buildPermissionModuleCard(
-                            moduleKey: entry.key,
-                            submodules: entry.value,
+                            moduleKey: moduleKey,
+                            isExportImport: isExportImport,
+                            modulePermissions: _readModulePermissions(
+                              permissions,
+                              moduleKey,
+                            ),
+                            onActionChanged: (
+                                String module,
+                                String? submodule,
+                                String action,
+                                bool value,
+                                ) {
+                              setState(() {
+                                permissions = _setPermissionValue(
+                                  permissionsMap: permissions,
+                                  moduleKey: module,
+                                  submoduleKey: submodule,
+                                  action: action,
+                                  value: value,
+                                );
+                              });
+                            },
                           );
                         }).toList(),
                       ),
                     ),
                     const SizedBox(height: 18),
-
                     Container(
                       width: double.infinity,
                       padding: const EdgeInsets.all(18),
@@ -1184,8 +1158,7 @@ class _ScreenCreateInviteState extends State<ScreenCreateInvite> {
                                         vertical: 16,
                                       ),
                                       shape: RoundedRectangleBorder(
-                                        borderRadius:
-                                        BorderRadius.circular(14),
+                                        borderRadius: BorderRadius.circular(14),
                                       ),
                                     ),
                                     child: const Text('Cancel'),
@@ -1203,8 +1176,7 @@ class _ScreenCreateInviteState extends State<ScreenCreateInvite> {
                                         vertical: 16,
                                       ),
                                       shape: RoundedRectangleBorder(
-                                        borderRadius:
-                                        BorderRadius.circular(14),
+                                        borderRadius: BorderRadius.circular(14),
                                       ),
                                       elevation: 0,
                                     ),
@@ -1232,8 +1204,9 @@ class _ScreenCreateInviteState extends State<ScreenCreateInvite> {
                           return Row(
                             children: [
                               OutlinedButton(
-                                onPressed:
-                                isLoading ? null : () => Navigator.pop(context),
+                                onPressed: isLoading
+                                    ? null
+                                    : () => Navigator.pop(context),
                                 style: OutlinedButton.styleFrom(
                                   foregroundColor: _inviteHeadingTextColor,
                                   side: const BorderSide(

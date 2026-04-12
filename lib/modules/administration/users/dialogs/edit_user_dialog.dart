@@ -1,3 +1,5 @@
+// FILE PATH: lib/modules/administration/users/dialogs/edit_user_dialog.dart
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 
@@ -19,6 +21,7 @@ Future<void> showEditUserDialog({
   required UserDoc doc,
   required String companyId,
   required String currentUid,
+  String? industry,
   required Future<void> Function({
   required String companyId,
   required String userUid,
@@ -32,6 +35,7 @@ Future<void> showEditUserDialog({
   }) onSaveUser,
 }) async {
   final data = doc.data();
+  final bool isExportImport = industry == 'export_import';
 
   String selectedRole = _normalizeRoleValue(
     (data['role'] ?? UserRoles.sales).toString(),
@@ -126,10 +130,15 @@ Future<void> showEditUserDialog({
 
   Map<String, dynamic> permissions = _buildUiPermissionState(
     role: selectedRole,
+    isExportImport: isExportImport,
     permissions: Map<String, dynamic>.from(
       data['permissions'] ?? const <String, dynamic>{},
     ),
   );
+
+  final List<String> activeModules = isExportImport
+      ? ['dashboard', 'sales', 'crm', 'finance', 'reports']
+      : permissionModuleOrder;
 
   await showDialog<void>(
     context: context,
@@ -185,6 +194,7 @@ Future<void> showEditUserDialog({
 
           final visiblePermissions = _buildUiPermissionState(
             role: selectedRole,
+            isExportImport: isExportImport,
             permissions: permissions,
           );
 
@@ -310,6 +320,7 @@ Future<void> showEditUserDialog({
                                           selectedRole = _normalizeRoleValue(value);
                                           permissions = _buildUiPermissionState(
                                             role: selectedRole,
+                                            isExportImport: isExportImport,
                                             permissions: permissions,
                                           );
                                         });
@@ -427,7 +438,7 @@ Future<void> showEditUserDialog({
                                 selectedDesignation: selectedDesignation,
                                 selectedAccessScope: selectedAccessScope,
                                 selectedPermissionsCount:
-                                _selectedPermissionCount(visiblePermissions),
+                                _selectedPermissionCount(visiblePermissions, activeModules),
                               ),
                             ),
                             const SizedBox(height: 18),
@@ -442,8 +453,10 @@ Future<void> showEditUserDialog({
                                   setLocalState(() {
                                     permissions = _buildUiPermissionState(
                                       role: selectedRole,
-                                      permissions: getDefaultPermissions(
-                                        selectedRole,
+                                      isExportImport: isExportImport,
+                                      permissions: _getIndustryDefaultPermissions(
+                                        role: selectedRole,
+                                        isExportImport: isExportImport,
                                       ),
                                     );
                                   });
@@ -451,10 +464,10 @@ Future<void> showEditUserDialog({
                                 child: const Text('Apply Role Defaults'),
                               ),
                               child: Column(
-                                children:
-                                permissionModuleOrder.map((moduleKey) {
+                                children: activeModules.map((moduleKey) {
                                   return _buildPermissionModuleCard(
                                     moduleKey: moduleKey,
+                                    isExportImport: isExportImport,
                                     modulePermissions: _readModulePermissions(
                                       visiblePermissions,
                                       moduleKey,
@@ -647,6 +660,30 @@ Future<void> showEditUserDialog({
       );
     },
   );
+}
+
+Map<String, dynamic> _getIndustryDefaultPermissions({
+  required String role,
+  required bool isExportImport,
+}) {
+  if (isExportImport) {
+    if (role.toLowerCase() == 'admin') {
+      return {
+        'dashboard': {'dashboard': true},
+        'sales': {'inquiries': true, 'quotations': true},
+        'crm': {'customers': true},
+        'finance': {'taxInvoice': true, 'paymentReceived': true, 'outstanding': true, 'expenseEntries': true},
+        'reports': {'salesReport': true, 'inquiryReport': true, 'customerReport': true, 'paymentReport': true},
+      };
+    } else {
+      return {
+        'dashboard': {'dashboard': true},
+        'sales': {'inquiries': true, 'quotations': true},
+        'crm': {'customers': true},
+      };
+    }
+  }
+  return getDefaultPermissions(role);
 }
 
 Widget _buildHeaderCard(Map<String, dynamic> data) {
@@ -950,6 +987,7 @@ Widget _buildEditSummary({
 
 Widget _buildPermissionModuleCard({
   required String moduleKey,
+  required bool isExportImport,
   required Map<String, dynamic> modulePermissions,
   required void Function(
       String moduleKey,
@@ -1031,6 +1069,16 @@ Widget _buildPermissionModuleCard({
           ),
         ]
             : (permissionSubmoduleMap[moduleKey] ?? const <String>[])
+            .where((submoduleKey) {
+          if (isExportImport) {
+            if (moduleKey == 'sales') return submoduleKey == 'inquiries' || submoduleKey == 'quotations';
+            if (moduleKey == 'crm') return submoduleKey == 'customers';
+            if (moduleKey == 'finance') return ['taxInvoice', 'paymentReceived', 'outstanding', 'expenseEntries'].contains(submoduleKey);
+            if (moduleKey == 'reports') return ['salesReport', 'inquiryReport', 'customerReport', 'paymentReport'].contains(submoduleKey);
+            return false;
+          }
+          return true;
+        })
             .map((submoduleKey) {
           final submodulePermissions =
           Map<String, bool>.from(modulePermissions[submoduleKey] ?? {});
@@ -1110,10 +1158,11 @@ Widget _buildActionGroup({
 
 Map<String, dynamic> _buildUiPermissionState({
   required String role,
+  required bool isExportImport,
   required Map<String, dynamic>? permissions,
 }) {
   return mergePermissionsWithCanonicalShape(
-    permissions ?? getDefaultPermissions(role),
+    permissions ?? _getIndustryDefaultPermissions(role: role, isExportImport: isExportImport),
   );
 }
 
@@ -1176,10 +1225,10 @@ Map<String, dynamic> _deepCopyPermissions(Map<String, dynamic> input) {
   return result;
 }
 
-int _selectedPermissionCount(Map<String, dynamic> permissions) {
+int _selectedPermissionCount(Map<String, dynamic> permissions, List<String> activeModules) {
   int count = 0;
 
-  for (final moduleKey in permissionModuleOrder) {
+  for (final moduleKey in activeModules) {
     final moduleValue = permissions[moduleKey];
 
     if (moduleKey == PermissionModules.dashboard) {

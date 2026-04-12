@@ -56,14 +56,13 @@ class _ScreenSettingsHomeState extends State<ScreenSettingsHome> {
     return widget.permissions[key] == true;
   }
 
-  bool get canOpenUsers =>
-      !isExportImport && (isAdminOrManager || _hasPermission('userManagement'));
-  bool get canOpenCompanyProfile =>
-      !isExportImport && (isAdminOrManager || _hasPermission('companyProfile'));
-  bool get canOpenAuditLogs =>
-      !isExportImport && (isAdminOrManager || _hasPermission('auditLogs'));
-  bool get canOpenRoles =>
-      !isExportImport && (isAdminOrManager || _hasPermission('roles'));
+  // Users module should ALWAYS be visible based on permissions
+  bool get canOpenUsers => isAdminOrManager || _hasPermission('userManagement');
+
+  // Hide these explicitly for Export-Import
+  bool get canOpenCompanyProfile => !isExportImport && (isAdminOrManager || _hasPermission('companyProfile'));
+  bool get canOpenAuditLogs => !isExportImport && (isAdminOrManager || _hasPermission('auditLogs'));
+  bool get canOpenRoles => !isExportImport && (isAdminOrManager || _hasPermission('roles'));
 
   List<_NavItemData> get _navItems {
     return [
@@ -72,7 +71,7 @@ class _ScreenSettingsHomeState extends State<ScreenSettingsHome> {
         title: 'My Account',
         icon: Icons.person_outline,
       ),
-      if (canOpenCompanyProfile)
+      if (!isExportImport && (canOpenCompanyProfile || isAdminOrManager))
         const _NavItemData(
           section: _SettingsSection.workspace,
           title: 'Workspace',
@@ -84,7 +83,7 @@ class _ScreenSettingsHomeState extends State<ScreenSettingsHome> {
           title: 'Users & Access',
           icon: Icons.admin_panel_settings_outlined,
         ),
-      if (!isExportImport)
+      if (!isExportImport && (canOpenAuditLogs || isAdminOrManager))
         const _NavItemData(
           section: _SettingsSection.system,
           title: 'System',

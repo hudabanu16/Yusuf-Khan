@@ -1,3 +1,5 @@
+// FILE PATH: lib/modules/administration/users/screen_user_management.dart
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 
@@ -42,6 +44,44 @@ class _ScreenUserManagementState extends State<ScreenUserManagement> {
   );
 
   int? _sortColumnIndex;
+  String? _resolvedIndustry;
+  bool _isLoadingIndustry = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _fetchIndustry();
+  }
+
+  Future<void> _fetchIndustry() async {
+    try {
+      final doc = await FirebaseFirestore.instance
+          .collection('companies')
+          .doc(widget.companyId)
+          .get();
+
+      if (doc.exists && doc.data() != null) {
+        final data = doc.data()!;
+        final raw = (data['industryType'] ?? data['businessCategory'] ?? data['industry'] ?? '').toString().toLowerCase();
+
+        if (raw.contains('export') && raw.contains('import')) {
+          _resolvedIndustry = 'export_import';
+        } else {
+          _resolvedIndustry = raw;
+        }
+      } else {
+        _resolvedIndustry = 'unknown';
+      }
+    } catch (e) {
+      _resolvedIndustry = 'unknown';
+    }
+
+    if (mounted) {
+      setState(() {
+        _isLoadingIndustry = false;
+      });
+    }
+  }
 
   bool get _hasActiveFilters {
     return _filterState.selectedRole != 'all' ||
@@ -73,50 +113,52 @@ class _ScreenUserManagementState extends State<ScreenUserManagement> {
         builder: (_) => ScreenCreateInvite(
           companyId: widget.companyId,
           currentUid: widget.currentUid,
+          industry: _resolvedIndustry,
         ),
       ),
     );
   }
 
   Future<void> _handleViewUser(
-    QueryDocumentSnapshot<Map<String, dynamic>> doc,
-  ) async {
+      QueryDocumentSnapshot<Map<String, dynamic>> doc,
+      ) async {
     await showViewUserDialog(context: context, doc: doc);
   }
 
   Future<void> _handleEditUser(
-    QueryDocumentSnapshot<Map<String, dynamic>> doc,
-  ) async {
+      QueryDocumentSnapshot<Map<String, dynamic>> doc,
+      ) async {
     await showEditUserDialog(
       context: context,
       doc: doc,
       companyId: widget.companyId,
       currentUid: widget.currentUid,
+      industry: _resolvedIndustry,
       onSaveUser:
           ({
-            required String companyId,
-            required String userUid,
-            required String role,
-            required bool isActive,
-            required Map<String, dynamic> permissions,
-            String? department,
-            String? designation,
-            String? branchName,
-            String? accessScope,
-          }) {
-            return _userManagementService.updateUser(
-              companyId: companyId,
-              userUid: userUid,
-              role: role,
-              isActive: isActive,
-              permissions: permissions,
-              department: department,
-              designation: designation,
-              branchName: branchName,
-              accessScope: accessScope,
-              updatedByUid: widget.currentUid,
-            );
-          },
+        required String companyId,
+        required String userUid,
+        required String role,
+        required bool isActive,
+        required Map<String, dynamic> permissions,
+        String? department,
+        String? designation,
+        String? branchName,
+        String? accessScope,
+      }) {
+        return _userManagementService.updateUser(
+          companyId: companyId,
+          userUid: userUid,
+          role: role,
+          isActive: isActive,
+          permissions: permissions,
+          department: department,
+          designation: designation,
+          branchName: branchName,
+          accessScope: accessScope,
+          updatedByUid: widget.currentUid,
+        );
+      },
     );
   }
 
@@ -131,9 +173,9 @@ class _ScreenUserManagementState extends State<ScreenUserManagement> {
   }
 
   Future<void> _confirmDeleteUser(
-    BuildContext context,
-    QueryDocumentSnapshot<Map<String, dynamic>> doc,
-  ) async {
+      BuildContext context,
+      QueryDocumentSnapshot<Map<String, dynamic>> doc,
+      ) async {
     final data = doc.data();
     final String name = (data['displayName'] ?? data['name'] ?? 'User')
         .toString();
@@ -148,7 +190,7 @@ class _ScreenUserManagementState extends State<ScreenUserManagement> {
           title: const Text('Delete User'),
           content: Text(
             'Do you want to delete $name?\n\n'
-            'This will remove the user from active operations and mark the record as deleted.',
+                'This will remove the user from active operations and mark the record as deleted.',
           ),
           actions: [
             TextButton(
@@ -192,9 +234,9 @@ class _ScreenUserManagementState extends State<ScreenUserManagement> {
   }
 
   Future<void> _confirmCancelInvite(
-    BuildContext context,
-    QueryDocumentSnapshot<Map<String, dynamic>> doc,
-  ) async {
+      BuildContext context,
+      QueryDocumentSnapshot<Map<String, dynamic>> doc,
+      ) async {
     final data = doc.data();
     final String email = (data['email'] ?? '').toString().trim();
     final String name = (data['name'] ?? '').toString().trim();
@@ -484,7 +526,7 @@ class _ScreenUserManagementState extends State<ScreenUserManagement> {
     return [
       const DropdownMenuItem<String>(value: 'all', child: Text('All Roles')),
       ...userRolesList.map(
-        (role) => DropdownMenuItem<String>(
+            (role) => DropdownMenuItem<String>(
           value: role,
           child: Text(formatRole(role)),
         ),
@@ -550,7 +592,7 @@ class _ScreenUserManagementState extends State<ScreenUserManagement> {
                           child: Text('All Departments'),
                         ),
                         ...departments.map(
-                          (dept) => DropdownMenuItem<String>(
+                              (dept) => DropdownMenuItem<String>(
                             value: dept.toLowerCase(),
                             child: Text(dept),
                           ),
@@ -1069,6 +1111,15 @@ class _ScreenUserManagementState extends State<ScreenUserManagement> {
 
   @override
   Widget build(BuildContext context) {
+    if (_isLoadingIndustry) {
+      return const Scaffold(
+        backgroundColor: pageBgColor,
+        body: Center(
+          child: CircularProgressIndicator(color: primaryColor),
+        ),
+      );
+    }
+
     return Scaffold(
       backgroundColor: pageBgColor,
       floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
@@ -1153,26 +1204,26 @@ class _ScreenUserManagementState extends State<ScreenUserManagement> {
 
               final List<QueryDocumentSnapshot<Map<String, dynamic>>>
               pendingInvites =
-                  allInvites.where((doc) {
-                    final data = doc.data();
-                    final String status = (data['status'] ?? '')
-                        .toString()
-                        .trim()
-                        .toLowerCase();
-                    final bool isDeleted = (data['isDeleted'] ?? false) == true;
-                    return !isDeleted && status == 'pending';
-                  }).toList()..sort((a, b) {
-                    final aTs = a.data()['createdAt'];
-                    final bTs = b.data()['createdAt'];
+              allInvites.where((doc) {
+                final data = doc.data();
+                final String status = (data['status'] ?? '')
+                    .toString()
+                    .trim()
+                    .toLowerCase();
+                final bool isDeleted = (data['isDeleted'] ?? false) == true;
+                return !isDeleted && status == 'pending';
+              }).toList()..sort((a, b) {
+                final aTs = a.data()['createdAt'];
+                final bTs = b.data()['createdAt'];
 
-                    DateTime aDate = DateTime.fromMillisecondsSinceEpoch(0);
-                    DateTime bDate = DateTime.fromMillisecondsSinceEpoch(0);
+                DateTime aDate = DateTime.fromMillisecondsSinceEpoch(0);
+                DateTime bDate = DateTime.fromMillisecondsSinceEpoch(0);
 
-                    if (aTs is Timestamp) aDate = aTs.toDate();
-                    if (bTs is Timestamp) bDate = bTs.toDate();
+                if (aTs is Timestamp) aDate = aTs.toDate();
+                if (bTs is Timestamp) bDate = bTs.toDate();
 
-                    return bDate.compareTo(aDate);
-                  });
+                return bDate.compareTo(aDate);
+              });
 
               return LayoutBuilder(
                 builder: (context, constraints) {

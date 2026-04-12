@@ -1,5 +1,3 @@
-// FILE PATH: lib/modules/shell/zoho_shell.dart
-
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
@@ -309,9 +307,23 @@ class ZohoShell extends StatefulWidget {
 class _ZohoShellState extends State<ZohoShell> {
   ShellPage activePage = ShellPage.dashboard;
 
-  final Set<String> expandedGroups = {'sales', 'service', 'crm', 'inventory', 'finance', 'reports'};
+  final Set<String> expandedGroups = {
+    'sales',
+    'service',
+    'crm',
+    'inventory',
+    'finance',
+    'reports',
+    'admin'
+  };
+
   String? _resolvedIndustry;
   bool _isLoadingIndustry = true;
+
+  // Live State tracked securely via Firestore streams
+  String _currentRole = 'viewer';
+  Map<String, dynamic> _currentPermissions = {};
+  List<SidebarGroup> _currentSidebarGroups = [];
 
   @override
   void initState() {
@@ -334,7 +346,12 @@ class _ZohoShellState extends State<ZohoShell> {
 
       if (doc.exists && doc.data() != null) {
         final data = doc.data()!;
-        final raw = (data['industryType'] ?? data['businessCategory'] ?? data['industry'] ?? '').toString().toLowerCase();
+        final raw = (data['industryType'] ??
+            data['businessCategory'] ??
+            data['industry'] ??
+            '')
+            .toString()
+            .toLowerCase();
 
         if (raw.contains('export') && raw.contains('import')) {
           _resolvedIndustry = 'export_import';
@@ -355,22 +372,169 @@ class _ZohoShellState extends State<ZohoShell> {
     }
   }
 
-  bool get isAdminOrManager =>
-      widget.role.toLowerCase() == 'admin' ||
-          widget.role.toLowerCase() == 'manager';
-
-  bool _canAccess(String module) {
-    if (isAdminOrManager) return true;
-    return widget.permissions[module] == true;
+  // 🔴 RESTORED: Admin and Manager have full access so they can assign permissions.
+  bool get isAdminOrManager {
+    final r = _currentRole;
+    return r == 'owner' ||
+        r == 'founder' ||
+        r == 'ceo' ||
+        r == 'superadmin' ||
+        r == 'admin' ||
+        r == 'manager';
   }
 
-  bool get canInquiries => _canAccess('inquiries');
-  bool get canCustomers => _canAccess('customers');
-  bool get canProducts => _canAccess('products');
-  bool get canQuotations => _canAccess('quotations');
-  bool get canUsers => isAdminOrManager || _canAccess('userManagement');
+  bool _hasPermission(String module, String submodule, {String action = 'view'}) {
+    // 1. The Main Organization Account (Admin/Manager) gets a blanket bypass.
+    if (isAdminOrManager) return true;
 
-  List<SidebarGroup> get sidebarGroups {
+    // 2. Strict Nested Map Check (New RBAC architecture)
+    final moduleData = _currentPermissions[module];
+    if (moduleData is Map && moduleData.containsKey(submodule)) {
+      final subData = moduleData[submodule];
+      if (subData is Map) {
+        // We found the explicit nested map (e.g. {'view': false}). Return its exact value immediately.
+        return subData[action] == true;
+      }
+      return subData == true; // Fallback if someone manually saved a boolean here
+    }
+
+    // 3. Legacy Flat Map Check (Only runs if the modern nested structure is missing entirely)
+    if (_currentPermissions.containsKey(submodule)) {
+      final legacySubData = _currentPermissions[submodule];
+      if (legacySubData is Map) {
+        return legacySubData[action] == true;
+      }
+      return legacySubData == true && action == 'view';
+    }
+
+    // 4. Invite Code Flat Dot-Notation Check
+    if (_currentPermissions.containsKey('$module.$submodule')) {
+      return _currentPermissions['$module.$submodule'] == true && action == 'view';
+    }
+
+    // Default deny for standard users if not explicitly granted
+    return false;
+  }
+
+  bool get canInquiries => _hasPermission('sales', 'inquiries');
+  bool get canCustomers => _hasPermission('crm', 'customers');
+  bool get canProducts => _hasPermission('inventory', 'products');
+  bool get canQuotations => _hasPermission('sales', 'quotations');
+  bool get canUsers => isAdminOrManager || _hasPermission('administration', 'users');
+
+  bool _canViewPage(ShellPage page) {
+    if (isAdminOrManager) return true;
+
+    switch (page) {
+      case ShellPage.dashboard:
+        return true;
+      case ShellPage.settingsGeneral:
+        return true;
+
+    // Sales
+      case ShellPage.salesInquiries:
+        return _hasPermission('sales', 'inquiries');
+      case ShellPage.salesQuotations:
+        return _hasPermission('sales', 'quotations');
+      case ShellPage.salesOrders:
+        return _hasPermission('sales', 'salesOrder');
+      case ShellPage.salesFollowUps:
+        return _hasPermission('sales', 'followUps');
+      case ShellPage.salesTasks:
+        return _hasPermission('sales', 'tasks');
+      case ShellPage.salesMeetings:
+        return _hasPermission('sales', 'meetings');
+
+    // Service
+      case ShellPage.service:
+        return true;
+
+    // CRM
+      case ShellPage.crmCustomers:
+        return _hasPermission('crm', 'customers');
+      case ShellPage.crmContacts:
+        return _hasPermission('crm', 'contacts');
+      case ShellPage.crmVisits:
+        return _hasPermission('crm', 'customerVisits');
+      case ShellPage.crmCommunication:
+        return _hasPermission('crm', 'communicationHistory');
+
+    // Purchase
+      case ShellPage.purchaseVendors:
+        return _hasPermission('purchase', 'vendors');
+      case ShellPage.purchaseOrders:
+        return _hasPermission('purchase', 'purchaseOrders');
+      case ShellPage.purchaseGrn:
+        return _hasPermission('purchase', 'grnMaterialReceipt');
+      case ShellPage.purchaseLedger:
+        return _hasPermission('purchase', 'vendorLedger');
+
+    // Inventory
+      case ShellPage.inventoryProducts:
+        return _hasPermission('inventory', 'products');
+      case ShellPage.inventoryStockSummary:
+        return _hasPermission('inventory', 'stockSummary');
+      case ShellPage.inventoryStockIn:
+        return _hasPermission('inventory', 'stockIn');
+      case ShellPage.inventoryStockOut:
+        return _hasPermission('inventory', 'stockOut');
+      case ShellPage.inventoryWarehouse:
+        return _hasPermission('inventory', 'warehouse');
+      case ShellPage.inventoryLowStock:
+        return _hasPermission('inventory', 'lowStockAlerts');
+
+    // Dispatch
+      case ShellPage.dispatchReady:
+        return _hasPermission('dispatch', 'readyForDispatch');
+      case ShellPage.dispatchChallans:
+        return _hasPermission('dispatch', 'dispatchChallans');
+      case ShellPage.dispatchShipmentTracking:
+        return _hasPermission('dispatch', 'shipmentTracking');
+      case ShellPage.dispatchDelivered:
+        return _hasPermission('dispatch', 'deliveredOrders');
+
+    // Finance
+      case ShellPage.financeProforma:
+        return _hasPermission('finance', 'proformaInvoice');
+      case ShellPage.financeTaxInvoice:
+        return _hasPermission('finance', 'taxInvoice');
+      case ShellPage.financePaymentsReceived:
+        return _hasPermission('finance', 'paymentReceived');
+      case ShellPage.financeOutstanding:
+        return _hasPermission('finance', 'outstanding');
+      case ShellPage.financeExpenses:
+        return _hasPermission('finance', 'expenseEntries');
+
+    // Reports
+      case ShellPage.reportsSales:
+        return _hasPermission('reports', 'salesReport');
+      case ShellPage.reportsInquiry:
+        return _hasPermission('reports', 'inquiryReport');
+      case ShellPage.reportsCustomer:
+        return _hasPermission('reports', 'customerReport');
+      case ShellPage.reportsProduct:
+        return _hasPermission('reports', 'productReport');
+      case ShellPage.reportsPayment:
+        return _hasPermission('reports', 'paymentReport');
+
+    // Administration
+      case ShellPage.adminUsers:
+        return _hasPermission('administration', 'users');
+      case ShellPage.adminRoles:
+        return _hasPermission('administration', 'rolesPermissions');
+      case ShellPage.adminCompanyProfile:
+        return _hasPermission('administration', 'companyProfile');
+      case ShellPage.adminBranches:
+        return _hasPermission('administration', 'branches');
+      case ShellPage.adminAuditLogs:
+        return _hasPermission('administration', 'auditLogs');
+
+      default:
+        return false;
+    }
+  }
+
+  List<SidebarGroup> get _allSidebarGroups {
     if (_resolvedIndustry == 'export_import') {
       return const [
         SidebarGroup(
@@ -410,6 +574,14 @@ class _ZohoShellState extends State<ZohoShell> {
             ShellPage.reportsInquiry,
             ShellPage.reportsCustomer,
             ShellPage.reportsPayment,
+          ],
+        ),
+        SidebarGroup(
+          key: 'admin',
+          title: 'Administration',
+          icon: Icons.admin_panel_settings_outlined,
+          children: [
+            ShellPage.adminUsers,
           ],
         ),
       ];
@@ -520,6 +692,27 @@ class _ZohoShellState extends State<ZohoShell> {
     ];
   }
 
+  List<SidebarGroup> _computeSidebarGroups() {
+    final allGroups = _allSidebarGroups;
+    final filtered = <SidebarGroup>[];
+
+    for (var group in allGroups) {
+      final allowedChildren =
+      group.children.where((page) => _canViewPage(page)).toList();
+
+      if (allowedChildren.isNotEmpty) {
+        filtered.add(SidebarGroup(
+          key: group.key,
+          title: group.title,
+          icon: group.icon,
+          children: allowedChildren,
+        ));
+      }
+    }
+
+    return filtered;
+  }
+
   void _noAccess() {
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(
@@ -535,28 +728,6 @@ class _ZohoShellState extends State<ZohoShell> {
     }
 
     setState(() => activePage = page);
-  }
-
-  bool _canViewPage(ShellPage page) {
-    switch (page) {
-      case ShellPage.salesInquiries:
-        return canInquiries;
-      case ShellPage.crmCustomers:
-        return canCustomers;
-      case ShellPage.inventoryProducts:
-        return canProducts;
-      case ShellPage.salesQuotations:
-        return canQuotations;
-      case ShellPage.adminUsers:
-        return canUsers;
-      case ShellPage.adminRoles:
-      case ShellPage.adminCompanyProfile:
-      case ShellPage.adminBranches:
-      case ShellPage.adminAuditLogs:
-        return isAdminOrManager;
-      default:
-        return true;
-    }
   }
 
   bool _isImplementedPage(ShellPage page) {
@@ -586,8 +757,8 @@ class _ZohoShellState extends State<ZohoShell> {
     if (activePage == ShellPage.dashboard) return 'Dashboard';
     if (activePage == ShellPage.settingsGeneral) return 'Settings';
 
-    if (sidebarGroups.any((group) => group.children.contains(activePage))) {
-      final group = sidebarGroups.firstWhere(
+    if (_currentSidebarGroups.any((group) => group.children.contains(activePage))) {
+      final group = _currentSidebarGroups.firstWhere(
             (g) => g.children.contains(activePage),
       );
       return '${group.title} • ${activePage.label}';
@@ -640,6 +811,62 @@ class _ZohoShellState extends State<ZohoShell> {
     );
   }
 
+  Widget _blockedWorkspaceBody() {
+    return Scaffold(
+      backgroundColor: zCanvasBg,
+      body: SafeArea(
+        child: Center(
+          child: Container(
+            constraints: const BoxConstraints(maxWidth: 520),
+            margin: const EdgeInsets.all(24),
+            padding: const EdgeInsets.all(24),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              border: Border.all(color: zBorder),
+              borderRadius: BorderRadius.circular(18),
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(
+                  Icons.lock_person_outlined,
+                  size: 42,
+                  color: zMuted,
+                ),
+                const SizedBox(height: 12),
+                const Text(
+                  'Workspace access unavailable',
+                  style: TextStyle(
+                    fontSize: 20,
+                    fontWeight: FontWeight.w900,
+                    color: zText,
+                  ),
+                ),
+                const SizedBox(height: 10),
+                const Text(
+                  'Your company workspace access is inactive, archived, or deleted. Please contact your administrator.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    color: zMuted,
+                    fontSize: 14,
+                    height: 1.5,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const SizedBox(height: 18),
+                OutlinedButton.icon(
+                  onPressed: _logout,
+                  icon: const Icon(Icons.logout),
+                  label: const Text('Logout'),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     if (_isLoadingIndustry) {
@@ -651,126 +878,173 @@ class _ZohoShellState extends State<ZohoShell> {
       );
     }
 
-    return Scaffold(
-      backgroundColor: zCanvasBg,
-      body: Row(
-        children: [
-          Container(
-            width: 292,
-            color: zIconRail,
-            child: SafeArea(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(18, 16, 18, 14),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Text(
-                          'QUIK ERP',
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontWeight: FontWeight.w900,
-                            fontSize: 18,
-                            letterSpacing: 0.2,
-                          ),
-                        ),
-                        const SizedBox(height: 8),
-                        Text(
-                          widget.companyName,
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                            color: Colors.white70,
-                            fontSize: 12.5,
-                            fontWeight: FontWeight.w600,
-                            height: 1.4,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  const Divider(color: Color(0xFF243041), height: 1),
-                  Expanded(
-                    child: ListView(
-                      padding: const EdgeInsets.fromLTRB(10, 12, 10, 10),
-                      children: [
-                        _dashboardNavItem(),
-                        const SizedBox(height: 8),
-                        ...sidebarGroups.map(_groupWidget),
-                        const SizedBox(height: 8),
-                        const Divider(color: Color(0xFF243041)),
-                        _settingsNavItem(),
-                      ],
-                    ),
-                  ),
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(10, 8, 10, 12),
-                    child: InkWell(
-                      borderRadius: BorderRadius.circular(14),
-                      onTap: _logout,
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 12,
-                          vertical: 12,
-                        ),
-                        decoration: BoxDecoration(
-                          color: Colors.white.withOpacity(0.06),
-                          borderRadius: BorderRadius.circular(14),
-                          border: Border.all(
-                            color: Colors.white.withOpacity(0.10),
-                          ),
-                        ),
-                        child: Row(
+    return StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
+      stream: FirebaseFirestore.instance
+          .collection('companies')
+          .doc(widget.companyId)
+          .collection('users')
+          .doc(widget.userUid)
+          .snapshots(),
+      builder: (context, userSnap) {
+
+        if (userSnap.connectionState == ConnectionState.waiting && !userSnap.hasData) {
+          return const Scaffold(
+            backgroundColor: zCanvasBg,
+            body: Center(child: CircularProgressIndicator(color: zBlue)),
+          );
+        }
+
+        // Extract fresh data directly from Firestore
+        final companyUserData = userSnap.data?.data() ?? <String, dynamic>{};
+
+        // Update State
+        _currentRole = (companyUserData['role'] ?? widget.role).toString().trim().toLowerCase();
+
+        final dynamic rawPermissions = companyUserData['permissions'];
+        _currentPermissions = rawPermissions is Map
+            ? Map<String, dynamic>.from(rawPermissions)
+            : widget.permissions; // Fallback to login snapshot if empty
+
+        // Blocked Check
+        final bool isDeleted = companyUserData['isDeleted'] == true;
+        final bool isActive = companyUserData.containsKey('isActive') ? companyUserData['isActive'] == true : true;
+
+        if (isDeleted || !isActive) {
+          return _blockedWorkspaceBody();
+        }
+
+        // Dynamically compute Sidebar based on the live fetched permissions
+        _currentSidebarGroups = _computeSidebarGroups();
+
+        // Safeguard active page -> Auto-route to Dashboard if admin disables their current screen
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted && !_canViewPage(activePage)) {
+            setState(() => activePage = ShellPage.dashboard);
+          }
+        });
+
+        return Scaffold(
+          backgroundColor: zCanvasBg,
+          body: Row(
+            children: [
+              Container(
+                width: 292,
+                color: zIconRail,
+                child: SafeArea(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(18, 16, 18, 14),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            const Icon(
-                              Icons.logout,
-                              color: Colors.white70,
-                              size: 20,
-                            ),
-                            const SizedBox(width: 10),
-                            const Expanded(
-                              child: Text(
-                                'Logout',
-                                style: TextStyle(
-                                  color: Colors.white,
-                                  fontWeight: FontWeight.w800,
-                                ),
+                            const Text(
+                              'QUIK ERP',
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontWeight: FontWeight.w900,
+                                fontSize: 18,
+                                letterSpacing: 0.2,
                               ),
                             ),
+                            const SizedBox(height: 8),
                             Text(
-                              widget.role.toUpperCase(),
+                              widget.companyName,
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
                               style: const TextStyle(
-                                color: Colors.white54,
-                                fontSize: 11,
-                                fontWeight: FontWeight.w700,
+                                color: Colors.white70,
+                                fontSize: 12.5,
+                                fontWeight: FontWeight.w600,
+                                height: 1.4,
                               ),
                             ),
                           ],
                         ),
                       ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-          Expanded(
-            child: Column(
-              children: [
-                _buildTopHeader(),
-                Expanded(
-                  child: Padding(
-                    padding: const EdgeInsets.all(14),
-                    child: _buildActiveBody(),
+                      const Divider(color: Color(0xFF243041), height: 1),
+                      Expanded(
+                        child: ListView(
+                          padding: const EdgeInsets.fromLTRB(10, 12, 10, 10),
+                          children: [
+                            _dashboardNavItem(),
+                            const SizedBox(height: 8),
+                            ..._currentSidebarGroups.map(_groupWidget),
+                            const SizedBox(height: 8),
+                            const Divider(color: Color(0xFF243041)),
+                            _settingsNavItem(),
+                          ],
+                        ),
+                      ),
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(10, 8, 10, 12),
+                        child: InkWell(
+                          borderRadius: BorderRadius.circular(14),
+                          onTap: _logout,
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 12,
+                              vertical: 12,
+                            ),
+                            decoration: BoxDecoration(
+                              color: Colors.white.withOpacity(0.06),
+                              borderRadius: BorderRadius.circular(14),
+                              border: Border.all(
+                                color: Colors.white.withOpacity(0.10),
+                              ),
+                            ),
+                            child: Row(
+                              children: [
+                                const Icon(
+                                  Icons.logout,
+                                  color: Colors.white70,
+                                  size: 20,
+                                ),
+                                const SizedBox(width: 10),
+                                const Expanded(
+                                  child: Text(
+                                    'Logout',
+                                    style: TextStyle(
+                                      color: Colors.white,
+                                      fontWeight: FontWeight.w800,
+                                    ),
+                                  ),
+                                ),
+                                Text(
+                                  _currentRole.toUpperCase(),
+                                  style: const TextStyle(
+                                    color: Colors.white54,
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
                 ),
-              ],
-            ),
+              ),
+              Expanded(
+                child: Column(
+                  children: [
+                    _buildTopHeader(),
+                    Expanded(
+                      child: Padding(
+                        padding: const EdgeInsets.all(14),
+                        child: _buildActiveBody(),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
           ),
-        ],
-      ),
+        );
+      },
     );
   }
 
@@ -952,46 +1226,42 @@ class _ZohoShellState extends State<ZohoShell> {
 
   Widget _subNavItem(ShellPage page) {
     final bool selected = activePage == page;
-    final bool allowed = _canViewPage(page);
 
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 2),
       child: InkWell(
         borderRadius: BorderRadius.circular(12),
         onTap: () => _selectPage(page),
-        child: Opacity(
-          opacity: allowed ? 1 : 0.55,
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
-            decoration: BoxDecoration(
-              color: selected ? Colors.white : Colors.white.withOpacity(0.03),
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(
-                color: selected ? Colors.white : Colors.white.withOpacity(0.05),
-              ),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
+          decoration: BoxDecoration(
+            color: selected ? Colors.white : Colors.white.withOpacity(0.03),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(
+              color: selected ? Colors.white : Colors.white.withOpacity(0.05),
             ),
-            child: Row(
-              children: [
-                Icon(
-                  page.icon,
-                  size: 18,
-                  color: selected ? zBlue : Colors.white70,
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Text(
-                    page.label,
-                    style: TextStyle(
-                      color: selected ? zText : Colors.white70,
-                      fontWeight: selected ? FontWeight.w800 : FontWeight.w600,
-                      fontSize: 13.2,
-                    ),
+          ),
+          child: Row(
+            children: [
+              Icon(
+                page.icon,
+                size: 18,
+                color: selected ? zBlue : Colors.white70,
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  page.label,
+                  style: TextStyle(
+                    color: selected ? zText : Colors.white70,
+                    fontWeight: selected ? FontWeight.w800 : FontWeight.w600,
+                    fontSize: 13.2,
                   ),
                 ),
-                if (page == ShellPage.salesInquiries && canInquiries)
-                  _inquiryBadge(selected: selected),
-              ],
-            ),
+              ),
+              if (page == ShellPage.salesInquiries && canInquiries)
+                _inquiryBadge(selected: selected),
+            ],
           ),
         ),
       ),
@@ -1064,9 +1334,9 @@ class _ZohoShellState extends State<ZohoShell> {
         return ScreenSettingsHome(
           companyId: widget.companyId,
           companyName: widget.companyName,
-          role: widget.role,
+          role: _currentRole, // Pass Live Role
           userEmail: widget.userEmail,
-          permissions: widget.permissions,
+          permissions: _currentPermissions, // Pass Live Permissions
           industry: _resolvedIndustry,
           onOpenUsers: () => _selectPage(ShellPage.adminUsers),
           onOpenCompanyProfile: () =>
@@ -1084,7 +1354,7 @@ class _ZohoShellState extends State<ZohoShell> {
     final bool allowed = _canViewPage(page);
 
     String sectionName = 'Workspace';
-    for (final group in sidebarGroups) {
+    for (final group in _currentSidebarGroups) {
       if (group.children.contains(page)) {
         sectionName = group.title;
         break;
