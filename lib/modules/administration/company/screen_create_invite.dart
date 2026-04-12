@@ -690,7 +690,7 @@ class _ScreenCreateInviteState extends State<ScreenCreateInvite> {
                 border: Border.all(color: const Color(0xFFE2E8F0)),
               ),
               child: _buildActionGroup(
-                title: formatSubmoduleLabel(submoduleKey),
+                title: formatSubmoduleLabel(submoduleKey), // Inherits natively from user_management_constants.dart!
                 actions: submodulePermissions,
                 onChanged: (action, value) => onActionChanged(
                   moduleKey,

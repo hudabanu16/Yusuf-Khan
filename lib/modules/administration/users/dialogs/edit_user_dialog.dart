@@ -1091,7 +1091,7 @@ Widget _buildPermissionModuleCard({
               border: Border.all(color: const Color(0xFFE2E8F0)),
             ),
             child: _buildActionGroup(
-              title: formatSubmoduleLabel(submoduleKey),
+              title: formatSubmoduleLabel(submoduleKey), // Correctly inherits "Invoice" from constants!
               actions: submodulePermissions,
               onChanged: (action, value) => onActionChanged(
                 moduleKey,

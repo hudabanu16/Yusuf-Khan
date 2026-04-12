@@ -1,3 +1,4 @@
+// lib/modules/shell/zoho_shell.dart
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
@@ -130,7 +131,7 @@ extension ShellPageX on ShellPage {
       case ShellPage.financeProforma:
         return 'Proforma Invoice';
       case ShellPage.financeTaxInvoice:
-        return 'Tax Invoice';
+        return 'Invoice'; // Changed from 'Tax Invoice' to 'Invoice'
       case ShellPage.financePaymentsReceived:
         return 'Payments Received';
       case ShellPage.financeOutstanding:
@@ -497,7 +498,7 @@ class _ZohoShellState extends State<ZohoShell> {
       case ShellPage.financeProforma:
         return _hasPermission('finance', 'proformaInvoice');
       case ShellPage.financeTaxInvoice:
-        return _hasPermission('finance', 'taxInvoice');
+        return _hasPermission('finance', 'taxInvoice'); // Keeps the DB key identical
       case ShellPage.financePaymentsReceived:
         return _hasPermission('finance', 'paymentReceived');
       case ShellPage.financeOutstanding:

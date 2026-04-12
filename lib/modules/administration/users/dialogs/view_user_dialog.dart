@@ -591,7 +591,7 @@ String _submoduleLabel(String key) {
     'shipmentTracking': 'Shipment Tracking',
     'deliveredOrders': 'Delivered Orders',
     'proformaInvoice': 'Proforma Invoice',
-    'taxInvoice': 'Tax Invoice',
+    'taxInvoice': 'Invoice', // Updated from 'Tax Invoice' to 'Invoice'
     'paymentReceived': 'Payment Received',
     'outstanding': 'Outstanding',
     'expenseEntries': 'Expense Entries',
