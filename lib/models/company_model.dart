@@ -1,3 +1,5 @@
+// FILE PATH: lib/models/company_model.dart
+
 class CompanyModel {
   final String companyId;
   final String companyName;
@@ -14,6 +16,7 @@ class CompanyModel {
   final String adminUid;
   final String plan;
   final bool isActive;
+  final String industryType;
 
   CompanyModel({
     required this.companyId,
@@ -31,6 +34,7 @@ class CompanyModel {
     required this.adminUid,
     required this.plan,
     required this.isActive,
+    required this.industryType,
   });
 
   Map<String, dynamic> toMap() {
@@ -50,10 +54,16 @@ class CompanyModel {
       'adminUid': adminUid,
       'plan': plan,
       'isActive': isActive,
+      'industryType': industryType,
     };
   }
 
   factory CompanyModel.fromMap(Map<String, dynamic> map) {
+    final rawIndustry = (map['industryType'] ?? map['businessCategory'] ?? '').toString();
+    final finalIndustry = (rawIndustry.toLowerCase().contains('export') && rawIndustry.toLowerCase().contains('import'))
+        ? 'export_import'
+        : rawIndustry;
+
     return CompanyModel(
       companyId: (map['companyId'] ?? '').toString(),
       companyName: (map['companyName'] ?? '').toString(),
@@ -70,6 +80,7 @@ class CompanyModel {
       adminUid: (map['adminUid'] ?? '').toString(),
       plan: (map['plan'] ?? 'trial').toString(),
       isActive: map['isActive'] ?? true,
+      industryType: finalIndustry,
     );
   }
 }

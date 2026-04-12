@@ -1,3 +1,5 @@
+// FILE PATH: lib/modules/shell/zoho_shell.dart
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
@@ -286,6 +288,7 @@ class ZohoShell extends StatefulWidget {
   final String role;
   final Map<String, dynamic> permissions;
   final String? userDisplayName;
+  final String? industry;
 
   const ZohoShell({
     super.key,
@@ -296,6 +299,7 @@ class ZohoShell extends StatefulWidget {
     required this.role,
     required this.permissions,
     this.userDisplayName,
+    this.industry,
   });
 
   @override
@@ -305,11 +309,55 @@ class ZohoShell extends StatefulWidget {
 class _ZohoShellState extends State<ZohoShell> {
   ShellPage activePage = ShellPage.dashboard;
 
-  final Set<String> expandedGroups = {'sales', 'service', 'crm', 'inventory'};
+  final Set<String> expandedGroups = {'sales', 'service', 'crm', 'inventory', 'finance', 'reports'};
+  String? _resolvedIndustry;
+  bool _isLoadingIndustry = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _resolvedIndustry = widget.industry;
+
+    if (_resolvedIndustry == null || _resolvedIndustry!.isEmpty) {
+      _fetchIndustry();
+    } else {
+      _isLoadingIndustry = false;
+    }
+  }
+
+  Future<void> _fetchIndustry() async {
+    try {
+      final doc = await FirebaseFirestore.instance
+          .collection('companies')
+          .doc(widget.companyId)
+          .get();
+
+      if (doc.exists && doc.data() != null) {
+        final data = doc.data()!;
+        final raw = (data['industryType'] ?? data['businessCategory'] ?? data['industry'] ?? '').toString().toLowerCase();
+
+        if (raw.contains('export') && raw.contains('import')) {
+          _resolvedIndustry = 'export_import';
+        } else {
+          _resolvedIndustry = raw;
+        }
+      } else {
+        _resolvedIndustry = 'unknown';
+      }
+    } catch (e) {
+      _resolvedIndustry = 'unknown';
+    }
+
+    if (mounted) {
+      setState(() {
+        _isLoadingIndustry = false;
+      });
+    }
+  }
 
   bool get isAdminOrManager =>
       widget.role.toLowerCase() == 'admin' ||
-      widget.role.toLowerCase() == 'manager';
+          widget.role.toLowerCase() == 'manager';
 
   bool _canAccess(String module) {
     if (isAdminOrManager) return true;
@@ -322,109 +370,155 @@ class _ZohoShellState extends State<ZohoShell> {
   bool get canQuotations => _canAccess('quotations');
   bool get canUsers => isAdminOrManager || _canAccess('userManagement');
 
-  List<SidebarGroup> get sidebarGroups => const [
-    SidebarGroup(
-      key: 'sales',
-      title: 'Sales',
-      icon: Icons.trending_up_outlined,
-      children: [
-        ShellPage.salesInquiries,
-        ShellPage.salesQuotations,
-        ShellPage.salesOrders,
-        ShellPage.salesFollowUps,
-        ShellPage.salesTasks,
-        ShellPage.salesMeetings,
-      ],
-    ),
-    SidebarGroup(
-      key: 'service',
-      title: 'Service',
-      icon: Icons.build_outlined,
-      children: [ShellPage.service],
-    ),
-    SidebarGroup(
-      key: 'crm',
-      title: 'CRM',
-      icon: Icons.people_alt_outlined,
-      children: [
-        ShellPage.crmCustomers,
-        ShellPage.crmContacts,
-        ShellPage.crmVisits,
-        ShellPage.crmCommunication,
-      ],
-    ),
-    SidebarGroup(
-      key: 'purchase',
-      title: 'Purchase',
-      icon: Icons.shopping_cart_outlined,
-      children: [
-        ShellPage.purchaseVendors,
-        ShellPage.purchaseOrders,
-        ShellPage.purchaseGrn,
-        ShellPage.purchaseLedger,
-      ],
-    ),
-    SidebarGroup(
-      key: 'inventory',
-      title: 'Inventory',
-      icon: Icons.inventory_2_outlined,
-      children: [
-        ShellPage.inventoryProducts,
-        ShellPage.inventoryStockSummary,
-        ShellPage.inventoryStockIn,
-        ShellPage.inventoryStockOut,
-        ShellPage.inventoryWarehouse,
-        ShellPage.inventoryLowStock,
-      ],
-    ),
-    SidebarGroup(
-      key: 'dispatch',
-      title: 'Dispatch',
-      icon: Icons.local_shipping_outlined,
-      children: [
-        ShellPage.dispatchReady,
-        ShellPage.dispatchChallans,
-        ShellPage.dispatchShipmentTracking,
-        ShellPage.dispatchDelivered,
-      ],
-    ),
-    SidebarGroup(
-      key: 'finance',
-      title: 'Finance',
-      icon: Icons.account_balance_wallet_outlined,
-      children: [
-        ShellPage.financeProforma,
-        ShellPage.financeTaxInvoice,
-        ShellPage.financePaymentsReceived,
-        ShellPage.financeOutstanding,
-        ShellPage.financeExpenses,
-      ],
-    ),
-    SidebarGroup(
-      key: 'reports',
-      title: 'Reports',
-      icon: Icons.assessment_outlined,
-      children: [
-        ShellPage.reportsSales,
-        ShellPage.reportsInquiry,
-        ShellPage.reportsCustomer,
-        ShellPage.reportsProduct,
-        ShellPage.reportsPayment,
-      ],
-    ),
-    SidebarGroup(
-      key: 'admin',
-      title: 'Administration',
-      icon: Icons.admin_panel_settings_outlined,
-      children: [
-        ShellPage.adminUsers,
-        ShellPage.adminRoles,
-        ShellPage.adminCompanyProfile,
-        ShellPage.adminBranches,
-        ShellPage.adminAuditLogs,
-      ],
-    ),
-  ];
+  List<SidebarGroup> get sidebarGroups {
+    if (_resolvedIndustry == 'export_import') {
+      return const [
+        SidebarGroup(
+          key: 'sales',
+          title: 'Sales',
+          icon: Icons.trending_up_outlined,
+          children: [
+            ShellPage.salesInquiries,
+            ShellPage.salesQuotations,
+          ],
+        ),
+        SidebarGroup(
+          key: 'crm',
+          title: 'CRM',
+          icon: Icons.people_alt_outlined,
+          children: [
+            ShellPage.crmCustomers,
+          ],
+        ),
+        SidebarGroup(
+          key: 'finance',
+          title: 'Finance',
+          icon: Icons.account_balance_wallet_outlined,
+          children: [
+            ShellPage.financeTaxInvoice,
+            ShellPage.financePaymentsReceived,
+            ShellPage.financeOutstanding,
+            ShellPage.financeExpenses,
+          ],
+        ),
+        SidebarGroup(
+          key: 'reports',
+          title: 'Reports',
+          icon: Icons.assessment_outlined,
+          children: [
+            ShellPage.reportsSales,
+            ShellPage.reportsInquiry,
+            ShellPage.reportsCustomer,
+            ShellPage.reportsPayment,
+          ],
+        ),
+      ];
+    }
+
+    return const [
+      SidebarGroup(
+        key: 'sales',
+        title: 'Sales',
+        icon: Icons.trending_up_outlined,
+        children: [
+          ShellPage.salesInquiries,
+          ShellPage.salesQuotations,
+          ShellPage.salesOrders,
+          ShellPage.salesFollowUps,
+          ShellPage.salesTasks,
+          ShellPage.salesMeetings,
+        ],
+      ),
+      SidebarGroup(
+        key: 'service',
+        title: 'Service',
+        icon: Icons.build_outlined,
+        children: [ShellPage.service],
+      ),
+      SidebarGroup(
+        key: 'crm',
+        title: 'CRM',
+        icon: Icons.people_alt_outlined,
+        children: [
+          ShellPage.crmCustomers,
+          ShellPage.crmContacts,
+          ShellPage.crmVisits,
+          ShellPage.crmCommunication,
+        ],
+      ),
+      SidebarGroup(
+        key: 'purchase',
+        title: 'Purchase',
+        icon: Icons.shopping_cart_outlined,
+        children: [
+          ShellPage.purchaseVendors,
+          ShellPage.purchaseOrders,
+          ShellPage.purchaseGrn,
+          ShellPage.purchaseLedger,
+        ],
+      ),
+      SidebarGroup(
+        key: 'inventory',
+        title: 'Inventory',
+        icon: Icons.inventory_2_outlined,
+        children: [
+          ShellPage.inventoryProducts,
+          ShellPage.inventoryStockSummary,
+          ShellPage.inventoryStockIn,
+          ShellPage.inventoryStockOut,
+          ShellPage.inventoryWarehouse,
+          ShellPage.inventoryLowStock,
+        ],
+      ),
+      SidebarGroup(
+        key: 'dispatch',
+        title: 'Dispatch',
+        icon: Icons.local_shipping_outlined,
+        children: [
+          ShellPage.dispatchReady,
+          ShellPage.dispatchChallans,
+          ShellPage.dispatchShipmentTracking,
+          ShellPage.dispatchDelivered,
+        ],
+      ),
+      SidebarGroup(
+        key: 'finance',
+        title: 'Finance',
+        icon: Icons.account_balance_wallet_outlined,
+        children: [
+          ShellPage.financeProforma,
+          ShellPage.financeTaxInvoice,
+          ShellPage.financePaymentsReceived,
+          ShellPage.financeOutstanding,
+          ShellPage.financeExpenses,
+        ],
+      ),
+      SidebarGroup(
+        key: 'reports',
+        title: 'Reports',
+        icon: Icons.assessment_outlined,
+        children: [
+          ShellPage.reportsSales,
+          ShellPage.reportsInquiry,
+          ShellPage.reportsCustomer,
+          ShellPage.reportsProduct,
+          ShellPage.reportsPayment,
+        ],
+      ),
+      SidebarGroup(
+        key: 'admin',
+        title: 'Administration',
+        icon: Icons.admin_panel_settings_outlined,
+        children: [
+          ShellPage.adminUsers,
+          ShellPage.adminRoles,
+          ShellPage.adminCompanyProfile,
+          ShellPage.adminBranches,
+          ShellPage.adminAuditLogs,
+        ],
+      ),
+    ];
+  }
 
   void _noAccess() {
     ScaffoldMessenger.of(context).showSnackBar(
@@ -494,7 +588,7 @@ class _ZohoShellState extends State<ZohoShell> {
 
     if (sidebarGroups.any((group) => group.children.contains(activePage))) {
       final group = sidebarGroups.firstWhere(
-        (g) => g.children.contains(activePage),
+            (g) => g.children.contains(activePage),
       );
       return '${group.title} • ${activePage.label}';
     }
@@ -548,6 +642,15 @@ class _ZohoShellState extends State<ZohoShell> {
 
   @override
   Widget build(BuildContext context) {
+    if (_isLoadingIndustry) {
+      return const Scaffold(
+        backgroundColor: zCanvasBg,
+        body: Center(
+          child: CircularProgressIndicator(color: zBlue),
+        ),
+      );
+    }
+
     return Scaffold(
       backgroundColor: zCanvasBg,
       body: Row(
@@ -964,6 +1067,7 @@ class _ZohoShellState extends State<ZohoShell> {
           role: widget.role,
           userEmail: widget.userEmail,
           permissions: widget.permissions,
+          industry: _resolvedIndustry,
           onOpenUsers: () => _selectPage(ShellPage.adminUsers),
           onOpenCompanyProfile: () =>
               _selectPage(ShellPage.adminCompanyProfile),
@@ -1018,8 +1122,8 @@ class _ZohoShellState extends State<ZohoShell> {
                     : 'Restricted',
                 icon: allowed
                     ? (implemented
-                          ? Icons.check_circle_outline
-                          : Icons.construction_outlined)
+                    ? Icons.check_circle_outline
+                    : Icons.construction_outlined)
                     : Icons.lock_outline,
                 tint: allowed
                     ? (implemented ? zSuccessSoft : zBlueSoft)
@@ -1339,30 +1443,30 @@ class _ZohoShellState extends State<ZohoShell> {
               children: lines
                   .map(
                     (e) => Padding(
-                      padding: const EdgeInsets.only(bottom: 10),
-                      child: Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const Padding(
-                            padding: EdgeInsets.only(top: 5),
-                            child: Icon(Icons.circle, size: 6, color: zBlue),
-                          ),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: Text(
-                              e,
-                              style: const TextStyle(
-                                color: zMuted,
-                                fontSize: 13.2,
-                                height: 1.45,
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                          ),
-                        ],
+                  padding: const EdgeInsets.only(bottom: 10),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Padding(
+                        padding: EdgeInsets.only(top: 5),
+                        child: Icon(Icons.circle, size: 6, color: zBlue),
                       ),
-                    ),
-                  )
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          e,
+                          style: const TextStyle(
+                            color: zMuted,
+                            fontSize: 13.2,
+                            height: 1.45,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              )
                   .toList(),
             ),
           ),
@@ -1380,11 +1484,11 @@ class _ZohoShellState extends State<ZohoShell> {
 
     final inquiryStream = canShowInquiryDashboard
         ? FirebaseFirestore.instance
-              .collection('companies')
-              .doc(widget.companyId)
-              .collection('inquiries')
-              .where('assignedToUid', isEqualTo: widget.userUid)
-              .snapshots()
+        .collection('companies')
+        .doc(widget.companyId)
+        .collection('inquiries')
+        .where('assignedToUid', isEqualTo: widget.userUid)
+        .snapshots()
         : null;
 
     if (!canShowInquiryDashboard) {
@@ -1451,7 +1555,7 @@ class _ZohoShellState extends State<ZohoShell> {
                   child: _Panel(
                     title: 'Next Build Suggestion',
                     emptyText:
-                        'Start with Follow-ups, Stock Summary and Vendors',
+                    'Start with Follow-ups, Stock Summary and Vendors',
                     emptyIcon: Icons.rocket_launch_outlined,
                   ),
                 ),

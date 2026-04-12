@@ -1,3 +1,5 @@
+// FILE PATH: lib/modules/settings/screen_settings_home.dart
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
@@ -19,6 +21,7 @@ class ScreenSettingsHome extends StatefulWidget {
   final String role;
   final String userEmail;
   final Map<String, dynamic> permissions;
+  final String? industry;
   final VoidCallback? onOpenUsers;
   final VoidCallback? onOpenCompanyProfile;
   final VoidCallback? onOpenAuditLogs;
@@ -30,6 +33,7 @@ class ScreenSettingsHome extends StatefulWidget {
     required this.role,
     required this.userEmail,
     this.permissions = const {},
+    this.industry,
     this.onOpenUsers,
     this.onOpenCompanyProfile,
     this.onOpenAuditLogs,
@@ -45,6 +49,7 @@ class _ScreenSettingsHomeState extends State<ScreenSettingsHome> {
   bool get isAdmin => widget.role.toLowerCase() == 'admin';
   bool get isManager => widget.role.toLowerCase() == 'manager';
   bool get isAdminOrManager => isAdmin || isManager;
+  bool get isExportImport => widget.industry == 'export_import';
 
   bool _hasPermission(String key) {
     if (isAdminOrManager) return true;
@@ -52,11 +57,13 @@ class _ScreenSettingsHomeState extends State<ScreenSettingsHome> {
   }
 
   bool get canOpenUsers =>
-      isAdminOrManager || _hasPermission('userManagement');
+      !isExportImport && (isAdminOrManager || _hasPermission('userManagement'));
   bool get canOpenCompanyProfile =>
-      isAdminOrManager || _hasPermission('companyProfile');
-  bool get canOpenAuditLogs => isAdminOrManager || _hasPermission('auditLogs');
-  bool get canOpenRoles => isAdminOrManager || _hasPermission('roles');
+      !isExportImport && (isAdminOrManager || _hasPermission('companyProfile'));
+  bool get canOpenAuditLogs =>
+      !isExportImport && (isAdminOrManager || _hasPermission('auditLogs'));
+  bool get canOpenRoles =>
+      !isExportImport && (isAdminOrManager || _hasPermission('roles'));
 
   List<_NavItemData> get _navItems {
     return [
@@ -77,11 +84,12 @@ class _ScreenSettingsHomeState extends State<ScreenSettingsHome> {
           title: 'Users & Access',
           icon: Icons.admin_panel_settings_outlined,
         ),
-      const _NavItemData(
-        section: _SettingsSection.system,
-        title: 'System',
-        icon: Icons.settings_suggest_outlined,
-      ),
+      if (!isExportImport)
+        const _NavItemData(
+          section: _SettingsSection.system,
+          title: 'System',
+          icon: Icons.settings_suggest_outlined,
+        ),
       const _NavItemData(
         section: _SettingsSection.danger,
         title: 'Danger Zone',
@@ -271,27 +279,30 @@ class _ScreenSettingsHomeState extends State<ScreenSettingsHome> {
       title: 'Workspace',
       subtitle: 'Company-level settings and workspace information.',
       children: [
-        _ActionTile(
-          title: 'Company Profile',
-          subtitle: 'Manage company identity, GST, PAN, address, and branding.',
-          icon: Icons.apartment_outlined,
-          enabled: canOpenCompanyProfile,
-          onTap: widget.onOpenCompanyProfile,
-        ),
-        _ActionTile(
-          title: 'Branches',
-          subtitle: 'Manage branch structure and branch-level setup.',
-          icon: Icons.account_tree_outlined,
-          enabled: isAdminOrManager,
-          onTap: () => _showComingSoon('Branches'),
-        ),
-        _ActionTile(
-          title: 'Document Numbering',
-          subtitle: 'Control quotation, invoice, and order numbering formats.',
-          icon: Icons.numbers_outlined,
-          enabled: isAdminOrManager,
-          onTap: () => _showComingSoon('Document Numbering'),
-        ),
+        if (canOpenCompanyProfile)
+          _ActionTile(
+            title: 'Company Profile',
+            subtitle: 'Manage company identity, GST, PAN, address, and branding.',
+            icon: Icons.apartment_outlined,
+            enabled: canOpenCompanyProfile,
+            onTap: widget.onOpenCompanyProfile,
+          ),
+        if (!isExportImport) ...[
+          _ActionTile(
+            title: 'Branches',
+            subtitle: 'Manage branch structure and branch-level setup.',
+            icon: Icons.account_tree_outlined,
+            enabled: isAdminOrManager,
+            onTap: () => _showComingSoon('Branches'),
+          ),
+          _ActionTile(
+            title: 'Document Numbering',
+            subtitle: 'Control quotation, invoice, and order numbering formats.',
+            icon: Icons.numbers_outlined,
+            enabled: isAdminOrManager,
+            onTap: () => _showComingSoon('Document Numbering'),
+          ),
+        ]
       ],
     );
   }
@@ -315,13 +326,14 @@ class _ScreenSettingsHomeState extends State<ScreenSettingsHome> {
             icon: Icons.admin_panel_settings_outlined,
             onTap: () => _showComingSoon('Roles & Permissions'),
           ),
-        _ActionTile(
-          title: 'Access Scope',
-          subtitle: 'Control future branch, department, and scope access.',
-          icon: Icons.lock_open_outlined,
-          enabled: isAdminOrManager,
-          onTap: () => _showComingSoon('Access Scope'),
-        ),
+        if (!isExportImport)
+          _ActionTile(
+            title: 'Access Scope',
+            subtitle: 'Control future branch, department, and scope access.',
+            icon: Icons.lock_open_outlined,
+            enabled: isAdminOrManager,
+            onTap: () => _showComingSoon('Access Scope'),
+          ),
       ],
     );
   }
@@ -331,27 +343,30 @@ class _ScreenSettingsHomeState extends State<ScreenSettingsHome> {
       title: 'System',
       subtitle: 'Logs, integrations, and workspace-level system controls.',
       children: [
-        _ActionTile(
-          title: 'Audit Logs',
-          subtitle: 'Review important actions and change history.',
-          icon: Icons.fact_check_outlined,
-          enabled: canOpenAuditLogs,
-          onTap: widget.onOpenAuditLogs,
-        ),
-        _ActionTile(
-          title: 'Integrations',
-          subtitle: 'Connect external systems and future APIs.',
-          icon: Icons.hub_outlined,
-          enabled: isAdminOrManager,
-          onTap: () => _showComingSoon('Integrations'),
-        ),
-        _ActionTile(
-          title: 'Security Policies',
-          subtitle: 'Future controls for session rules and account protection.',
-          icon: Icons.security_outlined,
-          enabled: isAdminOrManager,
-          onTap: () => _showComingSoon('Security Policies'),
-        ),
+        if (canOpenAuditLogs)
+          _ActionTile(
+            title: 'Audit Logs',
+            subtitle: 'Review important actions and change history.',
+            icon: Icons.fact_check_outlined,
+            enabled: canOpenAuditLogs,
+            onTap: widget.onOpenAuditLogs,
+          ),
+        if (!isExportImport) ...[
+          _ActionTile(
+            title: 'Integrations',
+            subtitle: 'Connect external systems and future APIs.',
+            icon: Icons.hub_outlined,
+            enabled: isAdminOrManager,
+            onTap: () => _showComingSoon('Integrations'),
+          ),
+          _ActionTile(
+            title: 'Security Policies',
+            subtitle: 'Future controls for session rules and account protection.',
+            icon: Icons.security_outlined,
+            enabled: isAdminOrManager,
+            onTap: () => _showComingSoon('Security Policies'),
+          ),
+        ]
       ],
     );
   }

@@ -1,3 +1,5 @@
+// FILE PATH: lib/models/user_model.dart
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 
 class UserModel {
@@ -20,6 +22,7 @@ class UserModel {
   final String reportingManagerUid;
   final String reportingManagerName;
   final String accessScope;
+  final String industry;
   final Map<String, dynamic> permissions;
   final DateTime? createdAt;
   final DateTime? updatedAt;
@@ -46,6 +49,7 @@ class UserModel {
     required this.reportingManagerUid,
     required this.reportingManagerName,
     required this.accessScope,
+    required this.industry,
     required this.permissions,
     required this.createdAt,
     required this.updatedAt,
@@ -81,6 +85,7 @@ class UserModel {
       'reportingManagerUid': reportingManagerUid,
       'reportingManagerName': reportingManagerName,
       'accessScope': accessScope,
+      'industry': industry,
       'permissions': _normalizeMap(permissions),
       'createdAt': _dateTimeToTimestamp(createdAt),
       'updatedAt': _dateTimeToTimestamp(updatedAt),
@@ -148,6 +153,11 @@ class UserModel {
 
     final permissionsValue = _normalizeMap(map['permissions']);
 
+    final rawIndustry = _readString(map, ['industry', 'industryType', 'businessCategory'], fallback: '');
+    final finalIndustry = (rawIndustry.toLowerCase().contains('export') && rawIndustry.toLowerCase().contains('import'))
+        ? 'export_import'
+        : rawIndustry;
+
     return UserModel(
       uid: uidValue,
       companyId: companyIdValue,
@@ -176,6 +186,7 @@ class UserModel {
         fallback: _readString(map, ['reportingManagerName'], fallback: ''),
       ),
       accessScope: _readString(map, ['accessScope'], fallback: 'company'),
+      industry: finalIndustry,
       permissions: permissionsValue,
       createdAt: _readDateTime(map['createdAt']),
       updatedAt: _readDateTime(map['updatedAt']),
@@ -217,6 +228,7 @@ class UserModel {
     String? reportingManagerUid,
     String? reportingManagerName,
     String? accessScope,
+    String? industry,
     Map<String, dynamic>? permissions,
     DateTime? createdAt,
     DateTime? updatedAt,
@@ -244,6 +256,7 @@ class UserModel {
       reportingManagerName:
       reportingManagerName ?? this.reportingManagerName,
       accessScope: accessScope ?? this.accessScope,
+      industry: industry ?? this.industry,
       permissions: permissions != null ? _normalizeMap(permissions) : this.permissions,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
