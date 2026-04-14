@@ -13,6 +13,11 @@ import 'package:QUIK/modules/settings/screen_settings_home.dart';
 import 'package:QUIK/modules/sales/sales_orders/screens_sales_order_list.dart';
 import 'package:QUIK/modules/service/screens_service_home.dart';
 
+// REPLACED: Now importing the List Screen instead of Selection Screen
+import 'package:QUIK/modules/finance/invoice/screens/invoice_list_screen.dart';
+import 'package:QUIK/modules/finance/invoice/screens/export_invoice_screen.dart';
+import 'package:QUIK/modules/finance/invoice/screens/tax_invoice_screen.dart';
+
 enum ShellPage {
   dashboard,
 
@@ -48,6 +53,8 @@ enum ShellPage {
 
   financeProforma,
   financeTaxInvoice,
+  financeTaxInvoiceCreate,
+  financeExportInvoiceCreate,
   financePaymentsReceived,
   financeOutstanding,
   financeExpenses,
@@ -131,7 +138,11 @@ extension ShellPageX on ShellPage {
       case ShellPage.financeProforma:
         return 'Proforma Invoice';
       case ShellPage.financeTaxInvoice:
-        return 'Invoice'; // Changed from 'Tax Invoice' to 'Invoice'
+        return 'Invoice';
+      case ShellPage.financeTaxInvoiceCreate:
+        return 'Create Tax Invoice';
+      case ShellPage.financeExportInvoiceCreate:
+        return 'Create Export Invoice';
       case ShellPage.financePaymentsReceived:
         return 'Payments Received';
       case ShellPage.financeOutstanding:
@@ -230,6 +241,10 @@ extension ShellPageX on ShellPage {
         return Icons.request_quote_outlined;
       case ShellPage.financeTaxInvoice:
         return Icons.description_outlined;
+      case ShellPage.financeTaxInvoiceCreate:
+        return Icons.receipt_long_outlined;
+      case ShellPage.financeExportInvoiceCreate:
+        return Icons.public_outlined;
       case ShellPage.financePaymentsReceived:
         return Icons.payments_outlined;
       case ShellPage.financeOutstanding:
@@ -373,7 +388,6 @@ class _ZohoShellState extends State<ZohoShell> {
     }
   }
 
-  // 🔴 RESTORED: Admin and Manager have full access so they can assign permissions.
   bool get isAdminOrManager {
     final r = _currentRole;
     return r == 'owner' ||
@@ -385,21 +399,17 @@ class _ZohoShellState extends State<ZohoShell> {
   }
 
   bool _hasPermission(String module, String submodule, {String action = 'view'}) {
-    // 1. The Main Organization Account (Admin/Manager) gets a blanket bypass.
     if (isAdminOrManager) return true;
 
-    // 2. Strict Nested Map Check (New RBAC architecture)
     final moduleData = _currentPermissions[module];
     if (moduleData is Map && moduleData.containsKey(submodule)) {
       final subData = moduleData[submodule];
       if (subData is Map) {
-        // We found the explicit nested map (e.g. {'view': false}). Return its exact value immediately.
         return subData[action] == true;
       }
-      return subData == true; // Fallback if someone manually saved a boolean here
+      return subData == true;
     }
 
-    // 3. Legacy Flat Map Check (Only runs if the modern nested structure is missing entirely)
     if (_currentPermissions.containsKey(submodule)) {
       final legacySubData = _currentPermissions[submodule];
       if (legacySubData is Map) {
@@ -408,12 +418,10 @@ class _ZohoShellState extends State<ZohoShell> {
       return legacySubData == true && action == 'view';
     }
 
-    // 4. Invite Code Flat Dot-Notation Check
     if (_currentPermissions.containsKey('$module.$submodule')) {
       return _currentPermissions['$module.$submodule'] == true && action == 'view';
     }
 
-    // Default deny for standard users if not explicitly granted
     return false;
   }
 
@@ -498,7 +506,9 @@ class _ZohoShellState extends State<ZohoShell> {
       case ShellPage.financeProforma:
         return _hasPermission('finance', 'proformaInvoice');
       case ShellPage.financeTaxInvoice:
-        return _hasPermission('finance', 'taxInvoice'); // Keeps the DB key identical
+      case ShellPage.financeTaxInvoiceCreate:
+      case ShellPage.financeExportInvoiceCreate:
+        return _hasPermission('finance', 'taxInvoice');
       case ShellPage.financePaymentsReceived:
         return _hasPermission('finance', 'paymentReceived');
       case ShellPage.financeOutstanding:
@@ -698,8 +708,7 @@ class _ZohoShellState extends State<ZohoShell> {
     final filtered = <SidebarGroup>[];
 
     for (var group in allGroups) {
-      final allowedChildren =
-      group.children.where((page) => _canViewPage(page)).toList();
+      final allowedChildren = group.children.where((page) => _canViewPage(page)).toList();
 
       if (allowedChildren.isNotEmpty) {
         filtered.add(SidebarGroup(
@@ -740,6 +749,9 @@ class _ZohoShellState extends State<ZohoShell> {
       case ShellPage.salesQuotations:
       case ShellPage.adminUsers:
       case ShellPage.settingsGeneral:
+      case ShellPage.financeTaxInvoice:
+      case ShellPage.financeTaxInvoiceCreate:
+      case ShellPage.financeExportInvoiceCreate:
         return true;
       default:
         return false;
@@ -757,6 +769,8 @@ class _ZohoShellState extends State<ZohoShell> {
   String _activeSectionTitle() {
     if (activePage == ShellPage.dashboard) return 'Dashboard';
     if (activePage == ShellPage.settingsGeneral) return 'Settings';
+    if (activePage == ShellPage.financeTaxInvoiceCreate) return 'Finance • Create Tax Invoice';
+    if (activePage == ShellPage.financeExportInvoiceCreate) return 'Finance • Create Export Invoice';
 
     if (_currentSidebarGroups.any((group) => group.children.contains(activePage))) {
       final group = _currentSidebarGroups.firstWhere(
@@ -895,18 +909,15 @@ class _ZohoShellState extends State<ZohoShell> {
           );
         }
 
-        // Extract fresh data directly from Firestore
         final companyUserData = userSnap.data?.data() ?? <String, dynamic>{};
 
-        // Update State
         _currentRole = (companyUserData['role'] ?? widget.role).toString().trim().toLowerCase();
 
         final dynamic rawPermissions = companyUserData['permissions'];
         _currentPermissions = rawPermissions is Map
             ? Map<String, dynamic>.from(rawPermissions)
-            : widget.permissions; // Fallback to login snapshot if empty
+            : widget.permissions;
 
-        // Blocked Check
         final bool isDeleted = companyUserData['isDeleted'] == true;
         final bool isActive = companyUserData.containsKey('isActive') ? companyUserData['isActive'] == true : true;
 
@@ -914,10 +925,8 @@ class _ZohoShellState extends State<ZohoShell> {
           return _blockedWorkspaceBody();
         }
 
-        // Dynamically compute Sidebar based on the live fetched permissions
         _currentSidebarGroups = _computeSidebarGroups();
 
-        // Safeguard active page -> Auto-route to Dashboard if admin disables their current screen
         WidgetsBinding.instance.addPostFrameCallback((_) {
           if (mounted && !_canViewPage(activePage)) {
             setState(() => activePage = ShellPage.dashboard);
@@ -1034,10 +1043,7 @@ class _ZohoShellState extends State<ZohoShell> {
                   children: [
                     _buildTopHeader(),
                     Expanded(
-                      child: Padding(
-                        padding: const EdgeInsets.all(14),
-                        child: _buildActiveBody(),
-                      ),
+                      child: _buildActiveBody(),
                     ),
                   ],
                 ),
@@ -1226,7 +1232,9 @@ class _ZohoShellState extends State<ZohoShell> {
   }
 
   Widget _subNavItem(ShellPage page) {
-    final bool selected = activePage == page;
+    // If we are currently IN a sub-creation route (like Export Invoice), keep the parent "Invoice" menu highlighted.
+    final bool selected = activePage == page ||
+        (page == ShellPage.financeTaxInvoice && (activePage == ShellPage.financeExportInvoiceCreate || activePage == ShellPage.financeTaxInvoiceCreate));
 
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 2),
@@ -1304,49 +1312,114 @@ class _ZohoShellState extends State<ZohoShell> {
   Widget _buildActiveBody() {
     switch (activePage) {
       case ShellPage.dashboard:
-        return _homeDashboardLive();
+        return Padding(
+          padding: const EdgeInsets.all(14),
+          child: _homeDashboardLive(),
+        );
 
       case ShellPage.salesInquiries:
-        return const ScreensInquiryList();
+        return const Padding(
+          padding: EdgeInsets.all(14),
+          child: ScreensInquiryList(),
+        );
 
       case ShellPage.service:
-        return ServiceHomeScreen();
+        return Padding(
+          padding: const EdgeInsets.all(14),
+          child: ServiceHomeScreen(),
+        );
 
       case ShellPage.crmCustomers:
-        return const ScreensCustomerList();
+        return const Padding(
+          padding: EdgeInsets.all(14),
+          child: ScreensCustomerList(),
+        );
 
       case ShellPage.inventoryProducts:
-        return const ScreensProductList();
+        return const Padding(
+          padding: EdgeInsets.all(14),
+          child: ScreensProductList(),
+        );
 
       case ShellPage.salesQuotations:
-        return ScreensQuotationList(
-          userId: (widget.userUid.hashCode).abs() % 1000000,
+        return Padding(
+          padding: const EdgeInsets.all(14),
+          child: ScreensQuotationList(
+            userId: (widget.userUid.hashCode).abs() % 1000000,
+          ),
         );
+
       case ShellPage.salesOrders:
-        return const SalesOrderListScreen();
+        return const Padding(
+          padding: EdgeInsets.all(14),
+          child: SalesOrderListScreen(),
+        );
 
       case ShellPage.adminUsers:
-        return ScreenUserManagement(
-          companyId: widget.companyId,
-          currentUid: widget.userUid,
+        return Padding(
+          padding: const EdgeInsets.all(14),
+          child: ScreenUserManagement(
+            companyId: widget.companyId,
+            currentUid: widget.userUid,
+          ),
+        );
+
+      case ShellPage.financeTaxInvoice:
+        return Padding(
+          padding: const EdgeInsets.all(14),
+          child: InvoiceListScreen(
+            companyId: widget.companyId,
+            userUid: widget.userUid,
+            onSelectTax: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => TaxInvoiceScreen(
+                    companyId: widget.companyId,
+                    userUid: widget.userUid,
+                    onBack: () => Navigator.pop(context),
+                  ),
+                ),
+              );
+            },
+            onSelectExport: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => ExportInvoiceScreen(
+                    companyId: widget.companyId,
+                    userUid: widget.userUid,
+                    onBack: () => Navigator.pop(context),
+                  ),
+                ),
+              );
+            },
+          ),
         );
 
       case ShellPage.settingsGeneral:
-        return ScreenSettingsHome(
-          companyId: widget.companyId,
-          companyName: widget.companyName,
-          role: _currentRole, // Pass Live Role
-          userEmail: widget.userEmail,
-          permissions: _currentPermissions, // Pass Live Permissions
-          industry: _resolvedIndustry,
-          onOpenUsers: () => _selectPage(ShellPage.adminUsers),
-          onOpenCompanyProfile: () =>
-              _selectPage(ShellPage.adminCompanyProfile),
-          onOpenAuditLogs: () => _selectPage(ShellPage.adminAuditLogs),
+        return Padding(
+          padding: const EdgeInsets.all(14),
+          child: ScreenSettingsHome(
+            companyId: widget.companyId,
+            companyName: widget.companyName,
+            role: _currentRole,
+            userEmail: widget.userEmail,
+            permissions: _currentPermissions,
+            industry: _resolvedIndustry,
+            onOpenUsers: () => _selectPage(ShellPage.adminUsers),
+            onOpenCompanyProfile: () =>
+                _selectPage(ShellPage.adminCompanyProfile),
+            onOpenAuditLogs: () =>
+                _selectPage(ShellPage.adminAuditLogs),
+          ),
         );
 
       default:
-        return _moduleLandingPage(activePage);
+        return Padding(
+          padding: const EdgeInsets.all(14),
+          child: _moduleLandingPage(activePage),
+        );
     }
   }
 
