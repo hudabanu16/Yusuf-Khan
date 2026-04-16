@@ -127,7 +127,7 @@ class Logistics {
   final String shippingBillNo;
   final DateTime? shippingBillDate;
   final String airwayBillNo;
-  final String marksAndNos; // ✅ NEW FIELD
+  final String marksAndNos;
   final int numberOfPackages;
   final double grossWeight;
   final double netWeight;
@@ -139,7 +139,7 @@ class Logistics {
     this.shippingBillNo = '',
     this.shippingBillDate,
     this.airwayBillNo = '',
-    this.marksAndNos = '', // ✅ NEW FIELD
+    this.marksAndNos = '',
     this.numberOfPackages = 0,
     this.grossWeight = 0.0,
     this.netWeight = 0.0,
@@ -153,7 +153,7 @@ class Logistics {
       'shippingBillNo': shippingBillNo,
       'shippingBillDate': shippingBillDate != null ? Timestamp.fromDate(shippingBillDate!) : null,
       'airwayBillNo': airwayBillNo,
-      'marksAndNos': marksAndNos, // ✅ Added
+      'marksAndNos': marksAndNos,
       'numberOfPackages': numberOfPackages,
       'grossWeight': grossWeight,
       'netWeight': netWeight,
@@ -168,7 +168,7 @@ class Logistics {
       shippingBillNo: map['shippingBillNo'] ?? '',
       shippingBillDate: map['shippingBillDate'] != null ? (map['shippingBillDate'] as Timestamp).toDate() : null,
       airwayBillNo: map['airwayBillNo'] ?? '',
-      marksAndNos: map['marksAndNos'] ?? '', // ✅ Added
+      marksAndNos: map['marksAndNos'] ?? '',
       numberOfPackages: map['numberOfPackages'] ?? 0,
       grossWeight: (map['grossWeight'] ?? 0).toDouble(),
       netWeight: (map['netWeight'] ?? 0).toDouble(),
@@ -221,7 +221,7 @@ class PaymentDetails {
   final String bankAddress;
 
   PaymentDetails({
-    this.paymentMode = 'Wire Transfer (TT)',
+    this.paymentMode = 'Wire Transfer (SWIFT / TT)',
     this.paymentReference = '',
     this.terms = '',
     this.bankName = '',
@@ -246,7 +246,7 @@ class PaymentDetails {
 
   factory PaymentDetails.fromMap(Map<String, dynamic> map) {
     return PaymentDetails(
-      paymentMode: map['paymentMode'] ?? 'Wire Transfer (TT)',
+      paymentMode: map['paymentMode'] ?? 'Wire Transfer (SWIFT / TT)',
       paymentReference: map['paymentReference'] ?? '',
       terms: map['terms'] ?? '',
       bankName: map['bankName'] ?? '',
@@ -258,7 +258,7 @@ class PaymentDetails {
   }
 }
 
-/// 📊 TOTALS (INCLUDING INR)
+/// 📊 TOTALS
 class Totals {
   final double subTotal;
   final double freight;
@@ -309,6 +309,16 @@ class ExportInvoiceModel {
   final String companyId;
   final String invoiceNumber;
   final DateTime invoiceDate;
+
+  final DateTime dueDate;
+  final String paymentTerms;
+  final String baseCurrency;
+  final double baseAmount;
+  final double receivedAmount;
+
+  // ✅ ADDED: Advance Amount Tracker
+  final double advanceAmount;
+
   final String currency;
   final double exchangeRate;
   final String placeOfSupply;
@@ -333,11 +343,21 @@ class ExportInvoiceModel {
   final DateTime createdAt;
   final DateTime updatedAt;
 
+  final double amountReceived;
+  final double amountOutstanding;
+  final String paymentStatus;
+
   ExportInvoiceModel({
     required this.id,
     required this.companyId,
     required this.invoiceNumber,
     required this.invoiceDate,
+    required this.dueDate,
+    required this.paymentTerms,
+    this.baseCurrency = 'INR',
+    required this.baseAmount,
+    this.receivedAmount = 0.0,
+    this.advanceAmount = 0.0,       // ✅ ADDED
     required this.currency,
     required this.exchangeRate,
     required this.placeOfSupply,
@@ -357,13 +377,38 @@ class ExportInvoiceModel {
     this.authorizedSignatory = '',
     required this.createdAt,
     required this.updatedAt,
+    this.amountReceived = 0.0,
+    required this.amountOutstanding,
+    this.paymentStatus = 'UNPAID',
   });
+
+  // ✅ UPDATED: Strict ERP Logic combining Advance + Allocated Receivables
+  String getPaymentStatus() {
+    double totalReceived = advanceAmount + receivedAmount;
+    double actualReceived = amountReceived > 0 ? amountReceived : totalReceived; // Legacy fallback
+
+    if (totals.grandTotal == 0) {
+      return "DRAFT";
+    } else if (actualReceived == 0) {
+      return "UNPAID";
+    } else if (actualReceived < totals.grandTotal) {
+      return "PARTIALLY PAID";
+    } else {
+      return "PAID";
+    }
+  }
 
   Map<String, dynamic> toMap() {
     return {
       'companyId': companyId,
       'invoiceNumber': invoiceNumber,
       'invoiceDate': Timestamp.fromDate(invoiceDate),
+      'dueDate': Timestamp.fromDate(dueDate),
+      'paymentTerms': paymentTerms,
+      'baseCurrency': baseCurrency,
+      'baseAmount': baseAmount,
+      'receivedAmount': receivedAmount,
+      'advanceAmount': advanceAmount,                    // ✅ ADDED
       'currency': currency,
       'exchangeRate': exchangeRate,
       'placeOfSupply': placeOfSupply,
@@ -383,15 +428,35 @@ class ExportInvoiceModel {
       'authorizedSignatory': authorizedSignatory,
       'createdAt': Timestamp.fromDate(createdAt),
       'updatedAt': Timestamp.fromDate(updatedAt),
+      'amountReceived': amountReceived,
+      'amountOutstanding': amountOutstanding,
+      'paymentStatus': getPaymentStatus(),
     };
   }
 
   factory ExportInvoiceModel.fromMap(Map<String, dynamic> map, String docId) {
+    double grandTotal = (map['totals']?['grandTotal'] ?? 0).toDouble();
+    double legacyReceived = (map['amountReceived'] ?? 0.0).toDouble();
+    double newReceived = (map['receivedAmount'] ?? 0.0).toDouble();
+    double finalReceived = legacyReceived > 0 ? legacyReceived : newReceived;
+
+    double advance = (map['advanceAmount'] ?? 0.0).toDouble();
+
+    double outstanding = map.containsKey('amountOutstanding')
+        ? (map['amountOutstanding']).toDouble()
+        : (grandTotal - (finalReceived + advance));
+
     return ExportInvoiceModel(
       id: docId,
       companyId: map['companyId'] ?? '',
       invoiceNumber: map['invoiceNumber'] ?? '',
       invoiceDate: (map['invoiceDate'] as Timestamp?)?.toDate() ?? DateTime.now(),
+      dueDate: (map['dueDate'] as Timestamp?)?.toDate() ?? DateTime.now(),
+      paymentTerms: map['paymentTerms'] ?? 'Due on Receipt',
+      baseCurrency: map['baseCurrency'] ?? 'INR',
+      baseAmount: (map['baseAmount'] ?? 0.0).toDouble(),
+      receivedAmount: finalReceived,
+      advanceAmount: advance, // ✅ ADDED
       currency: map['currency'] ?? 'USD',
       exchangeRate: (map['exchangeRate'] ?? 1).toDouble(),
       placeOfSupply: map['placeOfSupply'] ?? '',
@@ -413,6 +478,9 @@ class ExportInvoiceModel {
       authorizedSignatory: map['authorizedSignatory'] ?? '',
       createdAt: (map['createdAt'] as Timestamp?)?.toDate() ?? DateTime.now(),
       updatedAt: (map['updatedAt'] as Timestamp?)?.toDate() ?? DateTime.now(),
+      amountReceived: legacyReceived,
+      amountOutstanding: outstanding,
+      paymentStatus: map['paymentStatus'] ?? 'UNPAID',
     );
   }
 }

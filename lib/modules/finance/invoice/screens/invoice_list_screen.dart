@@ -5,7 +5,8 @@ import 'package:intl/intl.dart';
 
 import '../models/export_invoice_model.dart';
 import '../widgets/export_invoice_document_view.dart';
-import 'export_invoice_screen.dart'; // ✅ Added import for the Edit Screen
+import 'export_invoice_screen.dart';
+import '../../payments_received/screens/record_payment_screen.dart';
 
 class InvoiceListScreen extends StatefulWidget {
   final String companyId;
@@ -92,11 +93,25 @@ class _InvoiceListScreenState extends State<InvoiceListScreen> {
     );
   }
 
-  // 🔥 FULLY IMPLEMENTED ACTION HANDLER
   void _handleInvoiceAction(String action, Map<String, dynamic> data, String docId) {
     final type = data.containsKey('exportDetails') ? 'Export Invoice' : 'Tax Invoice';
 
-    if (action == 'view') {
+    if (action == 'payment') {
+      final buyerData = data['buyer'] as Map<String, dynamic>? ?? {};
+      final customerName = (buyerData['name'] ?? '').toString();
+
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => RecordPaymentScreen(
+            companyId: widget.companyId,
+            userUid: widget.userUid,
+            customerName: customerName,
+            prefillInvoiceId: docId,
+          ),
+        ),
+      );
+    } else if (action == 'view') {
       try {
         final invoiceModel = ExportInvoiceModel.fromMap(data, docId);
         Navigator.push(
@@ -112,14 +127,13 @@ class _InvoiceListScreenState extends State<InvoiceListScreen> {
       }
     } else if (action == 'edit') {
       if (type == 'Export Invoice') {
-        // ✅ Launch Export Invoice Screen in Edit Mode
         Navigator.push(
           context,
           MaterialPageRoute(
             builder: (_) => ExportInvoiceScreen(
               companyId: widget.companyId,
               userUid: widget.userUid,
-              invoiceId: docId, // Pass ID to trigger pre-fill
+              invoiceId: docId,
               onBack: () => Navigator.pop(context),
             ),
           ),
@@ -224,10 +238,10 @@ class _InvoiceListScreenState extends State<InvoiceListScreen> {
             final invNum = (data['invoiceNumber'] ?? '').toString().toLowerCase();
             final buyerData = data['buyer'] as Map<String, dynamic>? ?? {};
             final buyerName = (buyerData['name'] ?? '').toString().toLowerCase();
-            final status = (data['status'] ?? '').toString().toLowerCase();
+            final docStatus = (data['status'] ?? '').toString().toLowerCase();
 
             final matchesSearch = query.isEmpty || invNum.contains(query) || buyerName.contains(query);
-            final matchesStatus = _statusFilter == 'all' || status == _statusFilter.toLowerCase();
+            final matchesStatus = _statusFilter == 'all' || docStatus == _statusFilter.toLowerCase();
 
             return matchesSearch && matchesStatus;
           }).toList();
@@ -299,21 +313,25 @@ class _InvoiceListScreenState extends State<InvoiceListScreen> {
                     final doc = filteredDocs[index];
                     final data = doc.data();
 
-                    final invoiceNumber = (data['invoiceNumber'] ?? 'Draft').toString();
-                    final status = (data['status'] ?? 'Draft').toString();
+                    // ✅ UPDATED: Use the robust Model to parse the data so it 100% matches the logic of the Edit/Create screen!
+                    final invoice = ExportInvoiceModel.fromMap(data, doc.id);
                     final type = data.containsKey('exportDetails') ? 'Export Invoice' : 'Tax Invoice';
 
-                    final buyerData = data['buyer'] as Map<String, dynamic>? ?? {};
-                    final buyerName = (buyerData['name'] ?? 'Unknown Customer').toString();
-                    final buyerCountry = (buyerData['country'] ?? '').toString();
+                    final isDraft = invoice.status.toLowerCase() == 'draft';
+                    final displayStatus = isDraft ? 'DRAFT' : invoice.paymentStatus;
 
-                    final totals = data['totals'] as Map<String, dynamic>? ?? {};
-                    final grandTotal = (totals['grandTotal'] ?? 0.0).toDouble();
-                    final currency = (data['currency'] ?? 'USD').toString();
-
-                    final invoiceDateRaw = data['invoiceDate'];
-                    DateTime? invoiceDate;
-                    if (invoiceDateRaw is Timestamp) invoiceDate = invoiceDateRaw.toDate();
+                    // Assign strict ERP colors based on the new logic
+                    Color chipBg;
+                    Color chipText;
+                    if (displayStatus == 'PAID') {
+                      chipBg = zSuccessSoft; chipText = zSuccess;
+                    } else if (displayStatus == 'PARTIALLY PAID') {
+                      chipBg = zOrangeSoft; chipText = zOrange;
+                    } else if (displayStatus == 'DRAFT') {
+                      chipBg = Colors.grey.shade200; chipText = zMuted;
+                    } else {
+                      chipBg = Colors.red.shade50; chipText = Colors.red.shade700;
+                    }
 
                     return Container(
                       decoration: BoxDecoration(
@@ -342,12 +360,12 @@ class _InvoiceListScreenState extends State<InvoiceListScreen> {
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
                                     Text(
-                                      invoiceNumber.isEmpty ? 'Pending Number' : invoiceNumber,
+                                      invoice.invoiceNumber.isEmpty ? 'Pending Number' : invoice.invoiceNumber,
                                       style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w800, color: zText),
                                     ),
                                     const SizedBox(height: 2),
                                     Text(
-                                      buyerName,
+                                      invoice.buyer.name.isEmpty ? 'Unknown Customer' : invoice.buyer.name,
                                       maxLines: 1,
                                       overflow: TextOverflow.ellipsis,
                                       style: const TextStyle(fontSize: 13, color: zMuted, fontWeight: FontWeight.w600),
@@ -359,14 +377,25 @@ class _InvoiceListScreenState extends State<InvoiceListScreen> {
                                 crossAxisAlignment: CrossAxisAlignment.end,
                                 children: [
                                   Text(
-                                    '$currency ${grandTotal.toStringAsFixed(2)}',
+                                    '${invoice.currency} ${invoice.totals.grandTotal.toStringAsFixed(2)}',
                                     style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w900, color: zText),
                                   ),
-                                  const SizedBox(height: 4),
+                                  if (!isDraft) ...[
+                                    const SizedBox(height: 2),
+                                    Text(
+                                      'Pending: ${invoice.currency} ${invoice.amountOutstanding.toStringAsFixed(2)}',
+                                      style: TextStyle(
+                                          fontSize: 11.5,
+                                          fontWeight: FontWeight.w800,
+                                          color: invoice.amountOutstanding > 0 ? Colors.red.shade600 : zSuccess
+                                      ),
+                                    ),
+                                  ],
+                                  const SizedBox(height: 6),
                                   _InfoChip(
-                                    label: status.toUpperCase(),
-                                    bgColor: status.toLowerCase() == 'submitted' ? zSuccessSoft : zOrangeSoft,
-                                    textColor: status.toLowerCase() == 'submitted' ? zSuccess : zOrange,
+                                    label: displayStatus,
+                                    bgColor: chipBg,
+                                    textColor: chipText,
                                   ),
                                 ],
                               ),
@@ -376,7 +405,14 @@ class _InvoiceListScreenState extends State<InvoiceListScreen> {
                                 onSelected: (value) => _handleInvoiceAction(value, data, doc.id),
                                 itemBuilder: (context) => [
                                   const PopupMenuItem(value: 'view', child: Text('View / Print PDF')),
-                                  const PopupMenuItem(value: 'edit', child: Text('Edit Invoice')),
+
+                                  if (!isDraft && invoice.paymentStatus != 'PAID')
+                                    const PopupMenuItem(value: 'payment', child: Text('Record Payment', style: TextStyle(fontWeight: FontWeight.bold))),
+
+                                  // ✅ UPDATED: Always allow editing unless the invoice is fully Paid/Locked
+                                  if (invoice.paymentStatus != 'PAID')
+                                    const PopupMenuItem(value: 'edit', child: Text('Edit Invoice')),
+
                                   const PopupMenuDivider(),
                                   const PopupMenuItem(value: 'delete', child: Text('Delete', style: TextStyle(color: Colors.red))),
                                 ],
@@ -389,11 +425,12 @@ class _InvoiceListScreenState extends State<InvoiceListScreen> {
                           ),
                           Row(
                             children: [
-                              _InlineInfo(icon: Icons.calendar_today, text: invoiceDate != null ? DateFormat('dd MMM yyyy').format(invoiceDate) : 'No Date'),
+                              _InlineInfo(icon: Icons.calendar_today, text: DateFormat('dd MMM yyyy').format(invoice.invoiceDate)),
                               const SizedBox(width: 16),
-                              _InlineInfo(icon: Icons.category_outlined, text: type),
+                              // ✅ ADDED: Now displays the Due Date inline for quick visibility!
+                              _InlineInfo(icon: Icons.event_available, text: 'Due: ${DateFormat('dd MMM').format(invoice.dueDate)}'),
                               const SizedBox(width: 16),
-                              if (buyerCountry.isNotEmpty) _InlineInfo(icon: Icons.place_outlined, text: buyerCountry),
+                              if (invoice.buyer.country.isNotEmpty) _InlineInfo(icon: Icons.place_outlined, text: invoice.buyer.country),
                             ],
                           ),
                         ],

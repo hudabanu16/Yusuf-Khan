@@ -186,11 +186,12 @@ class ExportInvoiceDocumentView extends StatelessWidget {
                 pw.SizedBox(height: 4),
                 _metaRow('Invoice Number:', invoice.invoiceNumber),
                 _metaRow('Invoice Date:', _formatDate(invoice.invoiceDate)),
-                _metaRow('Invoice Type:', 'Export Invoice', boldValue: false),
+                // ✅ UPDATED: Injected Due Date explicitly onto the print
+                _metaRow('Due Date:', _formatDate(invoice.dueDate)),
                 _metaRow('Export Type:', exportTypeText, boldValue: false),
                 if (isLUT)
                   _metaRow('LUT ARN:', invoice.exportDetails.lutNumber.isNotEmpty ? 'ARN - ${invoice.exportDetails.lutNumber}' : 'Not Available'),
-                _metaRow('Place of Supply:', 'Outside India'),
+                _metaRow('Place of Supply:', invoice.placeOfSupply),
               ],
             ),
           ),
@@ -336,6 +337,8 @@ class ExportInvoiceDocumentView extends StatelessWidget {
 
   pw.Widget _buildFinancialSummary() {
     final isLUT = invoice.exportDetails.exportType == 'WITH_LUT';
+    // ✅ Calculate the actual total received combining advances and exact allocated receipts
+    final double totalReceived = invoice.advanceAmount + invoice.amountReceived;
 
     return pw.Container(
         margin: const pw.EdgeInsets.only(top: 8),
@@ -389,6 +392,22 @@ class ExportInvoiceDocumentView extends StatelessWidget {
                       pw.Text(_currency(invoice.totals.grandTotal), style: pw.TextStyle(fontSize: 10, fontWeight: pw.FontWeight.bold, color: _primaryColor)),
                     ],
                   ),
+
+                  // ✅ UPDATED: Dynamic Injection of Real ERP Received/Outstanding Values if they exist
+                  if (totalReceived > 0) ...[
+                    pw.SizedBox(height: 6),
+                    _buildSummaryLine('Less: Total Received', totalReceived),
+                    pw.SizedBox(height: 4),
+                    pw.Divider(color: _borderColor, thickness: 0.5),
+                    pw.SizedBox(height: 4),
+                    pw.Row(
+                      mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+                      children: [
+                        pw.Text('Balance Due', style: pw.TextStyle(fontSize: 10, fontWeight: pw.FontWeight.bold, color: _textDark)),
+                        pw.Text(_currency(invoice.amountOutstanding), style: pw.TextStyle(fontSize: 10, fontWeight: pw.FontWeight.bold, color: _textDark)),
+                      ],
+                    ),
+                  ]
                 ],
               ),
             )
@@ -440,7 +459,8 @@ class ExportInvoiceDocumentView extends StatelessWidget {
                                 children: [
                                   pw.Text('Payment & Delivery', style: pw.TextStyle(fontSize: 8, fontWeight: pw.FontWeight.bold, color: _primaryColor)),
                                   pw.SizedBox(height: 4),
-                                  _metaRow('Terms:', invoice.paymentDetails.terms),
+                                  // ✅ UPDATED: Added Payment Terms Mapping
+                                  _metaRow('Terms:', invoice.paymentTerms.isNotEmpty ? invoice.paymentTerms : invoice.paymentDetails.terms),
                                   _metaRow('Mode:', '${invoice.paymentDetails.paymentMode} (${invoice.currency})'),
                                   if (invoice.paymentDetails.paymentReference.isNotEmpty)
                                     _metaRow('Ref:', invoice.paymentDetails.paymentReference),
@@ -468,7 +488,7 @@ class ExportInvoiceDocumentView extends StatelessWidget {
                   pw.Text(declarationText, style: const pw.TextStyle(fontSize: 7, color: _textLight, lineSpacing: 1.1)),
                   if (invoice.notes.isNotEmpty) ...[
                     pw.SizedBox(height: 4),
-                    pw.Text('Notes: ${invoice.notes}', style: const pw.TextStyle(fontSize: 7.5, color: _textDark, fontWeight: pw.FontWeight.bold)),
+                    pw.Text('Notes: ${invoice.notes}', style: pw.TextStyle(fontSize: 7.5, color: _textDark, fontWeight: pw.FontWeight.bold)),
                   ]
                 ],
               ),
@@ -500,7 +520,8 @@ class ExportInvoiceDocumentView extends StatelessWidget {
                                 width: 35,
                                 child: pw.BarcodeWidget(
                                   barcode: pw.Barcode.qrCode(),
-                                  data: 'INV:${invoice.invoiceNumber}|DT:${_formatDate(invoice.invoiceDate)}|AMT:${invoice.totals.grandTotal}',
+                                  // ✅ UPDATED: Included due date inside the verification QR Code
+                                  data: 'INV:${invoice.invoiceNumber}|DT:${_formatDate(invoice.invoiceDate)}|DUE:${_formatDate(invoice.dueDate)}|AMT:${invoice.totals.grandTotal}',
                                   drawText: false,
                                   color: _textDark,
                                 )
@@ -527,7 +548,6 @@ class ExportInvoiceDocumentView extends StatelessWidget {
     );
 
     // 🔥 STRICT 1-PAGE ENFORCEMENT 🔥
-    // Uses pw.Page instead of MultiPage. Uses pw.FittedBox with scaleDown to auto-shrink content.
     doc.addPage(
       pw.Page(
         pageFormat: format,

@@ -1,4 +1,3 @@
-// lib/modules/shell/zoho_shell.dart
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
@@ -13,10 +12,14 @@ import 'package:QUIK/modules/settings/screen_settings_home.dart';
 import 'package:QUIK/modules/sales/sales_orders/screens_sales_order_list.dart';
 import 'package:QUIK/modules/service/screens_service_home.dart';
 
-// REPLACED: Now importing the List Screen instead of Selection Screen
+// Finance Sub-Modules
 import 'package:QUIK/modules/finance/invoice/screens/invoice_list_screen.dart';
 import 'package:QUIK/modules/finance/invoice/screens/export_invoice_screen.dart';
 import 'package:QUIK/modules/finance/invoice/screens/tax_invoice_screen.dart';
+
+// 🔥 NEW: Real Payments & Outstanding Sub-Modules
+import 'package:QUIK/modules/finance/payments_received/screens/payments_list_screen.dart';
+import 'package:QUIK/modules/finance/outstanding/screens/outstanding_screen.dart';
 
 enum ShellPage {
   dashboard,
@@ -144,7 +147,7 @@ extension ShellPageX on ShellPage {
       case ShellPage.financeExportInvoiceCreate:
         return 'Create Export Invoice';
       case ShellPage.financePaymentsReceived:
-        return 'Payments Received';
+        return 'Payments Received'; // Plural title
       case ShellPage.financeOutstanding:
         return 'Outstanding';
       case ShellPage.financeExpenses:
@@ -181,7 +184,6 @@ extension ShellPageX on ShellPage {
     switch (this) {
       case ShellPage.dashboard:
         return Icons.home_outlined;
-
       case ShellPage.salesInquiries:
         return Icons.campaign_outlined;
       case ShellPage.salesQuotations:
@@ -196,7 +198,6 @@ extension ShellPageX on ShellPage {
         return Icons.task_alt_outlined;
       case ShellPage.salesMeetings:
         return Icons.groups_outlined;
-
       case ShellPage.crmCustomers:
         return Icons.people_outline;
       case ShellPage.crmContacts:
@@ -205,7 +206,6 @@ extension ShellPageX on ShellPage {
         return Icons.location_on_outlined;
       case ShellPage.crmCommunication:
         return Icons.chat_bubble_outline;
-
       case ShellPage.purchaseVendors:
         return Icons.business_outlined;
       case ShellPage.purchaseOrders:
@@ -214,7 +214,6 @@ extension ShellPageX on ShellPage {
         return Icons.inventory_outlined;
       case ShellPage.purchaseLedger:
         return Icons.menu_book_outlined;
-
       case ShellPage.inventoryProducts:
         return Icons.inventory_2_outlined;
       case ShellPage.inventoryStockSummary:
@@ -227,7 +226,6 @@ extension ShellPageX on ShellPage {
         return Icons.warehouse_outlined;
       case ShellPage.inventoryLowStock:
         return Icons.warning_amber_outlined;
-
       case ShellPage.dispatchReady:
         return Icons.inventory_2_outlined;
       case ShellPage.dispatchChallans:
@@ -236,7 +234,6 @@ extension ShellPageX on ShellPage {
         return Icons.route_outlined;
       case ShellPage.dispatchDelivered:
         return Icons.done_all_outlined;
-
       case ShellPage.financeProforma:
         return Icons.request_quote_outlined;
       case ShellPage.financeTaxInvoice:
@@ -251,7 +248,6 @@ extension ShellPageX on ShellPage {
         return Icons.account_balance_wallet_outlined;
       case ShellPage.financeExpenses:
         return Icons.receipt_outlined;
-
       case ShellPage.reportsSales:
         return Icons.show_chart_outlined;
       case ShellPage.reportsInquiry:
@@ -262,7 +258,6 @@ extension ShellPageX on ShellPage {
         return Icons.widgets_outlined;
       case ShellPage.reportsPayment:
         return Icons.pie_chart_outline;
-
       case ShellPage.adminUsers:
         return Icons.manage_accounts_outlined;
       case ShellPage.adminRoles:
@@ -273,7 +268,6 @@ extension ShellPageX on ShellPage {
         return Icons.account_tree_outlined;
       case ShellPage.adminAuditLogs:
         return Icons.fact_check_outlined;
-
       case ShellPage.settingsGeneral:
         return Icons.settings_outlined;
     }
@@ -426,10 +420,6 @@ class _ZohoShellState extends State<ZohoShell> {
   }
 
   bool get canInquiries => _hasPermission('sales', 'inquiries');
-  bool get canCustomers => _hasPermission('crm', 'customers');
-  bool get canProducts => _hasPermission('inventory', 'products');
-  bool get canQuotations => _hasPermission('sales', 'quotations');
-  bool get canUsers => isAdminOrManager || _hasPermission('administration', 'users');
 
   bool _canViewPage(ShellPage page) {
     if (isAdminOrManager) return true;
@@ -439,7 +429,6 @@ class _ZohoShellState extends State<ZohoShell> {
         return true;
       case ShellPage.settingsGeneral:
         return true;
-
     // Sales
       case ShellPage.salesInquiries:
         return _hasPermission('sales', 'inquiries');
@@ -453,11 +442,9 @@ class _ZohoShellState extends State<ZohoShell> {
         return _hasPermission('sales', 'tasks');
       case ShellPage.salesMeetings:
         return _hasPermission('sales', 'meetings');
-
     // Service
       case ShellPage.service:
         return true;
-
     // CRM
       case ShellPage.crmCustomers:
         return _hasPermission('crm', 'customers');
@@ -467,7 +454,6 @@ class _ZohoShellState extends State<ZohoShell> {
         return _hasPermission('crm', 'customerVisits');
       case ShellPage.crmCommunication:
         return _hasPermission('crm', 'communicationHistory');
-
     // Purchase
       case ShellPage.purchaseVendors:
         return _hasPermission('purchase', 'vendors');
@@ -477,7 +463,6 @@ class _ZohoShellState extends State<ZohoShell> {
         return _hasPermission('purchase', 'grnMaterialReceipt');
       case ShellPage.purchaseLedger:
         return _hasPermission('purchase', 'vendorLedger');
-
     // Inventory
       case ShellPage.inventoryProducts:
         return _hasPermission('inventory', 'products');
@@ -491,7 +476,6 @@ class _ZohoShellState extends State<ZohoShell> {
         return _hasPermission('inventory', 'warehouse');
       case ShellPage.inventoryLowStock:
         return _hasPermission('inventory', 'lowStockAlerts');
-
     // Dispatch
       case ShellPage.dispatchReady:
         return _hasPermission('dispatch', 'readyForDispatch');
@@ -501,7 +485,6 @@ class _ZohoShellState extends State<ZohoShell> {
         return _hasPermission('dispatch', 'shipmentTracking');
       case ShellPage.dispatchDelivered:
         return _hasPermission('dispatch', 'deliveredOrders');
-
     // Finance
       case ShellPage.financeProforma:
         return _hasPermission('finance', 'proformaInvoice');
@@ -515,7 +498,6 @@ class _ZohoShellState extends State<ZohoShell> {
         return _hasPermission('finance', 'outstanding');
       case ShellPage.financeExpenses:
         return _hasPermission('finance', 'expenseEntries');
-
     // Reports
       case ShellPage.reportsSales:
         return _hasPermission('reports', 'salesReport');
@@ -527,7 +509,6 @@ class _ZohoShellState extends State<ZohoShell> {
         return _hasPermission('reports', 'productReport');
       case ShellPage.reportsPayment:
         return _hasPermission('reports', 'paymentReport');
-
     // Administration
       case ShellPage.adminUsers:
         return _hasPermission('administration', 'users');
@@ -539,7 +520,6 @@ class _ZohoShellState extends State<ZohoShell> {
         return _hasPermission('administration', 'branches');
       case ShellPage.adminAuditLogs:
         return _hasPermission('administration', 'auditLogs');
-
       default:
         return false;
     }
@@ -708,7 +688,8 @@ class _ZohoShellState extends State<ZohoShell> {
     final filtered = <SidebarGroup>[];
 
     for (var group in allGroups) {
-      final allowedChildren = group.children.where((page) => _canViewPage(page)).toList();
+      final allowedChildren =
+      group.children.where((page) => _canViewPage(page)).toList();
 
       if (allowedChildren.isNotEmpty) {
         filtered.add(SidebarGroup(
@@ -752,6 +733,8 @@ class _ZohoShellState extends State<ZohoShell> {
       case ShellPage.financeTaxInvoice:
       case ShellPage.financeTaxInvoiceCreate:
       case ShellPage.financeExportInvoiceCreate:
+      case ShellPage.financePaymentsReceived: // 🔥 SET TO TRUE
+      case ShellPage.financeOutstanding:      // 🔥 SET TO TRUE
         return true;
       default:
         return false;
@@ -769,8 +752,10 @@ class _ZohoShellState extends State<ZohoShell> {
   String _activeSectionTitle() {
     if (activePage == ShellPage.dashboard) return 'Dashboard';
     if (activePage == ShellPage.settingsGeneral) return 'Settings';
-    if (activePage == ShellPage.financeTaxInvoiceCreate) return 'Finance • Create Tax Invoice';
-    if (activePage == ShellPage.financeExportInvoiceCreate) return 'Finance • Create Export Invoice';
+    if (activePage == ShellPage.financeTaxInvoiceCreate)
+      return 'Finance • Create Tax Invoice';
+    if (activePage == ShellPage.financeExportInvoiceCreate)
+      return 'Finance • Create Export Invoice';
 
     if (_currentSidebarGroups.any((group) => group.children.contains(activePage))) {
       final group = _currentSidebarGroups.firstWhere(
@@ -901,8 +886,8 @@ class _ZohoShellState extends State<ZohoShell> {
           .doc(widget.userUid)
           .snapshots(),
       builder: (context, userSnap) {
-
-        if (userSnap.connectionState == ConnectionState.waiting && !userSnap.hasData) {
+        if (userSnap.connectionState == ConnectionState.waiting &&
+            !userSnap.hasData) {
           return const Scaffold(
             backgroundColor: zCanvasBg,
             body: Center(child: CircularProgressIndicator(color: zBlue)),
@@ -911,7 +896,10 @@ class _ZohoShellState extends State<ZohoShell> {
 
         final companyUserData = userSnap.data?.data() ?? <String, dynamic>{};
 
-        _currentRole = (companyUserData['role'] ?? widget.role).toString().trim().toLowerCase();
+        _currentRole = (companyUserData['role'] ?? widget.role)
+            .toString()
+            .trim()
+            .toLowerCase();
 
         final dynamic rawPermissions = companyUserData['permissions'];
         _currentPermissions = rawPermissions is Map
@@ -919,7 +907,9 @@ class _ZohoShellState extends State<ZohoShell> {
             : widget.permissions;
 
         final bool isDeleted = companyUserData['isDeleted'] == true;
-        final bool isActive = companyUserData.containsKey('isActive') ? companyUserData['isActive'] == true : true;
+        final bool isActive = companyUserData.containsKey('isActive')
+            ? companyUserData['isActive'] == true
+            : true;
 
         if (isDeleted || !isActive) {
           return _blockedWorkspaceBody();
@@ -1232,9 +1222,10 @@ class _ZohoShellState extends State<ZohoShell> {
   }
 
   Widget _subNavItem(ShellPage page) {
-    // If we are currently IN a sub-creation route (like Export Invoice), keep the parent "Invoice" menu highlighted.
     final bool selected = activePage == page ||
-        (page == ShellPage.financeTaxInvoice && (activePage == ShellPage.financeExportInvoiceCreate || activePage == ShellPage.financeTaxInvoiceCreate));
+        (page == ShellPage.financeTaxInvoice &&
+            (activePage == ShellPage.financeExportInvoiceCreate ||
+                activePage == ShellPage.financeTaxInvoiceCreate));
 
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 2),
@@ -1394,6 +1385,25 @@ class _ZohoShellState extends State<ZohoShell> {
                 ),
               );
             },
+          ),
+        );
+
+    // 🔥 CONNECTED NEW ROUTING
+      case ShellPage.financePaymentsReceived:
+        return Padding(
+          padding: const EdgeInsets.all(14),
+          child: PaymentsListScreen(
+            companyId: widget.companyId,
+            userUid: widget.userUid,
+          ),
+        );
+
+      case ShellPage.financeOutstanding:
+        return Padding(
+          padding: const EdgeInsets.all(14),
+          child: OutstandingScreen(
+            companyId: widget.companyId,
+            userUid: widget.userUid,
           ),
         );
 
