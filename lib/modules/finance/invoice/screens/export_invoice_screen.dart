@@ -362,18 +362,29 @@ class _ExportInvoiceScreenState extends State<ExportInvoiceScreen> {
                   Row(
                     children: [
                       Expanded(
-                        child: ValueListenableBuilder<String?>(
-                          valueListenable: _state.selectedTerms,
-                          builder: (context, terms, _) => DropdownButtonFormField<String>(
-                            value: terms,
-                            decoration: _inputDecoration('Payment Terms *', Icons.handshake),
-                            items: _state.paymentTermsItems,
-                            validator: (v) => v == null ? 'Required' : null,
-                            onChanged: (v) {
-                              _state.selectedTerms.value = v;
-                              _state.autoCalcDueDate();
-                            },
-                          ),
+                        child: Autocomplete<String>(
+                          initialValue: TextEditingValue(text: _state.paymentTermsCtrl.text),
+                          optionsBuilder: (TextEditingValue textEditingValue) {
+                            if (textEditingValue.text.isEmpty) return _state.paymentTermsList;
+                            return _state.paymentTermsList.where((String option) => option.toLowerCase().contains(textEditingValue.text.toLowerCase()));
+                          },
+                          onSelected: (String selection) {
+                            _state.paymentTermsCtrl.text = selection;
+                            _state.autoCalcDueDate();
+                          },
+                          fieldViewBuilder: (context, controller, focusNode, onFieldSubmitted) {
+                            return _CustomField(
+                              label: 'Payment Terms (Editable)',
+                              controller: controller,
+                              icon: Icons.handshake,
+                              focusNode: focusNode,
+                              suffixIcon: const Icon(Icons.arrow_drop_down, color: Colors.blueGrey),
+                              onChanged: (val) {
+                                _state.paymentTermsCtrl.text = val;
+                                _state.autoCalcDueDate();
+                              },
+                            );
+                          },
                         ),
                       ),
                       const SizedBox(width: 16),
@@ -384,8 +395,8 @@ class _ExportInvoiceScreenState extends State<ExportInvoiceScreen> {
                             onTap: () async {
                               final d = await showDatePicker(context: context, initialDate: dueDate, firstDate: DateTime(2000), lastDate: DateTime(2100));
                               if (d != null) {
-                                if (_state.selectedTerms.value != 'Custom Terms') {
-                                  _state.selectedTerms.value = 'Custom Terms';
+                                if (_state.paymentTermsCtrl.text != 'Custom Terms') {
+                                  _state.paymentTermsCtrl.text = 'Custom Terms';
                                 }
                                 _state.dueDateNotifier.value = d;
                               }
@@ -522,13 +533,8 @@ class _ExportInvoiceScreenState extends State<ExportInvoiceScreen> {
 
     final String docId = await _state.saveToFirestore(isDraft ? 'Draft' : 'Submitted');
 
-    // ✅ FIXED: Only add to Outstanding Ledger if it's a FINAL submitted invoice.
-    // If it's saved as a draft, we remove it from the ledger to prevent showing up in the outstanding balances.
-    if (isDraft) {
-      await _state.removeOutstandingEntry(docId);
-    } else {
-      await _state.createOutstandingEntry(docId);
-    }
+    // 🔥 FIXED: Always pass the isDraft flag so we maintain safe state in the Ledger!
+    await _state.createOutstandingEntry(docId, isDraft: isDraft);
 
     if (!mounted) return;
 
@@ -579,7 +585,6 @@ class ExportInvoiceState {
   final selectedCurrency = ValueNotifier<String>('USD');
   final selectedTransportMode = ValueNotifier<String>('Sea / Ship');
   final selectedPaymentMode = ValueNotifier<String?>(null);
-  final selectedTerms = ValueNotifier<String?>(null);
 
   final invoiceDate = ValueNotifier<DateTime>(DateTime.now());
   final dueDateNotifier = ValueNotifier<DateTime>(DateTime.now());
@@ -587,7 +592,6 @@ class ExportInvoiceState {
   final items = ValueNotifier<List<ExportInvoiceItem>>([]);
 
   late final List<DropdownMenuItem<String>> paymentModeItems;
-  late final List<DropdownMenuItem<String>> paymentTermsItems;
   late final List<DropdownMenuItem<String>> currencyItems;
   late final List<DropdownMenuItem<String>> transportModeItems;
 
@@ -606,6 +610,8 @@ class ExportInvoiceState {
   final supName = TextEditingController(); final supAddress = TextEditingController(); final supGSTIN = TextEditingController(); final supPAN = TextEditingController(); final supIEC = TextEditingController(); final supState = TextEditingController();
   final lutNumberCtrl = TextEditingController(); final adCodeCtrl = TextEditingController();
   final exchangeRateCtrl = TextEditingController(text: "83.50");
+
+  final paymentTermsCtrl = TextEditingController(text: 'Due on Receipt');
 
   final advancePctCtrl = TextEditingController(text: "0.0");
   final advanceAmtCtrl = TextEditingController(text: "0.0");
@@ -631,7 +637,6 @@ class ExportInvoiceState {
     currencyItems = currencies.map((c) => DropdownMenuItem(value: c, child: Text(c))).toList();
     transportModeItems = transportModes.map((c) => DropdownMenuItem(value: c, child: Text(c))).toList();
     paymentModeItems = paymentModes.map((c) => DropdownMenuItem(value: c, child: Row(children: [Icon(_getPaymentModeIcon(c), size: 16, color: Colors.blueGrey), const SizedBox(width: 8), Text(c)]))).toList();
-    paymentTermsItems = paymentTermsList.map((c) => DropdownMenuItem(value: c, child: Text(c))).toList();
 
     summaryState = ValueNotifier(_computeSummary());
 
@@ -673,10 +678,10 @@ class ExportInvoiceState {
 
   void dispose() {
     isLoading.dispose(); isSaving.dispose(); isLUT.dispose(); reverseCharge.dispose(); sameAsBill.dispose();
-    selectedCurrency.dispose(); selectedTransportMode.dispose(); selectedPaymentMode.dispose(); selectedTerms.dispose();
+    selectedCurrency.dispose(); selectedTransportMode.dispose(); selectedPaymentMode.dispose();
     invoiceDate.dispose(); dueDateNotifier.dispose(); taxRate.dispose(); items.dispose(); summaryState.dispose();
     invoiceNoCtrl.dispose(); placeOfSupplyCtrl.dispose(); exchangeRateCtrl.dispose();
-    advancePctCtrl.dispose(); advanceAmtCtrl.dispose();
+    paymentTermsCtrl.dispose(); advancePctCtrl.dispose(); advanceAmtCtrl.dispose();
     advancePctNode.dispose(); advanceAmtNode.dispose();
   }
 
@@ -711,7 +716,7 @@ class ExportInvoiceState {
 
   void autoCalcDueDate() {
     final d = invoiceDate.value;
-    final term = (selectedTerms.value ?? '').toLowerCase();
+    final term = paymentTermsCtrl.text.toLowerCase();
     if (term.contains('net 15')) dueDateNotifier.value = d.add(const Duration(days: 15));
     else if (term.contains('net 30') || term.contains('da 30')) dueDateNotifier.value = d.add(const Duration(days: 30));
     else if (term.contains('net 45')) dueDateNotifier.value = d.add(const Duration(days: 45));
@@ -732,14 +737,13 @@ class ExportInvoiceState {
         final inv = ExportInvoiceModel.fromMap(doc.data()!, doc.id);
 
         invoiceNoCtrl.text = inv.invoiceNumber; invoiceDate.value = inv.invoiceDate;
-        selectedTerms.value = paymentTermsList.contains(inv.paymentTerms) ? inv.paymentTerms : 'Custom Terms';
-        dueDateNotifier.value = inv.dueDate;
+        paymentTermsCtrl.text = inv.paymentTerms; dueDateNotifier.value = inv.dueDate;
         placeOfSupplyCtrl.text = inv.placeOfSupply; isLUT.value = inv.exportDetails.exportType == 'WITH_LUT'; reverseCharge.value = inv.taxDetails.reverseCharge; lutNumberCtrl.text = inv.exportDetails.lutNumber; adCodeCtrl.text = inv.exportDetails.adCode; selectedCurrency.value = currencies.contains(inv.currency) ? inv.currency : 'USD'; exchangeRateCtrl.text = inv.exchangeRate.toString();
         billName.text = inv.buyer.name; billAddress.text = inv.buyer.address; billCountry.text = inv.buyer.country; billEmail.text = inv.buyer.email; billPhone.text = inv.buyer.phone; billContact.text = inv.buyer.contactPerson;
         shipName.text = inv.consignee.name; shipAddress.text = inv.consignee.address; shipCountry.text = inv.consignee.country; shipEmail.text = inv.consignee.email; shipPhone.text = inv.consignee.phone; shipContact.text = inv.consignee.contactPerson; sameAsBill.value = (billName.text == shipName.text && billAddress.text == shipAddress.text);
         preCarriageCtrl.text = inv.logistics.preCarriageBy; selectedTransportMode.value = transportModes.contains(inv.logistics.modeOfTransport) ? inv.logistics.modeOfTransport : 'Sea / Ship'; carrierCtrl.text = inv.logistics.vesselOrFlight; loadingCtrl.text = inv.exportDetails.portOfLoading; dischargeCtrl.text = inv.exportDetails.portOfDischarge; countryOrigin.text = inv.exportDetails.countryOfOrigin; countryFinal.text = inv.exportDetails.countryOfDestination; portCodeCtrl.text = inv.exportDetails.portCode; shippingBillNoCtrl.text = inv.logistics.shippingBillNo; shippingBillDate = inv.logistics.shippingBillDate; marksAndNosCtrl.text = inv.logistics.marksAndNos; packagesCtrl.text = inv.logistics.numberOfPackages.toString(); grossWtCtrl.text = inv.logistics.grossWeight.toString(); netWtCtrl.text = inv.logistics.netWeight.toString();
         freightCtrl.text = inv.totals.freight.toString(); insuranceCtrl.text = inv.totals.insurance.toString(); taxRate.value = inv.taxDetails.igstRate; items.value = inv.items;
-        selectedPaymentMode.value = paymentModes.contains(inv.paymentDetails.paymentMode) ? inv.paymentDetails.paymentMode : null; paymentRefCtrl.text = inv.paymentDetails.paymentReference; bankNameCtrl.text = inv.paymentDetails.bankName; accNoCtrl.text = inv.paymentDetails.accountNumber; ifscCtrl.text = inv.paymentDetails.ifsc; swiftCtrl.text = inv.paymentDetails.swiftCode; declarationCtrl.text = inv.declaration; notesCtrl.text = inv.notes; signatoryCtrl.text = inv.authorizedSignatory;
+        selectedPaymentMode.value = paymentModes.contains(inv.paymentDetails.paymentMode) ? inv.paymentDetails.paymentMode : null; paymentRefCtrl.text = inv.paymentDetails.paymentReference; payTermsCtrl.text = inv.paymentDetails.terms; bankNameCtrl.text = inv.paymentDetails.bankName; accNoCtrl.text = inv.paymentDetails.accountNumber; ifscCtrl.text = inv.paymentDetails.ifsc; swiftCtrl.text = inv.paymentDetails.swiftCode; declarationCtrl.text = inv.declaration; notesCtrl.text = inv.notes; signatoryCtrl.text = inv.authorizedSignatory;
 
         existingAmountReceived = inv.amountReceived > 0 ? inv.amountReceived : inv.receivedAmount;
         advanceAmtCtrl.text = inv.advanceAmount.toStringAsFixed(2);
@@ -817,7 +821,7 @@ class ExportInvoiceState {
     return ExportInvoiceModel(
       id: invoiceId ?? '', companyId: companyId, invoiceNumber: invoiceNoCtrl.text.trim(),
       invoiceDate: invoiceDate.value, dueDate: dueDateNotifier.value,
-      paymentTerms: selectedTerms.value ?? 'Custom Terms',
+      paymentTerms: paymentTermsCtrl.text.trim(),
       baseCurrency: 'INR', baseAmount: grandTotalINR,
       receivedAmount: existingAmountReceived, advanceAmount: userAdvance,
       currency: selectedCurrency.value, exchangeRate: finalExchange, placeOfSupply: placeOfSupplyCtrl.text.trim(),
@@ -853,34 +857,26 @@ class ExportInvoiceState {
     }
   }
 
-  // ✅ ADDED: Remove from Outstanding if saved as Draft
-  Future<void> removeOutstandingEntry(String docId) async {
+  // 🔥 FIXED: Ensure the outstanding ledger always captures the strict ERP fields
+  Future<void> createOutstandingEntry(String docId, {bool isDraft = false}) async {
     try {
-      await FirebaseFirestore.instance
-          .collection('companies')
-          .doc(companyId)
-          .collection('outstanding')
-          .doc(docId)
-          .delete();
-    } catch (e) {
-      debugPrint("Warning: Failed to remove outstanding hook: $e");
-    }
-  }
-
-  Future<void> createOutstandingEntry(String docId) async {
-    try {
-      final model = buildModel('Submitted');
+      final model = buildModel(isDraft ? 'Draft' : 'Submitted');
       final outRef = FirebaseFirestore.instance.collection('companies').doc(companyId).collection('outstanding').doc(docId);
 
       await outRef.set({
         'invoiceId': docId,
         'invoiceNumber': model.invoiceNumber,
+        'invoiceType': 'EXPORT', // ✅ New ERP Field
         'customerId': model.buyer.name,
         'customerName': model.buyer.name,
         'totalAmount': model.totals.grandTotal,
         'outstandingAmount': model.amountOutstanding,
+        'baseTotalAmount': model.baseAmount, // ✅ Permanent BC Tracker
+        'baseOutstandingAmount': model.amountOutstanding * model.exchangeRate, // ✅ Permanent BC Oustanding
         'currency': model.currency,
-        'status': model.paymentStatus,
+        'exchangeRate': model.exchangeRate, // ✅ Stored historical rate
+        'status': isDraft ? 'DRAFT' : model.paymentStatus, // Strict Draft segregation
+        'isFinalized': !isDraft, // Strict Ledger Gatekeeper
         'dueDate': Timestamp.fromDate(model.dueDate),
         'updatedAt': Timestamp.now(),
       }, SetOptions(merge: true));
