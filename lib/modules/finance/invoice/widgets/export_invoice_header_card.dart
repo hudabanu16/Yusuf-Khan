@@ -47,90 +47,163 @@ class ExportInvoiceHeaderCard extends StatelessWidget {
         borderRadius: BorderRadius.circular(12),
       ),
       child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          // 🔥 HEADER TITLE
+          const Text(
+            'Invoice Header Details',
+            style: TextStyle(
+              fontSize: 16,
+              fontWeight: FontWeight.w800,
+              color: zText,
+            ),
+          ),
+
+          const SizedBox(height: 16),
+
+          // ROW 1
           Row(
             children: [
               Expanded(
-                child: _field('Invoice No', invoiceNoController),
+                child: _field(
+                  'Invoice No',
+                  invoiceNoController,
+                  readOnly: true, // ✅ ERP RULE: cannot edit
+                ),
               ),
               const SizedBox(width: 10),
-              Expanded(
-                child: _dateField(context),
-              ),
+              Expanded(child: _dateField(context)),
             ],
           ),
 
-          const SizedBox(height: 10),
+          const SizedBox(height: 12),
 
+          // ROW 2
           Row(
             children: [
               Expanded(
                 child: _dropdown(
                   'Export Type',
                   exportType,
-                  ['WITH_LUT', 'WITH_IGST'],
+                  const {
+                    'WITH_LUT': 'With LUT (No IGST)',
+                    'WITH_IGST': 'With IGST Payment',
+                  },
                   onExportTypeChanged,
                 ),
               ),
               const SizedBox(width: 10),
               Expanded(
                 child: _dropdown(
-                  'Nature',
+                  'Nature of Supply',
                   natureOfSupply,
-                  ['GOODS', 'SERVICES'],
+                  const {
+                    'GOODS': 'Goods',
+                    'SERVICES': 'Services',
+                  },
                   onNatureOfSupplyChanged,
                 ),
               ),
             ],
           ),
 
-          const SizedBox(height: 10),
+          const SizedBox(height: 12),
 
+          // ROW 3
           Row(
             children: [
               Expanded(
                 child: _dropdown(
                   'Currency',
                   currency,
-                  ['USD', 'EUR', 'INR'],
+                  const {
+                    'USD': 'USD - US Dollar',
+                    'EUR': 'EUR - Euro',
+                    'INR': 'INR - Indian Rupee',
+                  },
                   onCurrencyChanged,
                 ),
               ),
               const SizedBox(width: 10),
               Expanded(
-                child: _field('Exchange Rate', exchangeRateController,
-                    isNumber: true),
+                child: _field(
+                  'Exchange Rate',
+                  exchangeRateController,
+                  isNumber: true,
+                ),
               ),
             ],
           ),
 
+          const SizedBox(height: 12),
+
+          // ROW 4
+          _field(
+            'Place of Supply',
+            placeOfSupplyController,
+            readOnly: true, // ✅ Always Out of India
+          ),
+
           const SizedBox(height: 10),
 
-          _field('Place of Supply', placeOfSupplyController),
+          // 🔥 INFO NOTE
+          if (isLut)
+            Container(
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: Colors.green.shade50,
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: const Text(
+                'Export under LUT/Bond → IGST not applicable',
+                style: TextStyle(fontSize: 12, color: Colors.green),
+              ),
+            )
+          else
+            Container(
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: Colors.orange.shade50,
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: const Text(
+                'Export with IGST → Tax will be applied',
+                style: TextStyle(fontSize: 12, color: Colors.orange),
+              ),
+            ),
         ],
       ),
     );
   }
 
+  // ================= COMMON FIELD =================
   Widget _field(String label, TextEditingController controller,
-      {bool isNumber = false}) {
+      {bool isNumber = false, bool readOnly = false}) {
     return TextField(
       controller: controller,
-      keyboardType:
-      isNumber ? const TextInputType.numberWithOptions(decimal: true) : null,
+      readOnly: readOnly,
+      keyboardType: isNumber
+          ? const TextInputType.numberWithOptions(decimal: true)
+          : null,
       decoration: InputDecoration(
         labelText: label,
+        filled: true,
+        fillColor: readOnly ? Colors.grey.shade100 : Colors.white,
         border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
       ),
     );
   }
 
-  Widget _dropdown(String label, String value, List<String> items,
-      ValueChanged<String?> onChanged) {
+  // ================= DROPDOWN =================
+  Widget _dropdown(String label, String value,
+      Map<String, String> items, ValueChanged<String?> onChanged) {
     return DropdownButtonFormField<String>(
       value: value,
-      items: items
-          .map((e) => DropdownMenuItem(value: e, child: Text(e)))
+      items: items.entries
+          .map((e) => DropdownMenuItem(
+        value: e.key,
+        child: Text(e.value),
+      ))
           .toList(),
       onChanged: onChanged,
       decoration: InputDecoration(
@@ -140,6 +213,7 @@ class ExportInvoiceHeaderCard extends StatelessWidget {
     );
   }
 
+  // ================= DATE =================
   Widget _dateField(BuildContext context) {
     return InkWell(
       onTap: () async {
@@ -156,7 +230,10 @@ class ExportInvoiceHeaderCard extends StatelessWidget {
           labelText: 'Invoice Date',
           border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
         ),
-        child: Text(DateFormat('dd-MMM-yyyy').format(invoiceDate)),
+        child: Text(
+          DateFormat('dd-MMM-yyyy').format(invoiceDate),
+          style: const TextStyle(fontWeight: FontWeight.w600),
+        ),
       ),
     );
   }

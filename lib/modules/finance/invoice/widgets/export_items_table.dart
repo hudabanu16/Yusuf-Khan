@@ -1,7 +1,7 @@
-// lib/modules/finance/invoice/widgets/export_items_table.dart
 import 'package:flutter/material.dart';
 import 'package:QUIK/core/theme/app_theme.dart';
 import '../models/export_invoice_item.dart';
+import 'dialog_add_export_item.dart';
 
 class ExportItemsTable extends StatelessWidget {
   final List<ExportInvoiceItem> items;
@@ -25,107 +25,25 @@ class ExportItemsTable extends StatelessWidget {
 
   Future<void> _openItemDialog(BuildContext context,
       {ExportInvoiceItem? existingItem, int? index}) async {
-    final descCtrl =
-    TextEditingController(text: existingItem?.description ?? '');
-    final hsnCtrl =
-    TextEditingController(text: existingItem?.hsnCode ?? '');
-    final qtyCtrl = TextEditingController(
-        text: existingItem?.quantity.toString() ?? '1');
-    final rateCtrl = TextEditingController(
-        text: existingItem?.rate.toString() ?? '0');
-
-    final igstCtrl = TextEditingController(
-        text: isLut ? '0' : (existingItem?.igstRate.toString() ?? '0'));
-
     final result = await showDialog<ExportInvoiceItem>(
       context: context,
-      builder: (ctx) {
-        return Dialog(
-          shape:
-          RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-          child: Padding(
-            padding: const EdgeInsets.all(20),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const Text('Item',
-                    style:
-                    TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-                const SizedBox(height: 16),
-
-                _field('Description', descCtrl),
-                const SizedBox(height: 10),
-
-                Row(
-                  children: [
-                    Expanded(
-                        child: _field('HSN', hsnCtrl)),
-                    const SizedBox(width: 10),
-                    Expanded(
-                        child: _field('Qty', qtyCtrl, isNumber: true)),
-                  ],
-                ),
-
-                const SizedBox(height: 10),
-
-                Row(
-                  children: [
-                    Expanded(
-                        child: _field('Rate', rateCtrl, isNumber: true)),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: _field(
-                        'IGST %',
-                        igstCtrl,
-                        isNumber: true,
-                        readOnly: isLut,
-                      ),
-                    ),
-                  ],
-                ),
-
-                const SizedBox(height: 20),
-
-                ElevatedButton(
-                  onPressed: () {
-                    final qty = double.tryParse(qtyCtrl.text) ?? 0.0;
-                    final rate = double.tryParse(rateCtrl.text) ?? 0.0;
-                    final igst = isLut
-                        ? 0.0
-                        : (double.tryParse(igstCtrl.text) ?? 0.0);
-
-                    final newItem = ExportInvoiceItem(
-                      id: existingItem?.id ??
-                          DateTime.now().millisecondsSinceEpoch.toString(),
-                      description: descCtrl.text,
-                      hsnCode: hsnCtrl.text,
-                      quantity: qty,
-                      unit: 'Nos',
-                      rate: rate,
-                      igstRate: igst,
-                    );
-
-                    Navigator.pop(ctx, newItem);
-                  },
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: zBlue,
-                  ),
-                  child: const Text('Save'),
-                )
-              ],
-            ),
-          ),
-        );
-      },
+      builder: (_) => DialogAddExportItem(
+        companyId: existingItem?.companyId ?? '',
+        userUid: existingItem?.updatedBy ?? '',
+        selectedCurrency: currency,
+        existingItem: existingItem,
+      ),
     );
 
     if (result != null) {
       final newItems = List<ExportInvoiceItem>.from(items);
+
       if (index != null) {
         newItems[index] = result;
       } else {
         newItems.add(result);
       }
+
       onChanged(newItems);
     }
   }
@@ -133,79 +51,96 @@ class ExportItemsTable extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
+        // HEADER
         Row(
           children: [
-            const Text('Items',
-                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+            const Text(
+              'Export Items',
+              style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                  color: zText),
+            ),
             const Spacer(),
-            ElevatedButton(
+            ElevatedButton.icon(
               onPressed: () => _openItemDialog(context),
-              child: const Text('Add'),
+              icon: const Icon(Icons.add),
+              label: const Text('Add Item'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: zBlue,
+                foregroundColor: Colors.white,
+              ),
             ),
           ],
         ),
-        const SizedBox(height: 10),
 
+        const SizedBox(height: 12),
+
+        // EMPTY STATE
         if (items.isEmpty)
-          const Text('No items added')
-        else
-          DataTable(
-            columns: const [
-              DataColumn(label: Text('#')),
-              DataColumn(label: Text('Desc')),
-              DataColumn(label: Text('HSN')),
-              DataColumn(label: Text('Qty')),
-              DataColumn(label: Text('Rate')),
-              DataColumn(label: Text('Amount')),
-              DataColumn(label: Text('Tax')),
-              DataColumn(label: Text('Total')),
-              DataColumn(label: Text('')),
-            ],
-            rows: items.asMap().entries.map((e) {
-              final i = e.key;
-              final item = e.value;
-
-              return DataRow(cells: [
-                DataCell(Text('${i + 1}')),
-                DataCell(Text(item.description)),
-                DataCell(Text(item.hsnCode)),
-                DataCell(Text(item.quantity.toString())),
-                DataCell(Text(item.rate.toString())),
-                DataCell(Text(item.amount.toStringAsFixed(2))),
-                DataCell(Text(item.taxAmount.toStringAsFixed(2))),
-                DataCell(Text(item.total.toStringAsFixed(2))),
-                DataCell(Row(
-                  children: [
-                    IconButton(
-                      icon: const Icon(Icons.edit),
-                      onPressed: () => _openItemDialog(context,
-                          existingItem: item, index: i),
-                    ),
-                    IconButton(
-                      icon: const Icon(Icons.delete),
-                      onPressed: () => _removeItem(i),
-                    ),
-                  ],
-                )),
-              ]);
-            }).toList(),
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(20),
+            decoration: BoxDecoration(
+              border: Border.all(color: zBorder),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: const Center(
+              child: Text('No items added'),
+            ),
           )
-      ],
-    );
-  }
+        else
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: DataTable(
+              columnSpacing: 18,
+              columns: const [
+                DataColumn(label: Text('#')),
+                DataColumn(label: Text('Product')),
+                DataColumn(label: Text('HSN')),
+                DataColumn(label: Text('Qty')),
+                DataColumn(label: Text('Rate')),
+                DataColumn(label: Text('Amount')),
+                DataColumn(label: Text('Actions')),
+              ],
+              rows: items.asMap().entries.map((e) {
+                final i = e.key;
+                final item = e.value;
 
-  Widget _field(String label, TextEditingController controller,
-      {bool isNumber = false, bool readOnly = false}) {
-    return TextField(
-      controller: controller,
-      keyboardType:
-      isNumber ? const TextInputType.numberWithOptions(decimal: true) : null,
-      readOnly: readOnly,
-      decoration: InputDecoration(
-        labelText: label,
-        border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
-      ),
+                return DataRow(cells: [
+                  DataCell(Text('${i + 1}')),
+                  DataCell(Text(item.name)),
+                  DataCell(Text(item.hsnCode)),
+                  DataCell(Text('${item.quantity} ${item.unit}')),
+                  DataCell(Text(
+                      '$currency ${item.rate.toStringAsFixed(2)}')),
+
+                  // ✅ FIXED → always correct
+                  DataCell(Text(
+                      '$currency ${(item.quantity * item.rate).toStringAsFixed(2)}')),
+
+                  DataCell(Row(
+                    children: [
+                      IconButton(
+                        icon: const Icon(Icons.edit,
+                            size: 18, color: zBlue),
+                        onPressed: () => _openItemDialog(context,
+                            existingItem: item, index: i),
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.delete,
+                            size: 18, color: Colors.red),
+                        onPressed: () => _removeItem(i),
+                      ),
+                    ],
+                  )),
+                ]);
+              }).toList(),
+            ),
+          ),
+      ],
     );
   }
 }

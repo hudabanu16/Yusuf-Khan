@@ -40,6 +40,14 @@ class RecordPaymentController extends ChangeNotifier {
   double totalAllocated = 0.0;
   double advanceAmount = 0.0;
 
+  // 🔥 SAFETY NET: Prevents crashes if Firestore returns an int or string instead of double
+  double _parseDouble(dynamic value) {
+    if (value == null) return 0.0;
+    if (value is num) return value.toDouble();
+    if (value is String) return double.tryParse(value) ?? 0.0;
+    return 0.0;
+  }
+
   RecordPaymentController({required this.companyId, required this.userUid}) {
     amountCtrl.addListener(_calculateTotals);
     exchangeRateCtrl.addListener(_calculateTotals);
@@ -52,7 +60,9 @@ class RecordPaymentController extends ChangeNotifier {
     exchangeRateCtrl.dispose();
     referenceCtrl.dispose();
     notesCtrl.dispose();
-    for (var ctrl in allocationCtrls.values) { ctrl.dispose(); }
+    for (var ctrl in allocationCtrls.values) {
+      if (ctrl.hasListeners) ctrl.dispose();
+    }
     super.dispose();
   }
 
@@ -62,7 +72,9 @@ class RecordPaymentController extends ChangeNotifier {
     allUnpaidInvoices.clear();
     filteredInvoices.clear();
     availableCurrencies.clear();
-    for (var ctrl in allocationCtrls.values) { ctrl.dispose(); }
+    for (var ctrl in allocationCtrls.values) {
+      if (ctrl.hasListeners) ctrl.dispose();
+    }
     allocationCtrls.clear();
     amountCtrl.clear();
     exchangeRateCtrl.text = '1.0';
@@ -98,23 +110,55 @@ class RecordPaymentController extends ChangeNotifier {
     filteredInvoices = [];
     availableCurrencies.clear();
 
-    for (var ctrl in allocationCtrls.values) { ctrl.dispose(); }
+    for (var ctrl in allocationCtrls.values) {
+      if (ctrl.hasListeners) ctrl.dispose();
+    }
     allocationCtrls.clear();
     notifyListeners();
 
     try {
       final snap = await FirebaseFirestore.instance
           .collection('companies').doc(companyId).collection('export_invoices')
-          .where('buyer.name', isEqualTo: selectedCustomerName)
-          .where('paymentStatus', whereIn: ['UNPAID', 'PARTIAL'])
-          .orderBy('dueDate', descending: false)
           .get();
 
-      allUnpaidInvoices = snap.docs.where((doc) {
+      final rawDocs = snap.docs;
+
+      allUnpaidInvoices = rawDocs.where((doc) {
         final data = doc.data() as Map<String, dynamic>;
-        double out = data.containsKey('amountOutstanding') ? (data['amountOutstanding']).toDouble() : ((data['totals']?['grandTotal'] ?? 0.0) - (data['amountReceived'] ?? 0.0)).toDouble();
+
+        final customerDataName = (data['buyer']?['name'] ?? '')
+            .toString()
+            .trim()
+            .toLowerCase();
+
+        final selected = selectedCustomerName.trim().toLowerCase();
+        if (customerDataName != selected) return false;
+
+        final status = (data['paymentStatus'] ?? '').toString().toUpperCase();
+        if (!(status == 'UNPAID' || status == 'PARTIAL' || status == 'PARTIALLY PAID')) return false;
+
+        double out = data.containsKey('amountOutstanding')
+            ? _parseDouble(data['amountOutstanding'])
+            : (_parseDouble(data['totals']?['grandTotal']) - _parseDouble(data['amountReceived']));
+
         return out > 0;
       }).toList();
+
+      // Safe client-side sorting to prevent index crashes
+      allUnpaidInvoices.sort((a, b) {
+        final aData = a.data() as Map<String, dynamic>;
+        final bData = b.data() as Map<String, dynamic>;
+
+        final aDate = (aData['dueDate'] is Timestamp)
+            ? (aData['dueDate'] as Timestamp).toDate()
+            : DateTime(2100);
+
+        final bDate = (bData['dueDate'] is Timestamp)
+            ? (bData['dueDate'] as Timestamp).toDate()
+            : DateTime(2100);
+
+        return aDate.compareTo(bDate);
+      });
 
       for (var doc in allUnpaidInvoices) {
         final data = doc.data() as Map<String, dynamic>;
@@ -133,6 +177,7 @@ class RecordPaymentController extends ChangeNotifier {
     } finally {
       isLoadingInvoices = false;
       _calculateTotals();
+      notifyListeners();
     }
   }
 
@@ -150,7 +195,9 @@ class RecordPaymentController extends ChangeNotifier {
   }
 
   void _filterInvoicesByCurrency({String? prefillInvoiceId}) {
-    for (var ctrl in allocationCtrls.values) { ctrl.dispose(); }
+    for (var ctrl in allocationCtrls.values) {
+      if (ctrl.hasListeners) ctrl.dispose();
+    }
     allocationCtrls.clear();
 
     filteredInvoices = allUnpaidInvoices.where((doc) {
@@ -158,12 +205,19 @@ class RecordPaymentController extends ChangeNotifier {
       return (data['currency'] ?? 'USD') == selectedCurrency;
     }).toList();
 
+    if (filteredInvoices.isEmpty) {
+      totalAllocated = 0.0;
+      advanceAmount = totalReceived;
+    }
+
     for (var doc in filteredInvoices) {
       final ctrl = TextEditingController();
       ctrl.addListener(_calculateTotals);
 
       final data = doc.data() as Map<String, dynamic>;
-      double out = data.containsKey('amountOutstanding') ? (data['amountOutstanding']).toDouble() : ((data['totals']?['grandTotal'] ?? 0.0) - (data['amountReceived'] ?? 0.0)).toDouble();
+      double out = data.containsKey('amountOutstanding')
+          ? _parseDouble(data['amountOutstanding'])
+          : (_parseDouble(data['totals']?['grandTotal']) - _parseDouble(data['amountReceived']));
 
       if (prefillInvoiceId == doc.id) {
         ctrl.text = out.toStringAsFixed(2);
@@ -173,6 +227,7 @@ class RecordPaymentController extends ChangeNotifier {
       allocationCtrls[doc.id] = ctrl;
     }
     _calculateTotals();
+    notifyListeners();
   }
 
   void fetchInvoicesByName(String customerName, {String? prefillInvoiceId}) async {
@@ -183,6 +238,11 @@ class RecordPaymentController extends ChangeNotifier {
     } else {
       fetchInvoices('', prefillInvoiceId: prefillInvoiceId);
     }
+  }
+
+  // ✅ PUBLIC METHOD ADDED TO RESOLVE THE ERROR
+  void calculateTotals() {
+    _calculateTotals();
   }
 
   void _calculateTotals() {
@@ -209,20 +269,22 @@ class RecordPaymentController extends ChangeNotifier {
     return null;
   }
 
-  // 🛠️ CRITICAL FIX: Removed formKey.validate() from this getter.
-  // Calling validate() during the build phase mutates state and causes the text!=null crash.
   bool get isValidToSave {
     if (selectedCustomerId.isEmpty && selectedCustomerName.isEmpty) return false;
     if (totalReceived <= 0) return false;
     if (totalAllocated > totalReceived + 0.01) return false;
 
     double exRate = double.tryParse(exchangeRateCtrl.text) ?? 0.0;
-    if (exRate <= 0) return false;
-    if (selectedCurrency != 'INR' && exRate == 1.0) return false;
+
+    if (selectedCurrency != 'INR') {
+      if (exRate <= 0.0001) return false;
+    }
 
     for (var doc in filteredInvoices) {
       final data = doc.data() as Map<String, dynamic>;
-      double pending = data.containsKey('amountOutstanding') ? (data['amountOutstanding']).toDouble() : ((data['totals']?['grandTotal'] ?? 0.0) - (data['amountReceived'] ?? 0.0)).toDouble();
+      double pending = data.containsKey('amountOutstanding')
+          ? _parseDouble(data['amountOutstanding'])
+          : (_parseDouble(data['totals']?['grandTotal']) - _parseDouble(data['amountReceived']));
       if (validateAllocation(doc.id, pending) != null) return false;
     }
 
@@ -230,7 +292,6 @@ class RecordPaymentController extends ChangeNotifier {
   }
 
   Future<bool> savePayment() async {
-    // 🛠️ Trigger Form validation safely ONLY when Save button is pressed
     if (!(formKey.currentState?.validate() ?? false)) return false;
     if (!isValidToSave) return false;
 

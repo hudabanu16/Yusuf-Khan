@@ -1,5 +1,6 @@
 // lib/modules/finance/invoice/widgets/export_shipping_card.dart
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:QUIK/core/theme/app_theme.dart';
 import 'package:intl/intl.dart';
 
@@ -56,6 +57,10 @@ class ExportShippingCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // 2. DYNAMIC MODE LABEL LOGIC
+    final String vesselFlightLabel = modeOfTransport == 'AIR' ? 'Flight No.' : 'Vessel Name';
+    final String vesselFlightHint = modeOfTransport == 'AIR' ? 'e.g. EK 123' : 'e.g. MSC ALINA v.42';
+
     return Container(
       padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
@@ -108,22 +113,30 @@ class ExportShippingCard extends StatelessWidget {
                     width: thirdWidth,
                   ),
                   _buildTextField(
-                    label: 'Vessel / Flight No.',
+                    label: vesselFlightLabel,
                     controller: vesselFlightNoCtrl,
                     width: thirdWidth,
-                    hint: 'e.g. MSC ALINA v.42',
+                    hint: vesselFlightHint,
                   ),
                   _buildTextField(
                     label: 'Shipping Bill No.',
                     controller: shippingBillNoCtrl,
                     width: thirdWidth,
-                    hint: 'Can be updated later',
+                    hint: 'Will be updated after shipment',
                   ),
-                  _buildDateField(
-                    label: 'Shipping Bill Date',
-                    date: shippingBillDate,
-                    onTap: () => _pickDate(context),
-                    width: thirdWidth,
+                  // Real-time disable logic for the date picker
+                  ValueListenableBuilder<TextEditingValue>(
+                    valueListenable: shippingBillNoCtrl,
+                    builder: (context, value, child) {
+                      final bool hasShippingBill = value.text.trim().isNotEmpty;
+                      return _buildDateField(
+                        label: 'Shipping Bill Date',
+                        date: shippingBillDate,
+                        onTap: hasShippingBill ? () => _pickDate(context) : null,
+                        width: thirdWidth,
+                        isDisabled: !hasShippingBill,
+                      );
+                    },
                   ),
                   const SizedBox(width: double.infinity, height: 4), // Line break
                   _buildTextField(
@@ -131,23 +144,38 @@ class ExportShippingCard extends StatelessWidget {
                     controller: portOfLoadingCtrl,
                     width: halfWidth,
                     hint: 'e.g. INNSA1 (Nhava Sheva)',
+                    isUpperCase: true, // 4. AUTO UPPERCASE
                   ),
                   _buildTextField(
                     label: 'Port of Discharge',
                     controller: portOfDischargeCtrl,
                     width: halfWidth,
                     hint: 'e.g. USNYC (New York)',
+                    isUpperCase: true, // 4. AUTO UPPERCASE
                   ),
                   _buildTextField(
                     label: 'Country of Origin',
                     controller: countryOfOriginCtrl,
                     width: halfWidth,
                     hint: 'e.g. India',
+                    errorChecker: (val) {
+                      if (val.trim().isNotEmpty && val.trim().toLowerCase() != 'india') {
+                        return 'Origin must be India';
+                      }
+                      return null;
+                    },
                   ),
                   _buildTextField(
                     label: 'Country of Destination',
                     controller: countryOfDestinationCtrl,
                     width: halfWidth,
+                    hint: 'e.g. United States',
+                    errorChecker: (val) {
+                      if (val.trim().isNotEmpty && val.trim().toLowerCase() == 'india') {
+                        return 'Destination cannot be India';
+                      }
+                      return null;
+                    },
                   ),
                 ],
               );
@@ -163,6 +191,8 @@ class ExportShippingCard extends StatelessWidget {
     required TextEditingController controller,
     required double width,
     String? hint,
+    bool isUpperCase = false,
+    String? Function(String)? errorChecker,
   }) {
     return SizedBox(
       width: width,
@@ -178,26 +208,42 @@ class ExportShippingCard extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 8),
-          TextFormField(
-            controller: controller,
-            style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: zText),
-            decoration: InputDecoration(
-              hintText: hint,
-              hintStyle: const TextStyle(color: zMuted, fontWeight: FontWeight.w400),
-              contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(8),
-                borderSide: const BorderSide(color: zBorder),
-              ),
-              enabledBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(8),
-                borderSide: const BorderSide(color: zBorder),
-              ),
-              focusedBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(8),
-                borderSide: const BorderSide(color: zBlue, width: 1.5),
-              ),
-            ),
+          // ValueListenableBuilder ensures real-time UI updates for errors without breaking standard form structure
+          ValueListenableBuilder<TextEditingValue>(
+              valueListenable: controller,
+              builder: (context, value, child) {
+                return TextFormField(
+                  controller: controller,
+                  inputFormatters: isUpperCase ? [UpperCaseTextFormatter()] : [],
+                  style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: zText),
+                  decoration: InputDecoration(
+                    hintText: hint,
+                    hintStyle: const TextStyle(color: zMuted, fontWeight: FontWeight.w400),
+                    errorText: errorChecker?.call(value.text),
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(8),
+                      borderSide: const BorderSide(color: zBorder),
+                    ),
+                    enabledBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(8),
+                      borderSide: const BorderSide(color: zBorder),
+                    ),
+                    focusedBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(8),
+                      borderSide: const BorderSide(color: zBlue, width: 1.5),
+                    ),
+                    errorBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(8),
+                      borderSide: const BorderSide(color: Colors.red, width: 1.0),
+                    ),
+                    focusedErrorBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(8),
+                      borderSide: const BorderSide(color: Colors.red, width: 1.5),
+                    ),
+                  ),
+                );
+              }
           ),
         ],
       ),
@@ -261,8 +307,9 @@ class ExportShippingCard extends StatelessWidget {
   Widget _buildDateField({
     required String label,
     required DateTime? date,
-    required VoidCallback onTap,
+    required VoidCallback? onTap, // ✅ ALLOWS NULL FOR PROPER DISABLED BEHAVIOR
     required double width,
+    bool isDisabled = false,
   }) {
     return SizedBox(
       width: width,
@@ -271,10 +318,10 @@ class ExportShippingCard extends StatelessWidget {
         children: [
           Text(
             label,
-            style: const TextStyle(
+            style: TextStyle(
               fontSize: 13,
               fontWeight: FontWeight.w700,
-              color: zText,
+              color: isDisabled ? zMuted : zText,
             ),
           ),
           const SizedBox(height: 8),
@@ -284,28 +331,39 @@ class ExportShippingCard extends StatelessWidget {
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
               decoration: BoxDecoration(
-                border: Border.all(color: zBorder),
+                border: Border.all(color: isDisabled ? Colors.grey.shade300 : zBorder),
                 borderRadius: BorderRadius.circular(8),
-                color: Colors.white,
+                color: isDisabled ? Colors.grey.shade100 : Colors.white,
               ),
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   Text(
-                    date != null ? DateFormat('dd MMM yyyy').format(date) : 'Select Date',
+                    date != null && !isDisabled ? DateFormat('dd MMM yyyy').format(date) : 'Select Date',
                     style: TextStyle(
                       fontSize: 14,
-                      fontWeight: date != null ? FontWeight.w600 : FontWeight.w400,
-                      color: date != null ? zText : zMuted,
+                      fontWeight: date != null && !isDisabled ? FontWeight.w600 : FontWeight.w400,
+                      color: date != null && !isDisabled ? zText : zMuted,
                     ),
                   ),
-                  const Icon(Icons.calendar_month_outlined, size: 18, color: zMuted),
+                  Icon(Icons.calendar_month_outlined, size: 18, color: isDisabled ? Colors.grey.shade400 : zMuted),
                 ],
               ),
             ),
           ),
         ],
       ),
+    );
+  }
+}
+
+// Custom Formatter for Uppercase
+class UpperCaseTextFormatter extends TextInputFormatter {
+  @override
+  TextEditingValue formatEditUpdate(TextEditingValue oldValue, TextEditingValue newValue) {
+    return TextEditingValue(
+      text: newValue.text.toUpperCase(),
+      selection: newValue.selection,
     );
   }
 }

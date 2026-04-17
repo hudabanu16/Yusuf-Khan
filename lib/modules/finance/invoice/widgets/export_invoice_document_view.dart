@@ -1,5 +1,6 @@
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
@@ -23,13 +24,15 @@ class ExportInvoiceDocumentView extends StatelessWidget {
 
   String _currency(double value) {
     String code = invoice.currency.toUpperCase();
-    if (code == 'INR') code = 'INR';
+    String symbol = code;
 
-    String formatted = value.toStringAsFixed(2).replaceAllMapped(
-        RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'),
-            (Match m) => '${m[1]},'
-    );
-    return '$code $formatted';
+    if (code == 'USD') symbol = '\$';
+    else if (code == 'INR') symbol = '₹';
+    else if (code == 'EUR') symbol = '€';
+    else if (code == 'GBP') symbol = '£';
+
+    final formatter = NumberFormat('#,##0.00', 'en_US');
+    return '$symbol ${formatter.format(value)}';
   }
 
   String _formatDate(DateTime? d) {
@@ -54,7 +57,6 @@ class ExportInvoiceDocumentView extends StatelessWidget {
 
   String _validatePort(String port) {
     if (port.trim().isEmpty) return 'Not Available';
-    if (port.trim().toLowerCase() == 'sav viago') return 'Invalid Port Name';
     return port;
   }
 
@@ -67,9 +69,9 @@ class ExportInvoiceDocumentView extends StatelessWidget {
       if (n < 20) return units[n];
       if (n < 100) return '${tens[n ~/ 10]}${n % 10 != 0 ? ' ${units[n % 10]}' : ''}';
       if (n < 1000) return '${units[n ~/ 100]} Hundred${n % 100 != 0 ? ' and ${convertDigit(n % 100)}' : ''}';
-      if (n < 100000) return '${convertDigit(n ~/ 1000)} Thousand${n % 1000 != 0 ? ' ${convertDigit(n % 1000)}' : ''}';
-      if (n < 10000000) return '${convertDigit(n ~/ 100000)} Lakh${n % 100000 != 0 ? ' ${convertDigit(n % 100000)}' : ''}';
-      return '${convertDigit(n ~/ 10000000)} Crore${n % 10000000 != 0 ? ' ${convertDigit(n % 10000000)}' : ''}';
+      if (n < 1000000) return '${convertDigit(n ~/ 1000)} Thousand${n % 1000 != 0 ? ' ${convertDigit(n % 1000)}' : ''}';
+      if (n < 1000000000) return '${convertDigit(n ~/ 1000000)} Million${n % 1000000 != 0 ? ' ${convertDigit(n % 1000000)}' : ''}';
+      return '${convertDigit(n ~/ 1000000000)} Billion${n % 1000000000 != 0 ? ' ${convertDigit(n % 1000000000)}' : ''}';
     }
     return convertDigit(number).trim();
   }
@@ -79,8 +81,14 @@ class ExportInvoiceDocumentView extends StatelessWidget {
     int fractionalPart = ((amount - integerPart) * 100).round();
     String intWords = _convertNumberToWords(integerPart);
 
+    String currencyName = currencyCode.toUpperCase();
+    if (currencyName == 'USD') currencyName = 'US Dollars';
+    else if (currencyName == 'INR') currencyName = 'Indian Rupees';
+    else if (currencyName == 'EUR') currencyName = 'Euros';
+    else if (currencyName == 'GBP') currencyName = 'Pounds Sterling';
+
     String fractionStr = fractionalPart.toString().padLeft(2, '0');
-    return '${currencyCode.toUpperCase()} $intWords and $fractionStr/100 Only';
+    return '$currencyName $intWords and $fractionStr/100 Only';
   }
 
   bool _isSameParty(Party a, Party b) {
@@ -93,13 +101,13 @@ class ExportInvoiceDocumentView extends StatelessWidget {
   pw.Widget _metaRow(String label, String value, {bool boldValue = true}) {
     if (value.isEmpty || value == '0' || value == '0.0') value = 'Not Available';
     return pw.Padding(
-      padding: const pw.EdgeInsets.only(bottom: 2), // Tightened
+      padding: const pw.EdgeInsets.only(bottom: 2),
       child: pw.Row(
         crossAxisAlignment: pw.CrossAxisAlignment.start,
         children: [
           pw.SizedBox(
-            width: 75, // Tightened
-            child: pw.Text(label, style: pw.TextStyle(fontSize: 7.5, color: _textLight)), // Scaled down
+            width: 75,
+            child: pw.Text(label, style: pw.TextStyle(fontSize: 7.5, color: _textLight)),
           ),
           pw.Expanded(
             child: pw.Text(value, style: pw.TextStyle(fontSize: 8, color: _textDark, fontWeight: boldValue ? pw.FontWeight.bold : pw.FontWeight.normal)),
@@ -114,7 +122,7 @@ class ExportInvoiceDocumentView extends StatelessWidget {
       crossAxisAlignment: pw.CrossAxisAlignment.start,
       children: [
         pw.Text(title, style: pw.TextStyle(fontSize: 7.5, color: _textLight)),
-        pw.SizedBox(height: 1), // Tightened
+        pw.SizedBox(height: 1),
         pw.Text(value.isEmpty ? 'Not Available' : value, style: pw.TextStyle(fontSize: 8, color: _textDark, fontWeight: pw.FontWeight.bold)),
       ],
     );
@@ -125,7 +133,7 @@ class ExportInvoiceDocumentView extends StatelessWidget {
       crossAxisAlignment: pw.CrossAxisAlignment.start,
       children: [
         pw.Text(title, style: pw.TextStyle(fontSize: 8, fontWeight: pw.FontWeight.bold, color: _primaryColor)),
-        pw.SizedBox(height: 3), // Tightened
+        pw.SizedBox(height: 3),
         pw.Text(party.name.toUpperCase(), style: pw.TextStyle(fontSize: 9, fontWeight: pw.FontWeight.bold, color: _textDark)),
         pw.SizedBox(height: 1),
         if (party.address.isNotEmpty) pw.Text(party.address, style: const pw.TextStyle(fontSize: 8, lineSpacing: 1.1, color: _textDark)),
@@ -148,7 +156,6 @@ class ExportInvoiceDocumentView extends StatelessWidget {
       crossAxisAlignment: pw.CrossAxisAlignment.start,
       mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
       children: [
-        // Exporter Details (Left)
         pw.Expanded(
           flex: 5,
           child: pw.Column(
@@ -169,7 +176,6 @@ class ExportInvoiceDocumentView extends StatelessWidget {
 
         pw.SizedBox(width: 16),
 
-        // Invoice Metadata (Right)
         pw.Expanded(
           flex: 4,
           child: pw.Container(
@@ -186,7 +192,6 @@ class ExportInvoiceDocumentView extends StatelessWidget {
                 pw.SizedBox(height: 4),
                 _metaRow('Invoice Number:', invoice.invoiceNumber),
                 _metaRow('Invoice Date:', _formatDate(invoice.invoiceDate)),
-                // ✅ UPDATED: Injected Due Date explicitly onto the print
                 _metaRow('Due Date:', _formatDate(invoice.dueDate)),
                 _metaRow('Export Type:', exportTypeText, boldValue: false),
                 if (isLUT)
@@ -204,7 +209,7 @@ class ExportInvoiceDocumentView extends StatelessWidget {
     bool sameParty = _isSameParty(invoice.buyer, invoice.consignee);
 
     return pw.Container(
-      margin: const pw.EdgeInsets.only(bottom: 8), // Tightened
+      margin: const pw.EdgeInsets.only(bottom: 8),
       child: pw.Row(
         crossAxisAlignment: pw.CrossAxisAlignment.start,
         children: [
@@ -282,7 +287,6 @@ class ExportInvoiceDocumentView extends StatelessWidget {
         5: const pw.FixedColumnWidth(70),
       },
       children: [
-        // Compact Header
         pw.TableRow(
           decoration: const pw.BoxDecoration(
             color: _bgLight,
@@ -291,7 +295,7 @@ class ExportInvoiceDocumentView extends StatelessWidget {
           children: headers.map((h) {
             bool isFinancial = h == 'Rate' || h == 'Amount';
             return pw.Padding(
-                padding: const pw.EdgeInsets.symmetric(vertical: 4, horizontal: 4), // Ultra compact
+                padding: const pw.EdgeInsets.symmetric(vertical: 4, horizontal: 4),
                 child: pw.Text(
                   h,
                   style: pw.TextStyle(fontSize: 8, fontWeight: pw.FontWeight.bold, color: _textDark),
@@ -301,7 +305,6 @@ class ExportInvoiceDocumentView extends StatelessWidget {
           }).toList(),
         ),
 
-        // Dynamic Items (Compact Rows)
         ...invoice.items.asMap().entries.map((entry) {
           final index = entry.key;
           final item = entry.value;
@@ -327,7 +330,7 @@ class ExportInvoiceDocumentView extends StatelessWidget {
               pw.Padding(padding: const pw.EdgeInsets.symmetric(vertical: 4, horizontal: 4), child: pw.Text(item.hsnCode, style: const pw.TextStyle(fontSize: 8, color: _textDark), textAlign: pw.TextAlign.center)),
               pw.Padding(padding: const pw.EdgeInsets.symmetric(vertical: 4, horizontal: 4), child: pw.Text(_formatQty(item.quantity, item.unit), style: const pw.TextStyle(fontSize: 8, color: _textDark), textAlign: pw.TextAlign.center)),
               pw.Padding(padding: const pw.EdgeInsets.symmetric(vertical: 4, horizontal: 4), child: pw.Text(_currency(item.rate), style: const pw.TextStyle(fontSize: 8, color: _textDark), textAlign: pw.TextAlign.right)),
-              pw.Padding(padding: const pw.EdgeInsets.symmetric(vertical: 4, horizontal: 4), child: pw.Text(_currency(item.amount), style: const pw.TextStyle(fontSize: 8, color: _textDark), textAlign: pw.TextAlign.right)),
+              pw.Padding(padding: const pw.EdgeInsets.symmetric(vertical: 4, horizontal: 4), child: pw.Text(_currency(item.computedAmount), style: const pw.TextStyle(fontSize: 8, color: _textDark), textAlign: pw.TextAlign.right)),
             ],
           );
         }),
@@ -337,82 +340,123 @@ class ExportInvoiceDocumentView extends StatelessWidget {
 
   pw.Widget _buildFinancialSummary() {
     final isLUT = invoice.exportDetails.exportType == 'WITH_LUT';
-    // ✅ Calculate the actual total received combining advances and exact allocated receipts
-    final double totalReceived = invoice.advanceAmount + invoice.amountReceived;
+    final double totalReceived = invoice.amountReceived;
+
+    final bool isOverpaid = invoice.amountOutstanding < -0.01;
+    final double displayOutstanding = isOverpaid ? 0.0 : invoice.amountOutstanding;
+    final double excessAmount = isOverpaid ? invoice.amountOutstanding.abs() : 0.0;
 
     return pw.Container(
         margin: const pw.EdgeInsets.only(top: 8),
         child: pw.Row(
-          crossAxisAlignment: pw.CrossAxisAlignment.start,
-          children: [
+            crossAxisAlignment: pw.CrossAxisAlignment.start,
+            children: [
             // Left: Amount in Words & Exchange Rate Info
             pw.Expanded(
-                flex: 6,
-                child: pw.Column(
-                    crossAxisAlignment: pw.CrossAxisAlignment.start,
-                    children: [
-                      pw.Text('Amount in Words:', style: pw.TextStyle(fontSize: 7.5, color: _textLight)),
-                      pw.SizedBox(height: 1),
-                      pw.Text(_amountInWordsWithCents(invoice.totals.grandTotal, invoice.currency), style: pw.TextStyle(fontSize: 9, fontWeight: pw.FontWeight.bold, color: _textDark)),
+            flex: 6,
+            child: pw.Column(
+                crossAxisAlignment: pw.CrossAxisAlignment.start,
+                children: [
+                  pw.Text('Amount in Words:', style: pw.TextStyle(fontSize: 7.5, color: _textLight)),
+                  pw.SizedBox(height: 1),
+                  pw.Text(_amountInWordsWithCents(invoice.totals.grandTotal, invoice.currency), style: pw.TextStyle(fontSize: 9, fontWeight: pw.FontWeight.bold, color: _textDark)),
 
-                      pw.SizedBox(height: 8),
-                      pw.Text(
-                          'Exchange Rate: 1 ${invoice.currency.toUpperCase()} = INR ${invoice.exchangeRate.toStringAsFixed(2)}  |  Total Value: INR ${invoice.totals.grandTotalInr.toStringAsFixed(2)}',
-                          style: const pw.TextStyle(fontSize: 7.5, color: _textDark)
-                      ),
-                      if (invoice.taxDetails.reverseCharge) ...[
-                        pw.SizedBox(height: 4),
-                        pw.Text('* Subject to Reverse Charge Mechanism', style: pw.TextStyle(fontSize: 8, fontStyle: pw.FontStyle.italic, color: _textLight)),
-                      ]
-                    ]
-                )
-            ),
+                  pw.SizedBox(height: 8),
+                  pw.Text(
+                      'Exchange Rate: 1 ${invoice.currency.toUpperCase()} = INR ${invoice.exchangeRate.toStringAsFixed(2)}  |  Total Value: INR ${invoice.totals.grandTotalInr.toStringAsFixed(2)}',
+                      style: const pw.TextStyle(fontSize: 7.5, color: _textDark)
+                  ),
+                  if (invoice.taxDetails.reverseCharge) ...[
+                    pw.SizedBox(height: 4),
+                    pw.Text('* Subject to Reverse Charge Mechanism', style: pw.TextStyle(fontSize: 8, fontStyle: pw.FontStyle.italic, color: _textLight)),
+                  ]
+                ]
+            )
+        ),
 
-            pw.SizedBox(width: 16),
+        pw.SizedBox(width: 16),
 
-            // Right: Totals Breakdown
-            pw.Expanded(
-              flex: 4,
-              child: pw.Column(
+        // Right: Totals Breakdown
+        pw.Expanded(
+            flex: 4,
+            child: pw.Column(
                 crossAxisAlignment: pw.CrossAxisAlignment.stretch,
                 children: [
-                  _buildSummaryLine('Subtotal', invoice.totals.subTotal),
-                  if (invoice.totals.freight > 0) _buildSummaryLine('Freight', invoice.totals.freight),
-                  if (invoice.totals.insurance > 0) _buildSummaryLine('Insurance', invoice.totals.insurance),
-                  if (!isLUT && invoice.totals.tax > 0) _buildSummaryLine('IGST', invoice.totals.tax),
+                _buildSummaryLine('Subtotal', invoice.totals.subTotal),
+            if (invoice.totals.freight > 0) _buildSummaryLine('Freight', invoice.totals.freight),
+    if (invoice.totals.insurance > 0) _buildSummaryLine('Insurance', invoice.totals.insurance),
+    if (!isLUT && invoice.totals.tax > 0) _buildSummaryLine('IGST', invoice.totals.tax),
 
-                  pw.SizedBox(height: 4),
-                  pw.Divider(color: _primaryColor, thickness: 0.5),
-                  pw.SizedBox(height: 4),
+    pw.SizedBox(height: 4),
+    pw.Divider(color: _primaryColor, thickness: 0.5),
+    pw.SizedBox(height: 4),
 
-                  pw.Row(
-                    mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
-                    children: [
-                      pw.Text('Grand Total', style: pw.TextStyle(fontSize: 10, fontWeight: pw.FontWeight.bold, color: _primaryColor)),
-                      pw.Text(_currency(invoice.totals.grandTotal), style: pw.TextStyle(fontSize: 10, fontWeight: pw.FontWeight.bold, color: _primaryColor)),
-                    ],
-                  ),
+    pw.Row(
+    mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+    children: [
+    pw.Text('Grand Total', style: pw.TextStyle(fontSize: 10, fontWeight: pw.FontWeight.bold, color: _primaryColor)),
+    pw.Text(_currency(invoice.totals.grandTotal), style: pw.TextStyle(fontSize: 10, fontWeight: pw.FontWeight.bold, color: _primaryColor)),
+    ],
+    ),
 
-                  // ✅ UPDATED: Dynamic Injection of Real ERP Received/Outstanding Values if they exist
-                  if (totalReceived > 0) ...[
-                    pw.SizedBox(height: 6),
-                    _buildSummaryLine('Less: Total Received', totalReceived),
-                    pw.SizedBox(height: 4),
-                    pw.Divider(color: _borderColor, thickness: 0.5),
-                    pw.SizedBox(height: 4),
-                    pw.Row(
-                      mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
-                      children: [
-                        pw.Text('Balance Due', style: pw.TextStyle(fontSize: 10, fontWeight: pw.FontWeight.bold, color: _textDark)),
-                        pw.Text(_currency(invoice.amountOutstanding), style: pw.TextStyle(fontSize: 10, fontWeight: pw.FontWeight.bold, color: _textDark)),
-                      ],
-                    ),
-                  ]
-                ],
-              ),
-            )
-          ],
-        )
+    // Payments Breakdown
+    if (totalReceived > 0) ...[
+    pw.SizedBox(height: 4),
+    pw.Divider(color: _borderColor, thickness: 0.5),
+    pw.SizedBox(height: 4),
+
+    if (invoice.advanceAmount > 0)
+    _buildSummaryLine('Advance Applied', invoice.advanceAmount),
+
+    if (totalReceived > invoice.advanceAmount)
+    _buildSummaryLine('Additional Payments', totalReceived - invoice.advanceAmount),
+
+      if (invoice.advanceAmount > 0)
+        _buildSummaryLine('Advance Applied', invoice.advanceAmount),
+
+      if (totalReceived > invoice.advanceAmount)
+        _buildSummaryLine('Subsequent Payments', totalReceived - invoice.advanceAmount),
+
+      _buildSummaryLine('Total Payments Received', totalReceived),
+
+    pw.SizedBox(height: 4),
+    pw.Divider(color: _borderColor, thickness: 0.5),
+    pw.SizedBox(height: 4),
+
+    pw.Row(
+    mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+    children: [
+    pw.Text('Balance Due', style: pw.TextStyle(fontSize: 10, fontWeight: pw.FontWeight.bold, color: _textDark)),
+    pw.Text(_currency(displayOutstanding), style: pw.TextStyle(fontSize: 10, fontWeight: pw.FontWeight.bold, color: _textDark)),
+    ],
+    ),
+    if (isOverpaid) ...[
+    pw.SizedBox(height: 2),
+    pw.Row(
+    mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+    children: [
+    pw.Text('Excess Received', style: const pw.TextStyle(fontSize: 8, color: _textLight)),
+    pw.Text(_currency(excessAmount), style: const pw.TextStyle(fontSize: 8, color: _textLight)),
+    ],
+    ),
+    ]
+    ] else ...[
+    pw.SizedBox(height: 4),
+    pw.Divider(color: _borderColor, thickness: 0.5),
+    pw.SizedBox(height: 4),
+    pw.Row(
+    mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+    children: [
+    pw.Text('Balance Due', style: pw.TextStyle(fontSize: 10, fontWeight: pw.FontWeight.bold, color: _textDark)),
+    pw.Text(_currency(invoice.totals.grandTotal), style: pw.TextStyle(fontSize: 10, fontWeight: pw.FontWeight.bold, color: _textDark)),
+    ],
+    ),
+    ]
+    ],
+    ),
+    )
+    ],
+    )
     );
   }
 
@@ -429,7 +473,6 @@ class ExportInvoiceDocumentView extends StatelessWidget {
     );
   }
 
-  // Compact Combined Footer (Terms + Bank + Declaration + Signature)
   pw.Widget _buildFooterAndSignatures() {
     final isLUT = invoice.exportDetails.exportType == 'WITH_LUT';
     final declarationText = invoice.declaration.isNotEmpty
@@ -459,8 +502,7 @@ class ExportInvoiceDocumentView extends StatelessWidget {
                                 children: [
                                   pw.Text('Payment & Delivery', style: pw.TextStyle(fontSize: 8, fontWeight: pw.FontWeight.bold, color: _primaryColor)),
                                   pw.SizedBox(height: 4),
-                                  // ✅ UPDATED: Added Payment Terms Mapping
-                                  _metaRow('Terms:', invoice.paymentTerms.isNotEmpty ? invoice.paymentTerms : invoice.paymentDetails.terms),
+                                  _metaRow('Terms:', invoice.paymentTerms.isNotEmpty ? invoice.paymentTerms : invoice.paymentDetails.deliveryTerms),
                                   _metaRow('Mode:', '${invoice.paymentDetails.paymentMode} (${invoice.currency})'),
                                   if (invoice.paymentDetails.paymentReference.isNotEmpty)
                                     _metaRow('Ref:', invoice.paymentDetails.paymentReference),
@@ -504,7 +546,7 @@ class ExportInvoiceDocumentView extends StatelessWidget {
                     mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
                     children: [
                       pw.Text('For ${invoice.supplier.name.toUpperCase()}', style: pw.TextStyle(fontSize: 8, fontWeight: pw.FontWeight.bold, color: _textDark), textAlign: pw.TextAlign.right),
-                      pw.SizedBox(height: 35), // Compact Signature Space
+                      pw.SizedBox(height: 35),
                       pw.Text(
                           invoice.authorizedSignatory.isNotEmpty ? invoice.authorizedSignatory : 'Authorised Signatory',
                           style: pw.TextStyle(fontSize: 8, fontStyle: pw.FontStyle.italic, color: _textDark)
@@ -520,8 +562,7 @@ class ExportInvoiceDocumentView extends StatelessWidget {
                                 width: 35,
                                 child: pw.BarcodeWidget(
                                   barcode: pw.Barcode.qrCode(),
-                                  // ✅ UPDATED: Included due date inside the verification QR Code
-                                  data: 'INV:${invoice.invoiceNumber}|DT:${_formatDate(invoice.invoiceDate)}|DUE:${_formatDate(invoice.dueDate)}|AMT:${invoice.totals.grandTotal}',
+                                  data: 'INV:${invoice.invoiceNumber}|DT:${_formatDate(invoice.invoiceDate)}|AMT:${invoice.totals.grandTotal}|CUR:${invoice.currency}|CUST:${invoice.buyer.name}',
                                   drawText: false,
                                   color: _textDark,
                                 )
@@ -536,7 +577,7 @@ class ExportInvoiceDocumentView extends StatelessWidget {
     );
   }
 
-  // ================= MAIN PDF GENERATOR (STRICT SINGLE PAGE) =================
+  // ================= MAIN PDF GENERATOR =================
 
   Future<Uint8List> _buildPdf(PdfPageFormat format) async {
     final doc = pw.Document(
@@ -547,20 +588,19 @@ class ExportInvoiceDocumentView extends StatelessWidget {
       ),
     );
 
-    // 🔥 STRICT 1-PAGE ENFORCEMENT 🔥
     doc.addPage(
       pw.Page(
         pageFormat: format,
-        margin: const pw.EdgeInsets.all(20), // Tighter global margin
+        margin: const pw.EdgeInsets.all(20),
         build: (context) {
           return pw.FittedBox(
             fit: pw.BoxFit.scaleDown,
             alignment: pw.Alignment.topCenter,
             child: pw.Container(
-              width: format.availableWidth, // Ensure text wraps to A4 width correctly before scaling
+              width: format.availableWidth,
               child: pw.Column(
                 crossAxisAlignment: pw.CrossAxisAlignment.stretch,
-                mainAxisSize: pw.MainAxisSize.min, // Wrap content tightly
+                mainAxisSize: pw.MainAxisSize.min,
                 children: [
                   _buildHeader(),
                   pw.Divider(color: _borderColor, thickness: 0.5, height: 12),
@@ -587,7 +627,7 @@ class ExportInvoiceDocumentView extends StatelessWidget {
         backgroundColor: const Color(0xFF0F2A3D),
         foregroundColor: Colors.white,
         elevation: 0,
-        title: const Text('Export Invoice Preview (1-Page Mode)', style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w600)),
+        title: const Text('Export Invoice Preview', style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w600)),
       ),
       body: PdfPreview(
         build: _buildPdf,

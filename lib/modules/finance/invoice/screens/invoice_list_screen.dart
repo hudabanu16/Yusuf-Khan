@@ -30,6 +30,7 @@ class _InvoiceListScreenState extends State<InvoiceListScreen> {
   final TextEditingController _searchController = TextEditingController();
   String _searchQuery = '';
   String _statusFilter = 'all';
+  String _sortOption = 'date_desc'; // Default sorting
 
   @override
   void dispose() {
@@ -93,58 +94,40 @@ class _InvoiceListScreenState extends State<InvoiceListScreen> {
     );
   }
 
-  void _handleInvoiceAction(String action, Map<String, dynamic> data, String docId) {
-    final type = data.containsKey('exportDetails') ? 'Export Invoice' : 'Tax Invoice';
-
+  void _handleInvoiceAction(String action, ExportInvoiceModel invoice) {
     if (action == 'payment') {
-      final buyerData = data['buyer'] as Map<String, dynamic>? ?? {};
-      final customerName = (buyerData['name'] ?? '').toString();
-
       Navigator.push(
         context,
         MaterialPageRoute(
           builder: (_) => RecordPaymentScreen(
             companyId: widget.companyId,
             userUid: widget.userUid,
-            customerName: customerName,
-            prefillInvoiceId: docId,
+            customerName: invoice.buyer.name,
+            prefillInvoiceId: invoice.id,
           ),
         ),
       );
     } else if (action == 'view') {
-      try {
-        final invoiceModel = ExportInvoiceModel.fromMap(data, docId);
-        Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder: (_) => ExportInvoiceDocumentView(invoice: invoiceModel),
-          ),
-        );
-      } catch (e) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error loading invoice preview: $e'), backgroundColor: Colors.red),
-        );
-      }
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => ExportInvoiceDocumentView(invoice: invoice),
+        ),
+      );
     } else if (action == 'edit') {
-      if (type == 'Export Invoice') {
-        Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder: (_) => ExportInvoiceScreen(
-              companyId: widget.companyId,
-              userUid: widget.userUid,
-              invoiceId: docId,
-              onBack: () => Navigator.pop(context),
-            ),
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => ExportInvoiceScreen(
+            companyId: widget.companyId,
+            userUid: widget.userUid,
+            invoiceId: invoice.id,
+            onBack: () => Navigator.pop(context),
           ),
-        );
-      } else {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Edit feature for Tax Invoice coming soon!'), backgroundColor: zOrange),
-        );
-      }
+        ),
+      );
     } else if (action == 'delete') {
-      _confirmDelete(docId);
+      _confirmDelete(invoice.id);
     }
   }
 
@@ -153,7 +136,7 @@ class _InvoiceListScreenState extends State<InvoiceListScreen> {
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('Delete Invoice', style: TextStyle(fontWeight: FontWeight.bold)),
-        content: const Text('Are you sure you want to permanently delete this invoice? This action cannot be undone.'),
+        content: const Text('Are you sure you want to permanently delete this invoice and its outstanding ledger? This action cannot be undone.'),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         actions: [
           TextButton(
@@ -175,12 +158,19 @@ class _InvoiceListScreenState extends State<InvoiceListScreen> {
 
   Future<void> _deleteInvoice(String docId) async {
     try {
-      await FirebaseFirestore.instance
-          .collection('companies')
-          .doc(widget.companyId)
-          .collection('export_invoices')
-          .doc(docId)
-          .delete();
+      final db = FirebaseFirestore.instance;
+      final batch = db.batch();
+
+      // 1. Delete the invoice document
+      final invoiceRef = db.collection('companies').doc(widget.companyId).collection('export_invoices').doc(docId);
+      batch.delete(invoiceRef);
+
+      // 2. Delete the associated outstanding ledger document safely
+      final outstandingRef = db.collection('companies').doc(widget.companyId).collection('outstanding').doc(docId);
+      batch.delete(outstandingRef);
+
+      await batch.commit();
+
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Invoice deleted successfully'), backgroundColor: Colors.green),
@@ -193,6 +183,10 @@ class _InvoiceListScreenState extends State<InvoiceListScreen> {
         );
       }
     }
+  }
+
+  String _formatCurrency(double amount) {
+    return NumberFormat('#,##0.00', 'en_US').format(amount);
   }
 
   @override
@@ -232,13 +226,21 @@ class _InvoiceListScreenState extends State<InvoiceListScreen> {
           final allDocs = snapshot.data?.docs ?? [];
           final query = _searchQuery.trim().toLowerCase();
 
-          // Apply Search & Filters
-          final filteredDocs = allDocs.where((doc) {
-            final data = doc.data();
-            final invNum = (data['invoiceNumber'] ?? '').toString().toLowerCase();
-            final buyerData = data['buyer'] as Map<String, dynamic>? ?? {};
-            final buyerName = (buyerData['name'] ?? '').toString().toLowerCase();
-            final docStatus = (data['status'] ?? '').toString().toLowerCase();
+          // 1. Parse to Models once to optimize filtering and sorting
+          List<ExportInvoiceModel> invoices = [];
+          for (var doc in allDocs) {
+            try {
+              invoices.add(ExportInvoiceModel.fromMap(doc.data(), doc.id));
+            } catch (e) {
+              debugPrint('Error parsing invoice ${doc.id}: $e');
+            }
+          }
+
+          // 2. Apply Search & Filters
+          var filteredInvoices = invoices.where((inv) {
+            final invNum = inv.invoiceNumber.toLowerCase();
+            final buyerName = inv.buyer.name.toLowerCase();
+            final docStatus = inv.status.toLowerCase();
 
             final matchesSearch = query.isEmpty || invNum.contains(query) || buyerName.contains(query);
             final matchesStatus = _statusFilter == 'all' || docStatus == _statusFilter.toLowerCase();
@@ -246,10 +248,20 @@ class _InvoiceListScreenState extends State<InvoiceListScreen> {
             return matchesSearch && matchesStatus;
           }).toList();
 
+          // 3. Apply Sorting
+          if (_sortOption == 'amount_desc') {
+            filteredInvoices.sort((a, b) => b.totals.grandTotal.compareTo(a.totals.grandTotal));
+          } else if (_sortOption == 'customer_asc') {
+            filteredInvoices.sort((a, b) => a.buyer.name.toLowerCase().compareTo(b.buyer.name.toLowerCase()));
+          } else {
+            // Default: date_desc (latest first)
+            filteredInvoices.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+          }
+
           // Quick Stats
-          final totalCount = filteredDocs.length;
-          final draftCount = filteredDocs.where((d) => (d.data()['status'] ?? '').toString().toLowerCase() == 'draft').length;
-          final finalCount = filteredDocs.where((d) => (d.data()['status'] ?? '').toString().toLowerCase() == 'submitted').length;
+          final totalCount = filteredInvoices.length;
+          final draftCount = filteredInvoices.where((inv) => inv.status.toLowerCase() == 'draft').length;
+          final finalCount = filteredInvoices.where((inv) => inv.status.toLowerCase() == 'submitted').length;
 
           return Column(
             children: [
@@ -258,8 +270,8 @@ class _InvoiceListScreenState extends State<InvoiceListScreen> {
                 padding: const EdgeInsets.fromLTRB(16, 6, 16, 8),
                 child: Row(
                   children: [
-                    ConstrainedBox(
-                      constraints: const BoxConstraints(maxWidth: 320),
+                    Expanded(
+                      flex: 4,
                       child: SizedBox(
                         height: 38,
                         child: TextField(
@@ -267,7 +279,7 @@ class _InvoiceListScreenState extends State<InvoiceListScreen> {
                           onChanged: (value) => setState(() => _searchQuery = value),
                           decoration: InputDecoration(
                             hintText: 'Search invoice no, customer...',
-                            prefixIcon: const Icon(Icons.search, size: 18),
+                            prefixIcon: const Icon(Icons.search, size: 18, color: zMuted),
                             suffixIcon: _searchQuery.isEmpty ? null : IconButton(
                               icon: const Icon(Icons.close, size: 17),
                               onPressed: () {
@@ -279,9 +291,9 @@ class _InvoiceListScreenState extends State<InvoiceListScreen> {
                             filled: true,
                             fillColor: Colors.white,
                             contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-                            border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: zBorder)),
-                            enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: zBorder)),
-                            focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: zBlue)),
+                            border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: const BorderSide(color: zBorder)),
+                            enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: const BorderSide(color: zBorder)),
+                            focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: const BorderSide(color: zBlue)),
                           ),
                         ),
                       ),
@@ -291,147 +303,186 @@ class _InvoiceListScreenState extends State<InvoiceListScreen> {
                       value: _statusFilter,
                       onChanged: (val) => setState(() => _statusFilter = val!),
                     ),
-                    const Spacer(),
+                    const SizedBox(width: 8),
+                    Container(
+                      height: 38,
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        border: Border.all(color: zBorder),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: PopupMenuButton<String>(
+                        icon: const Icon(Icons.sort, size: 20, color: zText),
+                        tooltip: 'Sort Invoices',
+                        onSelected: (val) => setState(() => _sortOption = val),
+                        itemBuilder: (_) => [
+                          PopupMenuItem(value: 'date_desc', child: Text('Date (Latest First)', style: TextStyle(fontWeight: _sortOption == 'date_desc' ? FontWeight.bold : FontWeight.normal))),
+                          PopupMenuItem(value: 'amount_desc', child: Text('Amount (High to Low)', style: TextStyle(fontWeight: _sortOption == 'amount_desc' ? FontWeight.bold : FontWeight.normal))),
+                          PopupMenuItem(value: 'customer_asc', child: Text('Customer (A-Z)', style: TextStyle(fontWeight: _sortOption == 'customer_asc' ? FontWeight.bold : FontWeight.normal))),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+
+              // QUICK STATS
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                child: Row(
+                  children: [
                     _MiniStatText(label: 'Total', value: totalCount.toString()),
-                    const SizedBox(width: 10),
+                    const SizedBox(width: 12),
                     _MiniStatText(label: 'Drafts', value: draftCount.toString(), color: zOrange),
-                    const SizedBox(width: 10),
-                    _MiniStatText(label: 'Finalized', value: finalCount.toString(), color: zSuccess),
+                    const SizedBox(width: 12),
+                    _MiniStatText(label: 'Finalized', value: finalCount.toString(), color: Colors.green.shade700),
                   ],
                 ),
               ),
 
               // LIST VIEW
               Expanded(
-                child: filteredDocs.isEmpty
+                child: filteredInvoices.isEmpty
                     ? _EmptyInvoiceState(hasSearch: _searchQuery.isNotEmpty || _statusFilter != 'all')
-                    : ListView.separated(
-                  padding: const EdgeInsets.fromLTRB(16, 4, 16, 90),
-                  itemCount: filteredDocs.length,
-                  separatorBuilder: (_, __) => const SizedBox(height: 8),
+                    : ListView.builder(
+                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 90),
+                  itemCount: filteredInvoices.length,
                   itemBuilder: (context, index) {
-                    final doc = filteredDocs[index];
-                    final data = doc.data();
-
-                    // ✅ UPDATED: Use the robust Model to parse the data so it 100% matches the logic of the Edit/Create screen!
-                    final invoice = ExportInvoiceModel.fromMap(data, doc.id);
-                    final type = data.containsKey('exportDetails') ? 'Export Invoice' : 'Tax Invoice';
+                    final invoice = filteredInvoices[index];
 
                     final isDraft = invoice.status.toLowerCase() == 'draft';
-                    final displayStatus = isDraft ? 'DRAFT' : invoice.paymentStatus;
+                    final displayStatus = isDraft ? 'DRAFT' : invoice.paymentStatus.toUpperCase();
 
-                    // Assign strict ERP colors based on the new logic
+                    // Strict ERP colors logic
                     Color chipBg;
                     Color chipText;
                     if (displayStatus == 'PAID') {
-                      chipBg = zSuccessSoft; chipText = zSuccess;
+                      chipBg = Colors.green.shade50;
+                      chipText = Colors.green.shade700;
                     } else if (displayStatus == 'PARTIALLY PAID') {
-                      chipBg = zOrangeSoft; chipText = zOrange;
+                      chipBg = Colors.orange.shade50;
+                      chipText = Colors.orange.shade800;
                     } else if (displayStatus == 'DRAFT') {
-                      chipBg = Colors.grey.shade200; chipText = zMuted;
+                      chipBg = Colors.grey.shade100;
+                      chipText = Colors.grey.shade700;
                     } else {
-                      chipBg = Colors.red.shade50; chipText = Colors.red.shade700;
+                      chipBg = Colors.red.shade50;
+                      chipText = Colors.red.shade700;
                     }
 
                     return Container(
+                      margin: const EdgeInsets.only(bottom: 12),
                       decoration: BoxDecoration(
                         color: Colors.white,
-                        borderRadius: BorderRadius.circular(14),
+                        borderRadius: BorderRadius.circular(12),
                         border: Border.all(color: zBorder, width: 1),
+                        boxShadow: [
+                          BoxShadow(color: Colors.black.withOpacity(0.03), blurRadius: 6, offset: const Offset(0, 2)),
+                        ],
                       ),
-                      padding: const EdgeInsets.all(12),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Row(
-                            children: [
-                              CircleAvatar(
-                                radius: 20,
-                                backgroundColor: type == 'Export Invoice' ? zPurpleSoft : zBlueSoft,
-                                child: Icon(
-                                  type == 'Export Invoice' ? Icons.public : Icons.receipt_long,
-                                  size: 20,
-                                  color: type == 'Export Invoice' ? zPurple : zBlue,
+                          // Top Section: Info & Amounts
+                          Padding(
+                            padding: const EdgeInsets.all(16),
+                            child: Row(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Row(
+                                        children: [
+                                          Text(
+                                            invoice.invoiceNumber.isEmpty ? 'Pending Number' : invoice.invoiceNumber,
+                                            style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w800, color: zText),
+                                          ),
+                                          const SizedBox(width: 8),
+                                          _InfoChip(label: displayStatus, bgColor: chipBg, textColor: chipText),
+                                        ],
+                                      ),
+                                      const SizedBox(height: 6),
+                                      Text(
+                                        invoice.buyer.name.isEmpty ? 'Unknown Customer' : invoice.buyer.name,
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: const TextStyle(fontSize: 14, color: zMuted, fontWeight: FontWeight.w600),
+                                      ),
+                                      const SizedBox(height: 8),
+                                      Row(
+                                        children: [
+                                          _InlineInfo(icon: Icons.calendar_today, text: DateFormat('dd MMM yyyy').format(invoice.invoiceDate)),
+                                          const SizedBox(width: 12),
+                                          _InlineInfo(icon: Icons.event_available, text: 'Due: ${DateFormat('dd MMM').format(invoice.dueDate)}'),
+                                        ],
+                                      ),
+                                    ],
+                                  ),
                                 ),
-                              ),
-                              const SizedBox(width: 12),
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                const SizedBox(width: 16),
+                                Column(
+                                  crossAxisAlignment: CrossAxisAlignment.end,
                                   children: [
                                     Text(
-                                      invoice.invoiceNumber.isEmpty ? 'Pending Number' : invoice.invoiceNumber,
-                                      style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w800, color: zText),
+                                      '${invoice.currency} ${_formatCurrency(invoice.totals.grandTotal)}',
+                                      style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w900, color: zText),
                                     ),
-                                    const SizedBox(height: 2),
-                                    Text(
-                                      invoice.buyer.name.isEmpty ? 'Unknown Customer' : invoice.buyer.name,
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
-                                      style: const TextStyle(fontSize: 13, color: zMuted, fontWeight: FontWeight.w600),
-                                    ),
+                                    const SizedBox(height: 4),
+                                    if (!isDraft)
+                                      Text(
+                                        'Balance: ${invoice.currency} ${_formatCurrency(invoice.amountOutstanding < 0 ? 0 : invoice.amountOutstanding)}',
+                                        style: TextStyle(
+                                            fontSize: 12,
+                                            fontWeight: FontWeight.w700,
+                                            color: invoice.amountOutstanding > 0 ? Colors.red.shade600 : Colors.green.shade700
+                                        ),
+                                      ),
                                   ],
                                 ),
-                              ),
-                              Column(
-                                crossAxisAlignment: CrossAxisAlignment.end,
-                                children: [
-                                  Text(
-                                    '${invoice.currency} ${invoice.totals.grandTotal.toStringAsFixed(2)}',
-                                    style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w900, color: zText),
-                                  ),
-                                  if (!isDraft) ...[
-                                    const SizedBox(height: 2),
-                                    Text(
-                                      'Pending: ${invoice.currency} ${invoice.amountOutstanding.toStringAsFixed(2)}',
-                                      style: TextStyle(
-                                          fontSize: 11.5,
-                                          fontWeight: FontWeight.w800,
-                                          color: invoice.amountOutstanding > 0 ? Colors.red.shade600 : zSuccess
-                                      ),
-                                    ),
-                                  ],
-                                  const SizedBox(height: 6),
-                                  _InfoChip(
-                                    label: displayStatus,
-                                    bgColor: chipBg,
-                                    textColor: chipText,
-                                  ),
-                                ],
-                              ),
-                              const SizedBox(width: 8),
-                              PopupMenuButton<String>(
-                                icon: const Icon(Icons.more_vert, color: zMuted),
-                                onSelected: (value) => _handleInvoiceAction(value, data, doc.id),
-                                itemBuilder: (context) => [
-                                  const PopupMenuItem(value: 'view', child: Text('View / Print PDF')),
-
-                                  if (!isDraft && invoice.paymentStatus != 'PAID')
-                                    const PopupMenuItem(value: 'payment', child: Text('Record Payment', style: TextStyle(fontWeight: FontWeight.bold))),
-
-                                  // ✅ UPDATED: Always allow editing unless the invoice is fully Paid/Locked
-                                  if (invoice.paymentStatus != 'PAID')
-                                    const PopupMenuItem(value: 'edit', child: Text('Edit Invoice')),
-
-                                  const PopupMenuDivider(),
-                                  const PopupMenuItem(value: 'delete', child: Text('Delete', style: TextStyle(color: Colors.red))),
-                                ],
-                              ),
-                            ],
+                              ],
+                            ),
                           ),
-                          const Padding(
-                            padding: EdgeInsets.symmetric(vertical: 10),
-                            child: Divider(color: zBorder, height: 1),
-                          ),
-                          Row(
-                            children: [
-                              _InlineInfo(icon: Icons.calendar_today, text: DateFormat('dd MMM yyyy').format(invoice.invoiceDate)),
-                              const SizedBox(width: 16),
-                              // ✅ ADDED: Now displays the Due Date inline for quick visibility!
-                              _InlineInfo(icon: Icons.event_available, text: 'Due: ${DateFormat('dd MMM').format(invoice.dueDate)}'),
-                              const SizedBox(width: 16),
-                              if (invoice.buyer.country.isNotEmpty) _InlineInfo(icon: Icons.place_outlined, text: invoice.buyer.country),
-                            ],
+
+                          const Divider(height: 1, color: zBorder),
+
+                          // Bottom Section: Quick Actions
+                          Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                            child: Row(
+                              children: [
+                                _QuickActionButton(
+                                  icon: Icons.picture_as_pdf_outlined,
+                                  label: 'View',
+                                  onTap: () => _handleInvoiceAction('view', invoice),
+                                ),
+                                const SizedBox(width: 8),
+                                if (invoice.paymentStatus != 'PAID')
+                                  _QuickActionButton(
+                                    icon: Icons.edit_outlined,
+                                    label: 'Edit',
+                                    onTap: () => _handleInvoiceAction('edit', invoice),
+                                  ),
+                                const Spacer(),
+                                if (!isDraft && invoice.paymentStatus != 'PAID')
+                                  _QuickActionButton(
+                                    icon: Icons.payment,
+                                    label: 'Record Payment',
+                                    isPrimary: true,
+                                    onTap: () => _handleInvoiceAction('payment', invoice),
+                                  ),
+                                const SizedBox(width: 8),
+                                InkWell(
+                                  onTap: () => _confirmDelete(invoice.id),
+                                  borderRadius: BorderRadius.circular(6),
+                                  child: Padding(
+                                    padding: const EdgeInsets.all(6.0),
+                                    child: Icon(Icons.delete_outline, size: 20, color: Colors.red.shade400),
+                                  ),
+                                ),
+                              ],
+                            ),
                           ),
                         ],
                       ),
@@ -450,6 +501,51 @@ class _InvoiceListScreenState extends State<InvoiceListScreen> {
 // ---------------------------------------------------------
 // SUPPORTING WIDGETS
 // ---------------------------------------------------------
+
+class _QuickActionButton extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final VoidCallback onTap;
+  final bool isPrimary;
+
+  const _QuickActionButton({
+    required this.icon,
+    required this.label,
+    required this.onTap,
+    this.isPrimary = false,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(6),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+        decoration: BoxDecoration(
+          color: isPrimary ? zBlue.withOpacity(0.1) : Colors.transparent,
+          borderRadius: BorderRadius.circular(6),
+          border: isPrimary ? null : Border.all(color: zBorder),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, size: 16, color: isPrimary ? zBlue : zMuted),
+            const SizedBox(width: 6),
+            Text(
+                label,
+                style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                    color: isPrimary ? zBlue : zText
+                )
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
 
 class _CreateOptionCard extends StatelessWidget {
   final String title;
@@ -520,12 +616,12 @@ class _FilterDropdown extends StatelessWidget {
       decoration: BoxDecoration(
         color: Colors.white,
         border: Border.all(color: zBorder),
-        borderRadius: BorderRadius.circular(10),
+        borderRadius: BorderRadius.circular(8),
       ),
       child: DropdownButtonHideUnderline(
         child: DropdownButton<String>(
           value: value,
-          icon: const Icon(Icons.keyboard_arrow_down, size: 16, color: zMuted),
+          icon: const Icon(Icons.keyboard_arrow_down, size: 18, color: zMuted),
           style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: zText),
           onChanged: onChanged,
           items: const [
@@ -571,7 +667,7 @@ class _InfoChip extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       decoration: BoxDecoration(color: bgColor, borderRadius: BorderRadius.circular(6)),
-      child: Text(label, style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w800, color: textColor)),
+      child: Text(label, style: TextStyle(fontSize: 10, fontWeight: FontWeight.w800, color: textColor, letterSpacing: 0.5)),
     );
   }
 }
@@ -589,7 +685,7 @@ class _InlineInfo extends StatelessWidget {
       children: [
         Icon(icon, size: 14, color: zMuted),
         const SizedBox(width: 4),
-        Text(text, style: const TextStyle(fontSize: 12.5, color: zMuted, fontWeight: FontWeight.w600)),
+        Text(text, style: const TextStyle(fontSize: 12, color: zMuted, fontWeight: FontWeight.w600)),
       ],
     );
   }
@@ -606,13 +702,26 @@ class _EmptyInvoiceState extends StatelessWidget {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          CircleAvatar(
-            radius: 34,
-            backgroundColor: zBlueSoft,
-            child: Icon(hasSearch ? Icons.search_off : Icons.receipt_long_outlined, size: 34, color: zBlue),
+          Container(
+            padding: const EdgeInsets.all(24),
+            decoration: BoxDecoration(
+                color: Colors.white,
+                shape: BoxShape.circle,
+                boxShadow: [
+                  BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 20, offset: const Offset(0, 10))
+                ]
+            ),
+            child: Icon(
+                hasSearch ? Icons.search_off_rounded : Icons.receipt_long_rounded,
+                size: 48,
+                color: zMuted.withOpacity(0.6)
+            ),
           ),
-          const SizedBox(height: 18),
-          Text(hasSearch ? 'No matching invoices found' : 'No invoices created yet', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: zText)),
+          const SizedBox(height: 24),
+          Text(
+              hasSearch ? 'No matching invoices found' : 'No invoices created yet',
+              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: zText)
+          ),
           const SizedBox(height: 8),
           Text(
             hasSearch ? 'Try adjusting your search or filters.' : 'Click "New Invoice" to generate your first bill.',

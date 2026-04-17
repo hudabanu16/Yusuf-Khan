@@ -50,12 +50,39 @@ class _ExportPartyDetailsCardState
   void _sync() {
     if (!same) return;
 
-    widget.shipName.text = widget.billName.text;
-    widget.shipAddress.text = widget.billAddress.text;
-    widget.shipCountry.text = widget.billCountry.text;
-    widget.shipContact.text = widget.billContact.text;
-    widget.shipEmail.text = widget.billEmail.text;
-    widget.shipPhone.text = widget.billPhone.text;
+    widget.shipName.value = widget.shipName.value.copyWith(
+      text: widget.billName.text,
+      selection: TextSelection.collapsed(offset: widget.billName.text.length),
+    );
+    widget.shipAddress.value = widget.shipAddress.value.copyWith(
+      text: widget.billAddress.text,
+      selection: TextSelection.collapsed(offset: widget.billAddress.text.length),
+    );
+    widget.shipCountry.value = widget.shipCountry.value.copyWith(
+      text: widget.billCountry.text,
+      selection: TextSelection.collapsed(offset: widget.billCountry.text.length),
+    );
+    widget.shipContact.value = widget.shipContact.value.copyWith(
+      text: widget.billContact.text,
+      selection: TextSelection.collapsed(offset: widget.billContact.text.length),
+    );
+    widget.shipEmail.value = widget.shipEmail.value.copyWith(
+      text: widget.billEmail.text,
+      selection: TextSelection.collapsed(offset: widget.billEmail.text.length),
+    );
+    widget.shipPhone.value = widget.shipPhone.value.copyWith(
+      text: widget.billPhone.text,
+      selection: TextSelection.collapsed(offset: widget.billPhone.text.length),
+    );
+  }
+
+  void _clearShipFields() {
+    widget.shipName.clear();
+    widget.shipAddress.clear();
+    widget.shipCountry.clear();
+    widget.shipContact.clear();
+    widget.shipEmail.clear();
+    widget.shipPhone.clear();
   }
 
   @override
@@ -68,6 +95,17 @@ class _ExportPartyDetailsCardState
     widget.billContact.addListener(_sync);
     widget.billEmail.addListener(_sync);
     widget.billPhone.addListener(_sync);
+  }
+
+  @override
+  void dispose() {
+    widget.billName.removeListener(_sync);
+    widget.billAddress.removeListener(_sync);
+    widget.billCountry.removeListener(_sync);
+    widget.billContact.removeListener(_sync);
+    widget.billEmail.removeListener(_sync);
+    widget.billPhone.removeListener(_sync);
+    super.dispose();
   }
 
   @override
@@ -98,7 +136,11 @@ class _ExportPartyDetailsCardState
                     onChanged: (v) {
                       setState(() {
                         same = v!;
-                        _sync();
+                        if (same) {
+                          _sync();
+                        } else {
+                          _clearShipFields();
+                        }
                       });
                     },
                   ),
@@ -127,6 +169,7 @@ class _ExportPartyDetailsCardState
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
+        color: same && !isBill ? Colors.grey.shade100 : Colors.white,
         border: Border.all(color: zBorder),
         borderRadius: BorderRadius.circular(10),
       ),
@@ -141,13 +184,15 @@ class _ExportPartyDetailsCardState
           const SizedBox(height: 10),
 
           _field('Company Name',
-              isBill ? widget.billName : widget.shipName),
+              isBill ? widget.billName : widget.shipName,
+              readOnly: isBill ? false : same),
 
           const SizedBox(height: 10),
 
           _field('Address',
               isBill ? widget.billAddress : widget.shipAddress,
-              maxLines: 2),
+              maxLines: 2,
+              readOnly: isBill ? false : same),
 
           const SizedBox(height: 10),
 
@@ -155,12 +200,14 @@ class _ExportPartyDetailsCardState
             children: [
               Expanded(
                 child: _field('Country',
-                    isBill ? widget.billCountry : widget.shipCountry),
+                    isBill ? widget.billCountry : widget.shipCountry,
+                    readOnly: isBill ? false : same),
               ),
               const SizedBox(width: 10),
               Expanded(
                 child: _field('Contact Person',
-                    isBill ? widget.billContact : widget.shipContact),
+                    isBill ? widget.billContact : widget.shipContact,
+                    readOnly: isBill ? false : same),
               ),
             ],
           ),
@@ -171,12 +218,14 @@ class _ExportPartyDetailsCardState
             children: [
               Expanded(
                 child: _field('Email',
-                    isBill ? widget.billEmail : widget.shipEmail),
+                    isBill ? widget.billEmail : widget.shipEmail,
+                    readOnly: isBill ? false : same),
               ),
               const SizedBox(width: 10),
               Expanded(
                 child: _field('Phone',
-                    isBill ? widget.billPhone : widget.shipPhone),
+                    isBill ? widget.billPhone : widget.shipPhone,
+                    readOnly: isBill ? false : same),
               ),
             ],
           ),
@@ -186,12 +235,15 @@ class _ExportPartyDetailsCardState
   }
 
   Widget _field(String label, TextEditingController ctrl,
-      {int maxLines = 1}) {
+      {int maxLines = 1, bool readOnly = false}) {
     return TextField(
       controller: ctrl,
       maxLines: maxLines,
+      readOnly: readOnly,
       decoration: InputDecoration(
         labelText: label,
+        filled: readOnly,
+        fillColor: readOnly ? Colors.grey.shade100 : Colors.transparent,
         border:
         OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
       ),

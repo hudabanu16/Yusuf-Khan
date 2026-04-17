@@ -27,6 +27,13 @@ class PaymentModel {
   final String createdBy;
   final DateTime createdAt;
 
+  static double _parseDouble(dynamic value) {
+    if (value == null) return 0.0;
+    if (value is num) return value.toDouble();
+    if (value is String) return double.tryParse(value) ?? 0.0;
+    return 0.0;
+  }
+
   PaymentModel({
     required this.id,
     required this.companyId,
@@ -50,25 +57,50 @@ class PaymentModel {
 
   // 🔴 SAFE PARSING: Prevents Flutter null-check and int-to-double crashes
   factory PaymentModel.fromMap(Map<String, dynamic> data, String documentId) {
+    double parsedExchangeRate = _parseDouble(data['exchangeRate']);
+
     return PaymentModel(
       id: documentId,
-      companyId: data['companyId'] ?? '',
-      customerId: data['customerId'] ?? '',
-      customerName: data['customerName'] ?? 'Unknown Customer',
-      receiptNumber: data['receiptNumber'] ?? 'N/A',
-      paymentDate: data['paymentDate'] != null ? (data['paymentDate'] as Timestamp).toDate() : DateTime.now(),
-      totalAmount: (data['totalAmount'] ?? 0.0).toDouble(),
-      allocatedAmount: (data['allocatedAmount'] ?? 0.0).toDouble(),
-      advanceAmount: (data['advanceAmount'] ?? 0.0).toDouble(),
-      currency: data['currency'] ?? 'USD', // Fallback to avoid nulls
-      exchangeRate: (data['exchangeRate'] ?? 1.0).toDouble(),
-      amountInr: (data['amountInr'] ?? 0.0).toDouble(),
-      paymentMode: data['paymentMode'] ?? '',
-      referenceNo: data['referenceNo'] ?? '',
-      notes: data['notes'] ?? '',
+      companyId: (data['companyId'] is String && data['companyId'].toString().trim().isNotEmpty)
+          ? data['companyId'].toString().trim()
+          : '',
+
+      customerId: (data['customerId'] is String && data['customerId'].toString().trim().isNotEmpty)
+          ? data['customerId'].toString().trim()
+          : '',
+      customerName: (data['customerName'] is String && data['customerName'].toString().trim().isNotEmpty)
+          ? data['customerName'].toString().trim()
+          : 'Unknown Customer',
+      receiptNumber: (data['receiptNumber'] is String && data['receiptNumber'].toString().trim().isNotEmpty)
+          ? data['receiptNumber'].toString().trim()
+          : 'N/A',
+      paymentDate: (data['paymentDate'] is Timestamp)
+          ? (data['paymentDate'] as Timestamp).toDate()
+          : DateTime.now(),
+      totalAmount: _parseDouble(data['totalAmount']),
+      allocatedAmount: _parseDouble(data['allocatedAmount']),
+      advanceAmount: _parseDouble(data['advanceAmount']),
+      currency: (data['currency'] is String && data['currency'].toString().isNotEmpty)
+          ? data['currency']
+          : 'USD',
+      exchangeRate: parsedExchangeRate > 0 ? parsedExchangeRate : 1.0,
+      amountInr: _parseDouble(data['amountInr']),
+      paymentMode: (data['paymentMode'] is String && data['paymentMode'].toString().trim().isNotEmpty)
+          ? data['paymentMode'].toString().trim()
+          : '',
+      referenceNo: (data['referenceNo'] is String && data['referenceNo'].toString().trim().isNotEmpty)
+          ? data['referenceNo'].toString().trim()
+          : '',
+      notes: (data['notes'] is String && data['notes'].toString().trim().isNotEmpty)
+          ? data['notes'].toString().trim()
+          : '',
       paymentType: data['paymentType'] ?? 'AGAINST_INVOICE',
-      createdBy: data['createdBy'] ?? '',
-      createdAt: data['createdAt'] != null ? (data['createdAt'] as Timestamp).toDate() : DateTime.now(),
+      createdBy: (data['createdBy'] is String && data['createdBy'].toString().trim().isNotEmpty)
+          ? data['createdBy'].toString().trim()
+          : '',
+      createdAt: (data['createdAt'] is Timestamp)
+          ? (data['createdAt'] as Timestamp).toDate()
+          : DateTime.now(),
     );
   }
 

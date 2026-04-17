@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:intl/intl.dart';
 import '../../payments_received/screens/record_payment_screen.dart';
 
 class OutstandingScreen extends StatefulWidget {
@@ -17,6 +18,9 @@ class _OutstandingScreenState extends State<OutstandingScreen> {
   bool _includeDrafts = false;
   String _invoiceTypeFilter = 'ALL'; // ALL, DOMESTIC, EXPORT
 
+  // Professional Indian Number Formatter
+  final NumberFormat _formatter = NumberFormat('#,##0.00', 'en_IN');
+
   // 🔥 SAFETY NET: Prevents crashes if Firestore returns an int or string instead of double
   double _parseDouble(dynamic value) {
     if (value == null) return 0.0;
@@ -27,7 +31,7 @@ class _OutstandingScreenState extends State<OutstandingScreen> {
 
   @override
   Widget build(BuildContext context) {
-    // Determine Firebase Query constraints
+    // Determine target statuses for Dart-side filtering
     List<String> targetPaymentStatuses = ['UNPAID', 'PARTIALLY PAID', 'PARTIAL'];
     if (_includeDrafts) targetPaymentStatuses.add('DRAFT');
 
@@ -74,20 +78,34 @@ class _OutstandingScreenState extends State<OutstandingScreen> {
         stream: FirebaseFirestore.instance
             .collection('companies')
             .doc(widget.companyId)
-            .collection('outstanding') // Safe query directly from centralized ledger
-            .where('status', whereIn: targetPaymentStatuses)
+            .collection('outstanding')
             .snapshots(),
         builder: (context, snapshot) {
           if (snapshot.hasError) return const Center(child: Text("Error loading data."));
-          if (snapshot.connectionState == ConnectionState.waiting) return const Center(child: CircularProgressIndicator());
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: const [
+                CircularProgressIndicator(),
+                SizedBox(height: 10),
+                Text('Loading receivables...')
+              ],
+            );
+          }
 
-          final rawDocs = snapshot.data!.docs;
+          // 3. ADD SAFE SNAPSHOT HANDLING
+          final snapshotData = snapshot.data;
+          if (snapshotData == null) return const SizedBox();
+          final rawDocs = snapshotData.docs;
 
           // --- 1. Memory Gatekeeper (Strict ERP filtering) ---
           final docs = rawDocs.where((doc) {
             final data = doc.data() as Map<String, dynamic>;
             final status = (data['status'] ?? '').toString().toUpperCase();
             final type = (data['invoiceType'] ?? 'EXPORT').toString().toUpperCase();
+
+            // Client-side whereIn equivalent logic
+            if (!targetPaymentStatuses.contains(status)) return false;
 
             // Base Rule A: Exclude if fully paid or balance is zero
             final pendingFC = _parseDouble(data['outstandingAmount']);
@@ -154,7 +172,8 @@ class _OutstandingScreenState extends State<OutstandingScreen> {
             }
 
             // Aggregate Customer Maps
-            final customerName = (data['customerName']?.toString().trim().isNotEmpty == true) ? data['customerName'] : 'Unknown Customer';
+            final rawCustomer = data['customerName']?.toString().trim() ?? '';
+            final customerName = rawCustomer.isEmpty ? 'Unknown Customer' : rawCustomer;
 
             customerBaseBalances[customerName] = (customerBaseBalances[customerName] ?? 0.0) + pendingBase;
             customerInvoiceCount[customerName] = (customerInvoiceCount[customerName] ?? 0) + 1;
@@ -169,10 +188,9 @@ class _OutstandingScreenState extends State<OutstandingScreen> {
           var sortedCustomers = customerBaseBalances.entries.toList()
             ..sort((a, b) => b.value.compareTo(a.value));
 
-          // 🚀 FIX: Entire screen is one ListView. This makes bottom overflow mathematically impossible!
           return ListView.builder(
-            padding: const EdgeInsets.only(bottom: 100), // Safe space at bottom
-            itemCount: sortedCustomers.length + 1, // +1 for the top Dashboard Card
+            padding: const EdgeInsets.only(bottom: 100),
+            itemCount: sortedCustomers.length + 1,
             itemBuilder: (context, index) {
 
               if (index == 0) {
@@ -209,10 +227,9 @@ class _OutstandingScreenState extends State<OutstandingScreen> {
                               ],
                             ),
                             const SizedBox(height: 8),
-                            // 🔥 FIX: FittedBox prevents overflow if numbers become huge
                             FittedBox(
                               fit: BoxFit.scaleDown,
-                              child: Text('₹ ${grandTotalBaseInr.toStringAsFixed(2)}', style: const TextStyle(color: Colors.white, fontSize: 36, fontWeight: FontWeight.w900)),
+                              child: Text('₹ ${_formatter.format(grandTotalBaseInr)}', style: const TextStyle(color: Colors.white, fontSize: 36, fontWeight: FontWeight.w900)),
                             ),
                           ],
                         ),
@@ -221,7 +238,6 @@ class _OutstandingScreenState extends State<OutstandingScreen> {
                       Container(height: 1, color: Colors.white.withOpacity(0.1)),
 
                       // Tier 1 & 3: Domestic vs Export (Base INR) Breakdown
-                      // 🔥 THIS IS WHERE THE FIX IS APPLIED. Simplified layout to prevent constraint fights.
                       Row(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
@@ -233,7 +249,7 @@ class _OutstandingScreenState extends State<OutstandingScreen> {
                                 children: [
                                   const Text('DOMESTIC (INR)', textAlign: TextAlign.center, style: TextStyle(color: Colors.white60, fontSize: 11, fontWeight: FontWeight.bold)),
                                   const SizedBox(height: 4),
-                                  Text('₹ ${totalDomesticBase.toStringAsFixed(2)}', textAlign: TextAlign.center, style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold)),
+                                  Text('₹ ${_formatter.format(totalDomesticBase)}', textAlign: TextAlign.center, style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold)),
                                 ],
                               ),
                             ),
@@ -245,7 +261,7 @@ class _OutstandingScreenState extends State<OutstandingScreen> {
                                 children: [
                                   const Text('EXPORT (INR)', textAlign: TextAlign.center, style: TextStyle(color: Colors.white60, fontSize: 11, fontWeight: FontWeight.bold)),
                                   const SizedBox(height: 4),
-                                  Text('₹ ${totalExportBase.toStringAsFixed(2)}', textAlign: TextAlign.center, style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold)),
+                                  Text('₹ ${_formatter.format(totalExportBase)}', textAlign: TextAlign.center, style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold)),
                                 ],
                               ),
                             ),
@@ -276,7 +292,7 @@ class _OutstandingScreenState extends State<OutstandingScreen> {
                                   border: Border.all(color: Colors.white.withOpacity(0.2)),
                                 ),
                                 child: Text(
-                                  '${e.key} ${e.value.toStringAsFixed(2)}',
+                                  '${e.key} ${_formatter.format(e.value)}',
                                   style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w600),
                                 ),
                               );
@@ -292,15 +308,14 @@ class _OutstandingScreenState extends State<OutstandingScreen> {
               // -------------------------------------------------------------
               // TIER 1+: CUSTOMER LEDGER LIST
               // -------------------------------------------------------------
-              final entry = sortedCustomers[index - 1]; // Shift index by 1 for dashboard
-              String customer = entry.key;
+              final entry = sortedCustomers[index - 1];
+              String customerName = entry.key;
               double totalBase = entry.value;
-              int count = customerInvoiceCount[customer]!;
-              Map<String, double> fcBreakdown = customerFcBalances[customer]!;
+              int count = customerInvoiceCount[customerName]!;
+              Map<String, double> fcBreakdown = customerFcBalances[customerName]!;
 
-              // Build subtitle string showing multiple currencies natively
               String fcSubtitle = fcBreakdown.entries
-                  .map((e) => '${e.key} ${e.value.toStringAsFixed(2)}')
+                  .map((e) => '${e.key} ${_formatter.format(e.value)}')
                   .join('  •  ');
 
               return Padding(
@@ -313,9 +328,13 @@ class _OutstandingScreenState extends State<OutstandingScreen> {
                     contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
                     leading: CircleAvatar(
                       backgroundColor: Colors.blue.shade50,
-                      child: Text(customer[0].toUpperCase(), style: TextStyle(color: Colors.blue.shade700, fontWeight: FontWeight.bold)),
+                      // 2. FIX CUSTOMER INITIAL CRASH
+                      child: Text(
+                        customerName.isNotEmpty ? customerName[0].toUpperCase() : 'C',
+                        style: TextStyle(color: Colors.blue.shade700, fontWeight: FontWeight.bold),
+                      ),
                     ),
-                    title: Text(customer, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                    title: Text(customerName, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
                     subtitle: Padding(
                       padding: const EdgeInsets.only(top: 4.0),
                       child: Column(
@@ -331,12 +350,23 @@ class _OutstandingScreenState extends State<OutstandingScreen> {
                       mainAxisAlignment: MainAxisAlignment.center,
                       crossAxisAlignment: CrossAxisAlignment.end,
                       children: [
-                        Text('₹ ${totalBase.toStringAsFixed(2)}', style: const TextStyle(color: Colors.red, fontWeight: FontWeight.bold, fontSize: 16)),
+                        Text('₹ ${_formatter.format(totalBase)}', style: const TextStyle(color: Colors.red, fontWeight: FontWeight.bold, fontSize: 16)),
                         const SizedBox(height: 6),
+                        // 1. FIX DOUBLE NAVIGATION ISSUE
                         Container(
                           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                          decoration: BoxDecoration(color: Colors.blue.shade50, borderRadius: BorderRadius.circular(4)),
-                          child: const Text('Record Payment', style: TextStyle(color: Colors.blue, fontSize: 10, fontWeight: FontWeight.bold)),
+                          decoration: BoxDecoration(
+                            color: Colors.blue.shade50,
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                          child: const Text(
+                            'Record Payment',
+                            style: TextStyle(
+                              color: Colors.blue,
+                              fontSize: 10,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
                         )
                       ],
                     ),
@@ -347,7 +377,7 @@ class _OutstandingScreenState extends State<OutstandingScreen> {
                           builder: (_) => RecordPaymentScreen(
                             companyId: widget.companyId,
                             userUid: widget.userUid,
-                            customerName: customer,
+                            customerName: customerName,
                           ),
                         ),
                       );
