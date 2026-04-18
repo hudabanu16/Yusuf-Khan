@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:QUIK/core/theme/app_theme.dart';
 import 'package:intl/intl.dart';
 
@@ -132,110 +133,214 @@ class _InvoiceListScreenState extends State<InvoiceListScreen> {
           ),
         ),
       );
-    } else if (action == 'delete') {
-      _confirmDelete(invoice.id);
+    } else if (action == 'cancel') {
+      _confirmCancel(invoice.id);
     }
   }
 
-  void _confirmDelete(String docId) {
+  void _confirmCancel(String docId) {
     showDialog(
       context: context,
-      builder: (ctx) => Dialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        elevation: 0,
-        backgroundColor: Colors.transparent,
-        child: Container(
-          padding: const EdgeInsets.all(24),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            shape: BoxShape.rectangle,
-            borderRadius: BorderRadius.circular(16),
-            boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 20, offset: Offset(0, 10))],
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Container(
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(color: Colors.red.shade50, shape: BoxShape.circle),
-                child: Icon(Icons.warning_amber_rounded, color: Colors.red.shade600, size: 36),
-              ),
-              const SizedBox(height: 20),
-              const Text('Delete Invoice', style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800, color: zText)),
-              const SizedBox(height: 12),
-              const Text(
-                'Are you sure you want to delete this invoice? This action will safely archive the document and remove it from active ledgers.',
-                textAlign: TextAlign.center,
-                style: TextStyle(fontSize: 14, color: zMuted, height: 1.4),
-              ),
-              const SizedBox(height: 24),
-              Row(
-                children: [
-                  Expanded(
-                    child: OutlinedButton(
-                      style: OutlinedButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(vertical: 14),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                        side: BorderSide(color: Colors.grey.shade300),
-                      ),
-                      onPressed: () => Navigator.pop(ctx),
-                      child: const Text('Cancel', style: TextStyle(color: zText, fontWeight: FontWeight.w600)),
+      barrierDismissible: false,
+      builder: (ctx) {
+        bool isLoading = false;
+        String errorMsg = '';
+        bool obscurePwd = true;
+        final pwdController = TextEditingController();
+
+        return StatefulBuilder(
+          builder: (context, setState) {
+            return Dialog(
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+              elevation: 0,
+              backgroundColor: Colors.transparent,
+              child: Container(
+                padding: const EdgeInsets.all(24),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  shape: BoxShape.rectangle,
+                  borderRadius: BorderRadius.circular(16),
+                  boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 20, offset: Offset(0, 10))],
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(color: Colors.red.shade50, shape: BoxShape.circle),
+                      child: Icon(Icons.cancel_outlined, color: Colors.red.shade600, size: 36),
                     ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: ElevatedButton(
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.red.shade600,
-                        foregroundColor: Colors.white,
-                        elevation: 0,
-                        padding: const EdgeInsets.symmetric(vertical: 14),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                      ),
-                      onPressed: () {
-                        Navigator.pop(ctx);
-                        _deleteInvoice(docId);
-                      },
-                      child: const Text('Delete', style: TextStyle(fontWeight: FontWeight.w700)),
+                    const SizedBox(height: 20),
+                    const Text('Confirm Cancellation', style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800, color: zText)),
+                    const SizedBox(height: 12),
+                    const Text(
+                      'This will cancel the invoice and clear outstanding ledgers. Please enter your password to confirm.',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(fontSize: 14, color: zMuted, height: 1.4),
                     ),
-                  ),
-                ],
+                    const SizedBox(height: 20),
+
+                    // Secure Password Field
+                    TextField(
+                      controller: pwdController,
+                      obscureText: obscurePwd,
+                      enabled: !isLoading,
+                      decoration: InputDecoration(
+                        hintText: 'Account Password',
+                        prefixIcon: const Icon(Icons.lock_outline, size: 18, color: zMuted),
+                        suffixIcon: IconButton(
+                          icon: Icon(obscurePwd ? Icons.visibility_off : Icons.visibility, size: 18, color: zMuted),
+                          onPressed: () => setState(() => obscurePwd = !obscurePwd),
+                        ),
+                        isDense: true,
+                        filled: true,
+                        fillColor: const Color(0xFFF9FAFB),
+                        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide(color: Colors.grey.shade300)),
+                        enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide(color: Colors.grey.shade300)),
+                        focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: const BorderSide(color: Colors.red, width: 1.5)),
+                      ),
+                    ),
+
+                    if (errorMsg.isNotEmpty) ...[
+                      const SizedBox(height: 12),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                        decoration: BoxDecoration(color: Colors.red.shade50, borderRadius: BorderRadius.circular(6)),
+                        child: Row(
+                          children: [
+                            Icon(Icons.error_outline, size: 16, color: Colors.red.shade700),
+                            const SizedBox(width: 8),
+                            Expanded(child: Text(errorMsg, style: TextStyle(color: Colors.red.shade700, fontSize: 12, fontWeight: FontWeight.w600))),
+                          ],
+                        ),
+                      ),
+                    ],
+
+                    const SizedBox(height: 24),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: OutlinedButton(
+                            style: OutlinedButton.styleFrom(
+                              padding: const EdgeInsets.symmetric(vertical: 14),
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                              side: BorderSide(color: Colors.grey.shade300),
+                            ),
+                            onPressed: isLoading ? null : () => Navigator.pop(ctx),
+                            child: const Text('Close', style: TextStyle(color: zText, fontWeight: FontWeight.w600)),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: ElevatedButton(
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: Colors.red.shade600,
+                              foregroundColor: Colors.white,
+                              elevation: 0,
+                              padding: const EdgeInsets.symmetric(vertical: 14),
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                            ),
+                            onPressed: isLoading ? null : () async {
+                              final pwd = pwdController.text.trim();
+                              if (pwd.isEmpty) {
+                                setState(() => errorMsg = 'Please enter your password.');
+                                return;
+                              }
+
+                              setState(() {
+                                isLoading = true;
+                                errorMsg = '';
+                              });
+
+                              try {
+                                final user = FirebaseAuth.instance.currentUser;
+                                if (user == null || user.email == null) {
+                                  throw FirebaseAuthException(code: 'user-not-found', message: 'No active user found.');
+                                }
+
+                                // 🔥 RE-AUTHENTICATE USER
+                                final credential = EmailAuthProvider.credential(
+                                  email: user.email!,
+                                  password: pwd,
+                                );
+                                await user.reauthenticateWithCredential(credential);
+
+                                // If success, close dialog and cancel invoice
+                                if (context.mounted) {
+                                  Navigator.pop(ctx);
+                                  _cancelInvoice(docId);
+                                }
+                              } on FirebaseAuthException catch (e) {
+                                setState(() {
+                                  isLoading = false;
+                                  if (e.code == 'wrong-password' || e.code == 'invalid-credential') {
+                                    errorMsg = 'Incorrect password. Action denied.';
+                                  } else {
+                                    errorMsg = e.message ?? 'Authentication failed.';
+                                  }
+                                });
+                              } catch (e) {
+                                setState(() {
+                                  isLoading = false;
+                                  errorMsg = 'An unexpected error occurred.';
+                                });
+                              }
+                            },
+                            child: isLoading
+                                ? const SizedBox(height: 18, width: 18, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                                : const Text('Confirm', style: TextStyle(fontWeight: FontWeight.w700)),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
               ),
-            ],
-          ),
-        ),
-      ),
+            );
+          },
+        );
+      },
     );
   }
 
-  Future<void> _deleteInvoice(String docId) async {
+  Future<void> _cancelInvoice(String docId) async {
     try {
       final db = FirebaseFirestore.instance;
       final batch = db.batch();
 
+      // 1. UPDATE: Change invoice status to CANCELLED (Keeps document for compliance)
       final invoiceRef = db.collection('companies').doc(widget.companyId).collection('export_invoices').doc(docId);
       batch.update(invoiceRef, {
-        'isDeleted': true,
+        'status': 'CANCELLED',
         'updatedAt': FieldValue.serverTimestamp(),
       });
 
+      // 2. HARD DELETE: Remove the associated outstanding ledger document to clear accounts
       final outstandingRef = db.collection('companies').doc(widget.companyId).collection('outstanding').doc(docId);
-      batch.update(outstandingRef, {
-        'isDeleted': true,
-        'updatedAt': FieldValue.serverTimestamp(),
+      batch.delete(outstandingRef);
+
+      // 3. ACTIVITY LOG: Create an immutable audit log entry
+      final logRef = db.collection('companies').doc(widget.companyId).collection('invoice_activity_logs').doc();
+      batch.set(logRef, {
+        'invoiceId': docId,
+        'action': 'CANCELLED',
+        'timestamp': FieldValue.serverTimestamp(),
+        'uid': widget.userUid,
       });
 
+      // 4. COMMIT ATOMIC TRANSACTION
       await batch.commit();
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Invoice deleted successfully'), backgroundColor: Colors.green),
+          const SnackBar(content: Text('Invoice cancelled successfully'), backgroundColor: Colors.green),
         );
       }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Failed to delete invoice: $e'), backgroundColor: Colors.red),
+          SnackBar(content: Text('Failed to cancel invoice: $e'), backgroundColor: Colors.red),
         );
       }
     }
@@ -291,9 +396,6 @@ class _InvoiceListScreenState extends State<InvoiceListScreen> {
             try {
               final data = doc.data();
               if (data.isEmpty) continue;
-
-              final isDeleted = (data['isDeleted'] ?? false);
-              if (isDeleted) continue;
 
               invoices.add(ExportInvoiceModel.fromMap(data, doc.id));
             } catch (e) {
@@ -448,9 +550,9 @@ class _InvoiceListScreenState extends State<InvoiceListScreen> {
                           if (!mounted) return;
                           _handleInvoiceAction('payment', invoice);
                         },
-                        onDelete: () {
+                        onCancel: () {
                           if (!mounted) return;
-                          _confirmDelete(invoice.id);
+                          _confirmCancel(invoice.id);
                         },
                       ),
                     );
@@ -474,14 +576,14 @@ class _InvoiceCard extends StatefulWidget {
   final VoidCallback onView;
   final VoidCallback onEdit;
   final VoidCallback onRecordPayment;
-  final VoidCallback onDelete;
+  final VoidCallback onCancel;
 
   const _InvoiceCard({
     required this.invoice,
     required this.onView,
     required this.onEdit,
     required this.onRecordPayment,
-    required this.onDelete,
+    required this.onCancel,
   });
 
   @override
@@ -495,8 +597,11 @@ class _InvoiceCardState extends State<_InvoiceCard> {
   Widget build(BuildContext context) {
     final invoice = widget.invoice;
     final isDraft = (invoice.status ?? '').toLowerCase() == 'draft';
+    final isCancelled = (invoice.status ?? '').toLowerCase() == 'cancelled';
 
-    final displayStatus = isDraft
+    final displayStatus = isCancelled
+        ? 'CANCELLED'
+        : isDraft
         ? 'DRAFT'
         : ((invoice.paymentStatus ?? '').isEmpty
         ? 'UNPAID'
@@ -509,9 +614,7 @@ class _InvoiceCardState extends State<_InvoiceCard> {
     if (invoice.totals.grandTotal > 0) {
       paidPct = (invoice.amountReceived / invoice.totals.grandTotal).clamp(0.0, 1.0);
     }
-    int pctInt = (paidPct * 100).toInt();
 
-    // Strict SaaS colors logic
     Color chipBg;
     Color chipText;
     Color chipBorder;
@@ -527,6 +630,10 @@ class _InvoiceCardState extends State<_InvoiceCard> {
       chipBg = Colors.grey.shade100;
       chipText = Colors.grey.shade800;
       chipBorder = Colors.grey.shade300;
+    } else if (displayStatus == 'CANCELLED') {
+      chipBg = Colors.red.shade50;
+      chipText = Colors.red.shade800;
+      chipBorder = Colors.red.shade200;
     } else { // UNPAID
       chipBg = Colors.amber.shade50;
       chipText = Colors.amber.shade900;
@@ -547,7 +654,7 @@ class _InvoiceCardState extends State<_InvoiceCard> {
           duration: const Duration(milliseconds: 200),
           margin: const EdgeInsets.only(bottom: 16),
           decoration: BoxDecoration(
-            color: Colors.white,
+            color: isCancelled ? const Color(0xFFF9FAFB) : Colors.white,
             borderRadius: BorderRadius.circular(12),
             border: Border.all(color: _isHovered ? zBlue.withOpacity(0.4) : Colors.grey.shade200, width: 1),
             boxShadow: [
@@ -575,7 +682,12 @@ class _InvoiceCardState extends State<_InvoiceCard> {
                             children: [
                               Text(
                                 (invoice.invoiceNumber ?? '').isEmpty ? 'Pending Number' : invoice.invoiceNumber,
-                                style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: zMuted),
+                                style: TextStyle(
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.w700,
+                                    color: zMuted,
+                                    decoration: isCancelled ? TextDecoration.lineThrough : null
+                                ),
                               ),
                               const SizedBox(width: 12),
                               _InfoChip(label: displayStatus, bgColor: chipBg, textColor: chipText, borderColor: chipBorder),
@@ -586,7 +698,12 @@ class _InvoiceCardState extends State<_InvoiceCard> {
                             (invoice.buyer.name ?? '').isEmpty ? 'Unknown Customer' : invoice.buyer.name,
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(fontSize: 17, color: zText, fontWeight: FontWeight.w800, letterSpacing: 0.2),
+                            style: TextStyle(
+                                fontSize: 17,
+                                color: isCancelled ? zMuted : zText,
+                                fontWeight: FontWeight.w800,
+                                letterSpacing: 0.2
+                            ),
                           ),
                           const SizedBox(height: 6),
                           Row(
@@ -600,7 +717,7 @@ class _InvoiceCardState extends State<_InvoiceCard> {
                       ),
                     ),
                     const SizedBox(width: 24),
-                    // Fixed width container for strict vertical alignment of amounts across list
+                    // Fixed width container for strict vertical alignment
                     SizedBox(
                       width: 160,
                       child: Column(
@@ -608,10 +725,16 @@ class _InvoiceCardState extends State<_InvoiceCard> {
                         children: [
                           Text(
                             '${invoice.currency} ${_formatCurrency(invoice.totals.grandTotal)}',
-                            style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w900, color: zText, letterSpacing: -0.5),
+                            style: TextStyle(
+                                fontSize: 20,
+                                fontWeight: FontWeight.w900,
+                                color: isCancelled ? zMuted : zText,
+                                letterSpacing: -0.5,
+                                decoration: isCancelled ? TextDecoration.lineThrough : null
+                            ),
                           ),
                           const SizedBox(height: 8),
-                          if (!isDraft) ...[
+                          if (!isDraft && !isCancelled) ...[
                             Row(
                               mainAxisAlignment: MainAxisAlignment.spaceBetween,
                               children: [
@@ -691,7 +814,7 @@ class _InvoiceCardState extends State<_InvoiceCard> {
                       ),
                     ),
                     const Spacer(),
-                    if (!isDraft && (invoice.paymentStatus ?? '').toUpperCase() != 'PAID')
+                    if (!isDraft && !isCancelled && (invoice.paymentStatus ?? '').toUpperCase() != 'PAID')
                       FilledButton.icon(
                         onPressed: widget.onRecordPayment,
                         icon: const Icon(Icons.payment, size: 16),
@@ -705,50 +828,53 @@ class _InvoiceCardState extends State<_InvoiceCard> {
                           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
                         ),
                       ),
-                    const SizedBox(width: 8),
-                    // Elite SaaS Dropdown Menu
-                    Theme(
-                      data: Theme.of(context).copyWith(
-                        splashColor: Colors.transparent,
-                        highlightColor: Colors.transparent,
-                      ),
-                      child: PopupMenuButton<String>(
-                        icon: const Icon(Icons.more_horiz, color: zMuted, size: 20),
-                        tooltip: 'Options',
-                        offset: const Offset(0, 40),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                        elevation: 4,
-                        onSelected: (val) {
-                          if (val == 'edit') widget.onEdit();
-                          if (val == 'delete') widget.onDelete();
-                        },
-                        itemBuilder: (ctx) => [
-                          if ((invoice.paymentStatus ?? '').toUpperCase() != 'PAID')
+
+                    // Only show dropdown if it's not cancelled
+                    if (!isCancelled) ...[
+                      const SizedBox(width: 8),
+                      Theme(
+                        data: Theme.of(context).copyWith(
+                          splashColor: Colors.transparent,
+                          highlightColor: Colors.transparent,
+                        ),
+                        child: PopupMenuButton<String>(
+                          icon: const Icon(Icons.more_horiz, color: zMuted, size: 20),
+                          tooltip: 'Options',
+                          offset: const Offset(0, 40),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                          elevation: 4,
+                          onSelected: (val) {
+                            if (val == 'edit') widget.onEdit();
+                            if (val == 'cancel') widget.onCancel();
+                          },
+                          itemBuilder: (ctx) => [
+                            if ((invoice.paymentStatus ?? '').toUpperCase() != 'PAID')
+                              PopupMenuItem(
+                                  value: 'edit',
+                                  height: 40,
+                                  child: Row(
+                                    children: [
+                                      Icon(Icons.edit_outlined, size: 18, color: zText.withOpacity(0.8)),
+                                      const SizedBox(width: 10),
+                                      const Text('Edit Invoice', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
+                                    ],
+                                  )
+                              ),
                             PopupMenuItem(
-                                value: 'edit',
+                                value: 'cancel',
                                 height: 40,
                                 child: Row(
                                   children: [
-                                    Icon(Icons.edit_outlined, size: 18, color: zText.withOpacity(0.8)),
+                                    Icon(Icons.cancel_outlined, size: 18, color: Colors.red.shade600),
                                     const SizedBox(width: 10),
-                                    const Text('Edit Invoice', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
+                                    Text('Cancel Invoice', style: TextStyle(color: Colors.red.shade700, fontWeight: FontWeight.w600, fontSize: 13)),
                                   ],
                                 )
                             ),
-                          PopupMenuItem(
-                              value: 'delete',
-                              height: 40,
-                              child: Row(
-                                children: [
-                                  Icon(Icons.delete_outline, size: 18, color: Colors.red.shade600),
-                                  const SizedBox(width: 10),
-                                  Text('Delete', style: TextStyle(color: Colors.red.shade700, fontWeight: FontWeight.w600, fontSize: 13)),
-                                ],
-                              )
-                          ),
-                        ],
+                          ],
+                        ),
                       ),
-                    ),
+                    ]
                   ],
                 ),
               ),
@@ -852,6 +978,7 @@ class _FilterDropdown extends StatelessWidget {
                 DropdownMenuItem(value: 'all', child: Text('All')),
                 DropdownMenuItem(value: 'draft', child: Text('Drafts')),
                 DropdownMenuItem(value: 'submitted', child: Text('Submitted')),
+                DropdownMenuItem(value: 'cancelled', child: Text('Cancelled')),
               ],
             ),
           ),

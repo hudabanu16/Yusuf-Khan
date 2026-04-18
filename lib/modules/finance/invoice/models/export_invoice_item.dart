@@ -64,7 +64,9 @@ class ExportInvoiceItem {
       // ✅ Proper timestamp handling
       'createdAt': Timestamp.fromDate(createdAt),
       'createdBy': createdBy,
-      'updatedAt': FieldValue.serverTimestamp(),
+
+      // 🚨 CRITICAL ARCHITECTURE FIX: Never use FieldValue inside a nested list/array
+      'updatedAt': Timestamp.fromDate(updatedAt),
       'updatedBy': updatedBy,
 
       'isActive': isActive,

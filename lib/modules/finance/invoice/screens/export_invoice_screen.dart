@@ -374,11 +374,12 @@ class _ExportInvoiceScreenState extends State<ExportInvoiceScreen> {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           const _SubHeader('BUYER (BILL TO)'),
-                          _CustomField(label: 'Company Name *', controller: _state.billName, required: true, onChanged: (_) => _state.handleBillToChange(), readOnly: _state.invoiceId != null),
-                          _CustomField(label: 'Address', controller: _state.billAddress, maxLines: 2, onChanged: (_) => _state.handleBillToChange(), readOnly: _state.invoiceId != null),
-                          Row(children: [Expanded(child: _CustomField(label: 'Country', controller: _state.billCountry, onChanged: (_) => _state.handleBillToChange(), readOnly: _state.invoiceId != null)), const SizedBox(width: 8), Expanded(child: _CustomField(label: 'Email', controller: _state.billEmail, onChanged: (_) => _state.handleBillToChange(), readOnly: _state.invoiceId != null))]),
-                          _CustomField(label: 'Contact No.', controller: _state.billPhone, onChanged: (_) => _state.handleBillToChange(), readOnly: _state.invoiceId != null),
-                          _CustomField(label: 'Contact Person', controller: _state.billContact, onChanged: (_) => _state.handleBillToChange(), readOnly: _state.invoiceId != null),
+                          // ✅ STRICT FIX: Always Read-Only to prevent unlinked manual entries
+                          _CustomField(label: 'Company Name *', controller: _state.billName, required: true, readOnly: true),
+                          _CustomField(label: 'Address', controller: _state.billAddress, maxLines: 2, readOnly: true),
+                          Row(children: [Expanded(child: _CustomField(label: 'Country', controller: _state.billCountry, readOnly: true)), const SizedBox(width: 8), Expanded(child: _CustomField(label: 'Email', controller: _state.billEmail, readOnly: true))]),
+                          _CustomField(label: 'Contact No.', controller: _state.billPhone, readOnly: true),
+                          _CustomField(label: 'Contact Person', controller: _state.billContact, readOnly: true),
                         ],
                       ),
                     ),
@@ -557,14 +558,15 @@ class _ExportInvoiceScreenState extends State<ExportInvoiceScreen> {
                     Row(
                       children: [
                         Expanded(
-                          child: ValueListenableBuilder<String?>(
+                          // ✅ STRICT FIX: Listen to non-nullable type String
+                          child: ValueListenableBuilder<String>(
                             valueListenable: _state.selectedPaymentMode,
                             builder: (context, paymentMode, _) => DropdownButtonFormField<String>(
                               value: paymentMode,
                               decoration: _inputDecoration('Mode of Realisation *', Icons.payment),
                               items: _state.paymentModeItems,
                               validator: (v) => v == null || v.isEmpty ? 'Required' : null,
-                              onChanged: (v) => _state.selectedPaymentMode.value = v,
+                              onChanged: (v) => _state.selectedPaymentMode.value = v!,
                             ),
                           ),
                         ),
@@ -848,13 +850,28 @@ class _ExportInvoiceScreenState extends State<ExportInvoiceScreen> {
     Navigator.push(context, MaterialPageRoute(builder: (_) => ExportInvoiceDocumentView(invoice: _state.buildModel('Draft', safeNumber))));
   }
 
+  // ✅ STRICT FIX: Handle all UI validation explicitly BEFORE calling saveToFirestore
   Future<void> _handleSave(BuildContext context, {required bool isDraft}) async {
+    ScaffoldMessenger.of(context).hideCurrentSnackBar(); // Prevent hidden snackbar queuing
+
     if (_state.isSubmitted || _state.isCancelled) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Invoice is locked and cannot be edited.'), backgroundColor: Colors.red));
       return;
     }
 
-    if (_state.subtotal <= 0) { ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Total amount must be greater than 0.'), backgroundColor: Colors.red)); return; }
+    // Explicit Front-end checks
+    if ((_state.selectedCustomerId ?? '').trim().isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Error: You must select a customer before saving.'), backgroundColor: Colors.red));
+      return;
+    }
+
+    if (_state.items.value.isEmpty || _state.items.value.where((e) => safe(e.name).isNotEmpty).isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Error: At least 1 valid line item is required.'), backgroundColor: Colors.red));
+      return;
+    }
+
+    if (_state.subtotal <= 0) { ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Error: Total amount must be greater than 0.'), backgroundColor: Colors.red)); return; }
+
     if (!_state.formKey.currentState!.validate()) { ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Please fill all required fields correctly.'), backgroundColor: Colors.red)); return; }
 
     try {
@@ -910,6 +927,7 @@ class _ExportInvoiceScreenState extends State<ExportInvoiceScreen> {
         ),
         backgroundColor: Colors.red.shade900,
         behavior: SnackBarBehavior.floating,
+        duration: const Duration(seconds: 4),
       ));
     }
   }
@@ -937,7 +955,10 @@ class ExportInvoiceState {
 
   final selectedCurrency = ValueNotifier<String>('USD');
   final selectedTransportMode = ValueNotifier<String>('Sea / Ship');
-  final selectedPaymentMode = ValueNotifier<String?>(null);
+
+  // ✅ STRICT FIX: Initialized to non-nullable default to prevent transaction failures
+  final selectedPaymentMode = ValueNotifier<String>('Bank Transfer');
+
   final selectedIncoterm = ValueNotifier<String>('FOB');
   final selectedPlaceOfSupply = ValueNotifier<String>('Out of India');
   final selectedPaymentTermState = ValueNotifier<String>('Due on Receipt');
@@ -1197,7 +1218,7 @@ class ExportInvoiceState {
 
         freightCtrl.text = inv.totals.freight.toString(); insuranceCtrl.text = inv.totals.insurance.toString(); taxRate.value = inv.taxDetails.igstRate; items.value = inv.items;
 
-        selectedPaymentMode.value = paymentModes.contains(inv.paymentDetails.paymentMode) ? inv.paymentDetails.paymentMode : null;
+        selectedPaymentMode.value = paymentModes.contains(inv.paymentDetails.paymentMode) ? inv.paymentDetails.paymentMode : 'Bank Transfer';
         paymentRefCtrl.text = inv.paymentDetails.paymentReference;
         deliveryTermsCtrl.text = inv.paymentDetails.deliveryTerms;
         beneficiaryNameCtrl.text = inv.paymentDetails.beneficiaryName;
@@ -1300,7 +1321,7 @@ class ExportInvoiceState {
       taxDetails: TaxDetails(taxableValue: (summary.subtotal + summary.freight + summary.insurance), igstRate: isLUT.value ? 0 : taxRate.value, igstAmount: summary.taxAmt, reverseCharge: isReverseCharge.value),
       totals: Totals(subTotal: summary.subtotal, freight: summary.freight, insurance: summary.insurance, tax: summary.taxAmt, grandTotal: summary.grandTotalForeign, grandTotalInr: grandTotalINR),
       paymentDetails: PaymentDetails(
-          paymentMode: selectedPaymentMode.value ?? 'Bank Transfer',
+          paymentMode: selectedPaymentMode.value, // ✅ Non-nullable guarantee
           paymentReference: safe(paymentRefCtrl.text),
           beneficiaryName: safe(beneficiaryNameCtrl.text),
           bankName: safe(bankNameCtrl.text),
@@ -1318,62 +1339,27 @@ class ExportInvoiceState {
     );
   }
 
-  Map<String, dynamic> removeNulls(Map<String, dynamic> map) {
-    if (map.isEmpty) return {};
-    final result = <String, dynamic>{};
-    map.forEach((key, value) {
-      if (value == null) return;
-      if (value is Map<String, dynamic>) {
-        final cleaned = removeNulls(value);
-        if (cleaned.isNotEmpty) result[key] = cleaned;
-      } else if (value is Map) {
-        final cleaned = removeNulls(Map<String, dynamic>.from(value));
-        if (cleaned.isNotEmpty) result[key] = cleaned;
-      } else if (value is List) {
-        final cleanedList = value.map((e) {
-          if (e is Map<String, dynamic>) {
-            return removeNulls(e);
-          } else if (e is Map) {
-            return removeNulls(Map<String, dynamic>.from(e));
-          }
-          return e;
-        }).toList();
-        result[key] = cleanedList;
-      } else {
-        result[key] = value;
-      }
-    });
-    return result;
-  }
-
+  // ✅ STRICT FIX: Validations pulled entirely out of transaction to stop retry loops
+  // ✅ STRICT FIX: removeNulls() function was deleted to prevent breaking Firebases' Timestamp schema.
   Future<String> saveToFirestore(String status) async {
+    // 1. Validation Gate
+    if ((selectedCustomerId ?? '').trim().isEmpty) throw Exception("Validation failed: You must select a customer before saving.");
+    if (items.value.isEmpty || items.value.where((e) => safe(e.name).isNotEmpty).isEmpty) throw Exception("Validation failed: At least one item is required.");
+
+    for (var i = 0; i < items.value.length; i++) {
+      final item = items.value[i];
+      if (safe(item.name).isEmpty) throw Exception("Validation failed: Item ${i+1} is missing a name.");
+      if (item.quantity <= 0) throw Exception("Validation failed: Item ${i+1} quantity must be greater than 0.");
+      if (item.rate <= 0) throw Exception("Validation failed: Item ${i+1} rate must be greater than 0.");
+    }
+
+    if (summaryState.value.grandTotalForeign <= 0) throw Exception("Validation failed: Grand Total must be greater than 0.");
+    final er = double.tryParse(safe(exchangeRateCtrl.text)) ?? 0.0;
+    if (er <= 0) throw Exception("Validation failed: Exchange Rate must be greater than 0.");
+    if (safe(selectedPaymentMode.value).isEmpty) throw Exception("Validation failed: Payment Mode is required.");
+
     isSaving.value = true;
     try {
-      if ((selectedCustomerId ?? '').trim().isEmpty) {
-        throw Exception("Validation failed: You must select a customer before saving.");
-      }
-      if (safe(companyId).isEmpty) throw Exception("Validation failed: missing companyId.");
-      if (items.value.where((e) => safe(e.name).isNotEmpty).isEmpty) {
-        throw Exception("Validation failed: At least one item is required.");
-      }
-      for (var i = 0; i < items.value.length; i++) {
-        final item = items.value[i];
-        if (safe(item.name).isEmpty) throw Exception("Validation failed: Item ${i+1} is missing a name.");
-        if (item.quantity <= 0) throw Exception("Validation failed: Item ${i+1} quantity must be greater than 0.");
-        if (item.rate <= 0) throw Exception("Validation failed: Item ${i+1} rate must be greater than 0.");
-      }
-      if (summaryState.value.grandTotalForeign <= 0) {
-        throw Exception("Validation failed: Grand Total must be greater than 0.");
-      }
-
-      final er = double.tryParse(safe(exchangeRateCtrl.text)) ?? 0.0;
-      if (er <= 0) throw Exception("Validation failed: Exchange Rate must be greater than 0.");
-      if (safe(selectedCurrency.value).isEmpty) selectedCurrency.value = 'USD';
-
-      if (selectedPaymentMode.value == null || safe(selectedPaymentMode.value).isEmpty) {
-        throw Exception("Validation failed: Payment Mode is required.");
-      }
-
       final db = FirebaseFirestore.instance;
       final collectionRef = db.collection('companies').doc(companyId).collection('export_invoices');
 
@@ -1413,24 +1399,17 @@ class ExportInvoiceState {
               invoiceNoCtrl.text = finalInvoiceNo;
             }
 
+            // Build model. The nested array FieldValue issue is now fixed inside the Model
             final model = buildModel(status, finalInvoiceNo);
-            final rawData = model.toMap();
-            final data = Map<String, dynamic>.from(rawData);
+            final data = Map<String, dynamic>.from(model.toMap());
 
             data['id'] = docRef.id;
-
-            data.remove('updatedAt');
-            data['updatedAt'] = FieldValue.serverTimestamp();
-
             data['lastEditedBy'] = userUid;
+
+            // ✅ FIX: FieldValue is perfectly safe at the ROOT of the document
             data['lastEditedAt'] = FieldValue.serverTimestamp();
             data['version'] = isNewDoc ? 1 : currentVersion + 1;
             data['isDeleted'] = false;
-
-            final itemsList = (data['items'] is List) ? data['items'] as List : [];
-            if (itemsList.isEmpty) {
-              throw Exception("At least one valid item required");
-            }
 
             final totalsMap = Map<String, dynamic>.from(data['totals'] ?? {});
             totalsMap['roundOff'] = summaryState.value.roundOff;
@@ -1438,20 +1417,10 @@ class ExportInvoiceState {
             data['totals'] = totalsMap;
 
             if (isNewDoc) {
-              data['createdAt'] = FieldValue.serverTimestamp();
+              data['createdAt'] = FieldValue.serverTimestamp(); // Root level, Safe
             } else {
               data.remove('createdAt');
               data.remove('createdBy');
-            }
-
-            if (data.isEmpty) {
-              throw Exception("Critical Error: No data to save.");
-            }
-
-            final cleanData = removeNulls(data);
-
-            if (cleanData.isEmpty) {
-              throw Exception("Critical Error: Clean data is empty.");
             }
 
             bool isDraft = status == 'Draft';
@@ -1481,7 +1450,8 @@ class ExportInvoiceState {
               outData['createdBy'] = userUid;
             }
 
-            tx.set(docRef, cleanData, SetOptions(merge: true));
+            // ✅ FIX: Directly set the safe data payload. No recursive corruptions.
+            tx.set(docRef, data, SetOptions(merge: true));
 
             final logRef = db.collection('companies').doc(companyId).collection('invoice_activity_logs').doc();
             tx.set(logRef, {
@@ -1493,26 +1463,25 @@ class ExportInvoiceState {
             });
 
             tx.set(outRef, outData, SetOptions(merge: true));
-
-            if (kDebugMode) {
-              debugPrint("Invoice saved successfully");
-            }
           });
 
           currentVersion++;
           return docRef.id;
         } catch (e) {
+          // 🚨 CRITICAL ARCHITECTURE FIX: Never swallow Firebase Exceptions!
+          if (e is FirebaseException ||
+              e.toString().contains("Audit Lock") ||
+              e.toString().contains("Conflict") ||
+              e.toString().contains("Validation failed")) {
+            rethrow; // Break out of retry loop instantly
+          }
           if (attempt == maxRetries - 1) rethrow;
           await Future.delayed(Duration(milliseconds: 500 * (attempt + 1)));
         }
       }
-      throw Exception("Transaction failed after multiple retries.");
-    } catch (e, stack) {
-      if (kDebugMode) {
-        debugPrint('❌ FIRESTORE SAVE ERROR: $e');
-        debugPrint(stack.toString());
-      }
-      rethrow;
+      throw Exception("Transaction failed after multiple network retries.");
+    } catch (e) {
+      rethrow; // Bubble exactly to UI
     } finally {
       isSaving.value = false;
     }

@@ -379,12 +379,11 @@ class ExportInvoiceModel {
   final int version;
   final bool isActive;
 
-  // 🔴 FINANCIAL LEDGER FIELDS (Single Source of Truth)
-  final double receivedAmount; // Legacy field retained for architecture compatibility
+  final double receivedAmount;
   final double advanceAmount;
   final double advancePercentage;
   final double amountReceived;
-  final double amountOutstanding; // Allows negative for overpayment tracking
+  final double amountOutstanding;
   final double baseAmountOutstanding;
   final String paymentStatus;
 
@@ -483,20 +482,14 @@ class ExportInvoiceModel {
     double exchangeRate = _parseDouble(map['exchangeRate']);
     if (exchangeRate <= 0) exchangeRate = 1.0;
 
-    // ==========================================================
-    // 🏦 BACKWARD COMPATIBILITY & STRICT ERP PAYMENT LOGIC
-    // ==========================================================
-
     double parsedAmountReceived = _parseDouble(map['amountReceived']);
     double parsedAdvanceAmount = _parseDouble(map['advanceAmount']);
     double legacyReceivedAmount = _parseDouble(map['receivedAmount']);
 
-    // Final Received resolves modern structure first, falls back to combination for legacy data
     double finalReceived = parsedAmountReceived > 0
         ? parsedAmountReceived
         : (parsedAdvanceAmount + legacyReceivedAmount);
 
-    // Outstanding natively permits negative values to safely track overpayments
     double outstanding = map.containsKey('amountOutstanding')
         ? _parseDouble(map['amountOutstanding'])
         : (grandTotal - finalReceived);
@@ -509,10 +502,8 @@ class ExportInvoiceModel {
         ? _parseDouble(map['advancePercentage'])
         : (grandTotal > 0 ? (parsedAdvanceAmount / grandTotal) * 100 : 0.0);
 
-    // ✅ FIX 2: Advance % Rounded to 2 decimal places
     double advancePct = double.parse(advancePctRaw.toStringAsFixed(2));
 
-    // ✅ FIX 1: Payment Status Dynamic Computation
     String computedStatus;
     if (grandTotal <= 0) {
       computedStatus = 'DRAFT';
@@ -559,7 +550,7 @@ class ExportInvoiceModel {
       updatedAt: (map['updatedAt'] as Timestamp?)?.toDate() ?? DateTime.now(),
       version: _parseInt(map['version'] ?? 1),
       isActive: map['isActive'] as bool? ?? true,
-      receivedAmount: legacyReceivedAmount, // Securely preserved for strict architectural compliance
+      receivedAmount: legacyReceivedAmount,
       advanceAmount: parsedAdvanceAmount,
       advancePercentage: advancePct,
       amountReceived: finalReceived,
