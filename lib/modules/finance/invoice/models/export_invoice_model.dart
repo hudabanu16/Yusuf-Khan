@@ -167,17 +167,22 @@ class Logistics {
   });
 
   Map<String, dynamic> toMap() {
-    return {
+    final data = <String, dynamic>{
       'preCarriageBy': preCarriageBy,
       'modeOfTransport': modeOfTransport,
       'vesselOrFlight': vesselOrFlight,
       'shippingBillNo': shippingBillNo,
-      'shippingBillDate': shippingBillDate != null ? Timestamp.fromDate(shippingBillDate!) : null,
       'marksAndNos': marksAndNos,
       'numberOfPackages': numberOfPackages,
       'grossWeight': grossWeight,
       'netWeight': netWeight,
     };
+
+    if (shippingBillDate != null) {
+      data['shippingBillDate'] = Timestamp.fromDate(shippingBillDate!);
+    }
+
+    return data;
   }
 
   factory Logistics.fromMap(Map<String, dynamic> map) {
@@ -426,13 +431,12 @@ class ExportInvoiceModel {
   });
 
   Map<String, dynamic> toMap() {
-    return {
+    final data = <String, dynamic>{
       'companyId': companyId,
       'customerId': customerId,
       'invoiceNumber': invoiceNumber,
       'exportReference': exportReference,
       'invoiceDate': Timestamp.fromDate(invoiceDate),
-      'buyerOrderDate': buyerOrderDate != null ? Timestamp.fromDate(buyerOrderDate!) : null,
       'dueDate': Timestamp.fromDate(dueDate),
       'paymentTerms': paymentTerms,
       'baseCurrency': baseCurrency,
@@ -466,6 +470,12 @@ class ExportInvoiceModel {
       'baseAmountOutstanding': baseAmountOutstanding,
       'paymentStatus': paymentStatus,
     };
+
+    if (buyerOrderDate != null) {
+      data['buyerOrderDate'] = Timestamp.fromDate(buyerOrderDate!);
+    }
+
+    return data;
   }
 
   factory ExportInvoiceModel.fromMap(Map<String, dynamic> map, String docId) {

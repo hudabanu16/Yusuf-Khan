@@ -24,8 +24,14 @@ class PaymentModel {
   final String referenceNo;
   final String notes;
   final String paymentType;
+
+  // Audit Trail
   final String createdBy;
+  final String createdByName;
   final DateTime createdAt;
+  final String? updatedBy;
+  final String? updatedByName;
+  final DateTime? updatedAt;
 
   static double _parseDouble(dynamic value) {
     if (value == null) return 0.0;
@@ -52,55 +58,54 @@ class PaymentModel {
     required this.notes,
     this.paymentType = 'AGAINST_INVOICE',
     required this.createdBy,
+    this.createdByName = 'Unknown User',
     required this.createdAt,
+    this.updatedBy,
+    this.updatedByName,
+    this.updatedAt,
   });
 
-  // 🔴 SAFE PARSING: Prevents Flutter null-check and int-to-double crashes
   factory PaymentModel.fromMap(Map<String, dynamic> data, String documentId) {
     double parsedExchangeRate = _parseDouble(data['exchangeRate']);
 
     return PaymentModel(
       id: documentId,
       companyId: (data['companyId'] is String && data['companyId'].toString().trim().isNotEmpty)
-          ? data['companyId'].toString().trim()
-          : '',
-
+          ? data['companyId'].toString().trim() : '',
       customerId: (data['customerId'] is String && data['customerId'].toString().trim().isNotEmpty)
-          ? data['customerId'].toString().trim()
-          : '',
+          ? data['customerId'].toString().trim() : '',
       customerName: (data['customerName'] is String && data['customerName'].toString().trim().isNotEmpty)
-          ? data['customerName'].toString().trim()
-          : 'Unknown Customer',
+          ? data['customerName'].toString().trim() : 'Unknown Customer',
       receiptNumber: (data['receiptNumber'] is String && data['receiptNumber'].toString().trim().isNotEmpty)
-          ? data['receiptNumber'].toString().trim()
-          : 'N/A',
+          ? data['receiptNumber'].toString().trim() : 'N/A',
       paymentDate: (data['paymentDate'] is Timestamp)
-          ? (data['paymentDate'] as Timestamp).toDate()
-          : DateTime.now(),
+          ? (data['paymentDate'] as Timestamp).toDate() : DateTime.now(),
       totalAmount: _parseDouble(data['totalAmount']),
       allocatedAmount: _parseDouble(data['allocatedAmount']),
       advanceAmount: _parseDouble(data['advanceAmount']),
       currency: (data['currency'] is String && data['currency'].toString().isNotEmpty)
-          ? data['currency']
-          : 'USD',
+          ? data['currency'] : 'USD',
       exchangeRate: parsedExchangeRate > 0 ? parsedExchangeRate : 1.0,
       amountInr: _parseDouble(data['amountInr']),
       paymentMode: (data['paymentMode'] is String && data['paymentMode'].toString().trim().isNotEmpty)
-          ? data['paymentMode'].toString().trim()
-          : '',
+          ? data['paymentMode'].toString().trim() : '',
       referenceNo: (data['referenceNo'] is String && data['referenceNo'].toString().trim().isNotEmpty)
-          ? data['referenceNo'].toString().trim()
-          : '',
+          ? data['referenceNo'].toString().trim() : '',
       notes: (data['notes'] is String && data['notes'].toString().trim().isNotEmpty)
-          ? data['notes'].toString().trim()
-          : '',
+          ? data['notes'].toString().trim() : '',
       paymentType: data['paymentType'] ?? 'AGAINST_INVOICE',
+
+      // Safe Audit Trail Parsing
       createdBy: (data['createdBy'] is String && data['createdBy'].toString().trim().isNotEmpty)
-          ? data['createdBy'].toString().trim()
-          : '',
+          ? data['createdBy'].toString().trim() : '',
+      createdByName: (data['createdByName'] is String && data['createdByName'].toString().trim().isNotEmpty)
+          ? data['createdByName'].toString().trim() : '',
       createdAt: (data['createdAt'] is Timestamp)
-          ? (data['createdAt'] as Timestamp).toDate()
-          : DateTime.now(),
+          ? (data['createdAt'] as Timestamp).toDate() : DateTime.now(),
+      updatedBy: data['updatedBy']?.toString().trim(),
+      updatedByName: data['updatedByName']?.toString().trim(),
+      updatedAt: data['updatedAt'] != null && data['updatedAt'] is Timestamp
+          ? (data['updatedAt'] as Timestamp).toDate() : null,
     );
   }
 
@@ -122,7 +127,11 @@ class PaymentModel {
       'notes': notes,
       'paymentType': paymentType,
       'createdBy': createdBy,
+      'createdByName': createdByName,
       'createdAt': Timestamp.fromDate(createdAt),
+      'updatedBy': updatedBy,
+      'updatedByName': updatedByName,
+      'updatedAt': updatedAt != null ? Timestamp.fromDate(updatedAt!) : null,
     };
   }
 }

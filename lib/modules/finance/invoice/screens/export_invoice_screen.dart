@@ -4,8 +4,15 @@
 // 2. collection: export_invoices -> customerId (Ascending) + status (Ascending)
 // 3. collection: outstanding -> status (Ascending) + dueDate (Ascending)
 
+import 'dart:convert';
+import 'dart:typed_data';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
+import 'package:pdf/pdf.dart';
+import 'package:pdf/widgets.dart' as pw;
+import 'package:printing/printing.dart';
 
 import '../models/export_invoice_item.dart';
 import '../models/export_invoice_model.dart';
@@ -19,6 +26,8 @@ const Color primaryColor = Color(0xFF1A3A52);
 const Color accentColor = Color(0xFF3B82F6);
 const Color backgroundBg = Color(0xFFF8FAFC);
 const Color surfaceColor = Colors.white;
+
+String safe(String? v) => (v ?? '').trim();
 
 IconData _getPaymentModeIcon(String mode) {
   if (mode.contains('Bank') || mode.contains('Wire')) return Icons.account_balance;
@@ -34,6 +43,7 @@ class ExportSummaryData {
   final double freight;
   final double insurance;
   final double taxAmt;
+  final double roundOff;
   final double grandTotalForeign;
   final double exchangeRate;
   final double outstanding;
@@ -42,7 +52,7 @@ class ExportSummaryData {
 
   ExportSummaryData({
     required this.subtotal, required this.freight, required this.insurance,
-    required this.taxAmt, required this.grandTotalForeign, required this.exchangeRate,
+    required this.taxAmt, required this.roundOff, required this.grandTotalForeign, required this.exchangeRate,
     required this.outstanding, required this.baseAmountOutstanding, required this.paymentStatus,
   });
 }
@@ -140,7 +150,7 @@ class _ExportInvoiceScreenState extends State<ExportInvoiceScreen> {
 
   Widget _buildForm(BuildContext context, bool isDesktop, bool isLocked) {
     return IgnorePointer(
-      ignoring: isLocked, // SECURITY: Strict Form Lock
+      ignoring: isLocked || _state.isSaving.value,
       child: Form(
         key: _state.formKey,
         child: SingleChildScrollView(
@@ -154,8 +164,17 @@ class _ExportInvoiceScreenState extends State<ExportInvoiceScreen> {
                 child: Column(
                   children: [
                     Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Expanded(child: _CustomField(label: 'Invoice No. (Auto-Generated)', controller: _state.invoiceNoCtrl, required: true, readOnly: true, icon: Icons.numbers)),
+                        Expanded(
+                            child: _CustomField(
+                                label: _state.invoiceId == null ? 'Draft Invoice No.' : 'Invoice No.',
+                                controller: _state.invoiceNoCtrl,
+                                required: true,
+                                readOnly: true,
+                                icon: Icons.numbers
+                            )
+                        ),
                         const SizedBox(width: 16),
                         Expanded(
                           child: ValueListenableBuilder<DateTime>(
@@ -173,9 +192,36 @@ class _ExportInvoiceScreenState extends State<ExportInvoiceScreen> {
                           ),
                         ),
                         const SizedBox(width: 16),
-                        Expanded(child: _CustomField(label: 'Place of Supply *', controller: _state.placeOfSupplyCtrl, required: true, readOnly: true)),
+                        Expanded(
+                          child: ValueListenableBuilder<String>(
+                            valueListenable: _state.selectedPlaceOfSupply,
+                            builder: (context, pos, _) => Column(
+                              children: [
+                                DropdownButtonFormField<String>(
+                                  value: pos,
+                                  decoration: _inputDecoration('Place of Supply *', Icons.location_on),
+                                  items: _state.placeOfSupplyOptions.map((e) => DropdownMenuItem(value: e, child: Text(e))).toList(),
+                                  onChanged: (v) => _state.selectedPlaceOfSupply.value = v!,
+                                ),
+                                if (pos == 'Custom') ...[
+                                  const SizedBox(height: 12),
+                                  _CustomField(
+                                    label: 'Enter Custom Place of Supply',
+                                    controller: _state.customPlaceOfSupplyCtrl,
+                                    required: true,
+                                    validator: (v) {
+                                      if (v == null || safe(v).isEmpty) return 'Required for Custom POS';
+                                      return null;
+                                    },
+                                  ),
+                                ]
+                              ],
+                            ),
+                          ),
+                        ),
                       ],
                     ),
+                    const SizedBox(height: 12),
                     Row(
                       children: [
                         Expanded(child: _CustomField(label: 'Export Reference No.', controller: _state.exportRefCtrl)),
@@ -194,12 +240,13 @@ class _ExportInvoiceScreenState extends State<ExportInvoiceScreen> {
                         ),
                         const SizedBox(width: 16),
                         Expanded(child: _CustomField(
-                          label: 'Supplier IEC',
+                          label: 'Supplier IEC (Auto-Fetched)',
                           controller: _state.supIEC,
                           icon: Icons.verified_user,
+                          readOnly: true,
                           validator: (v) {
-                            if (v != null && v.isNotEmpty && !RegExp(r'^[A-Z]{5}[0-9]{4}[A-Z]{1}$').hasMatch(v)) {
-                              return 'Invalid IEC (Must match 10-char PAN format)';
+                            if (v != null && v.isNotEmpty && !RegExp(r'^[0-9]{10}$').hasMatch(v)) {
+                              return 'Invalid IEC (Must be 10 digits)';
                             }
                             return null;
                           },
@@ -215,27 +262,47 @@ class _ExportInvoiceScreenState extends State<ExportInvoiceScreen> {
                 icon: Icons.account_balance,
                 child: ValueListenableBuilder<bool>(
                   valueListenable: _state.isLUT,
-                  builder: (context, isLUT, _) => Column(
-                    children: [
-                      SwitchListTile(
-                          title: const Text('Export Under LUT / Bond (No IGST)', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
-                          subtitle: const Text('Supply meant for export without payment of IGST', style: TextStyle(fontSize: 12)),
-                          value: isLUT,
-                          onChanged: _state.toggleLUT,
-                          activeColor: accentColor,
-                          contentPadding: EdgeInsets.zero
-                      ),
-                      if (isLUT) Padding(
-                        padding: const EdgeInsets.only(top: 16.0),
-                        child: Row(
+                  builder: (context, isLUT, _) => ValueListenableBuilder<bool>(
+                    valueListenable: _state.isReverseCharge,
+                    builder: (context, isRC, _) => Column(
+                      children: [
+                        Row(
                           children: [
-                            Expanded(child: _CustomField(label: 'LUT Number', controller: _state.lutNumberCtrl, required: true)),
-                            const SizedBox(width: 16),
-                            Expanded(child: _CustomField(label: 'AD Code', controller: _state.adCodeCtrl)),
+                            Expanded(
+                              child: SwitchListTile(
+                                  title: const Text('Export Under LUT / Bond (No IGST)', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
+                                  subtitle: const Text('Without payment of IGST', style: TextStyle(fontSize: 12)),
+                                  value: isLUT,
+                                  onChanged: _state.toggleLUT,
+                                  activeColor: accentColor,
+                                  contentPadding: EdgeInsets.zero
+                              ),
+                            ),
+                            const SizedBox(width: 24),
+                            Expanded(
+                              child: SwitchListTile(
+                                  title: const Text('Reverse Charge', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
+                                  subtitle: Text(isRC ? 'Yes' : 'No', style: TextStyle(fontSize: 12, color: isRC ? Colors.green : Colors.grey.shade600, fontWeight: FontWeight.bold)),
+                                  value: isRC,
+                                  onChanged: (v) => _state.isReverseCharge.value = v,
+                                  activeColor: accentColor,
+                                  contentPadding: EdgeInsets.zero
+                              ),
+                            ),
                           ],
                         ),
-                      )
-                    ],
+                        if (isLUT) Padding(
+                          padding: const EdgeInsets.only(top: 16.0),
+                          child: Row(
+                            children: [
+                              Expanded(child: _CustomField(label: 'LUT Number', controller: _state.lutNumberCtrl, required: true)),
+                              const SizedBox(width: 16),
+                              Expanded(child: _CustomField(label: 'AD Code', controller: _state.adCodeCtrl)),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
               ),
@@ -268,7 +335,7 @@ class _ExportInvoiceScreenState extends State<ExportInvoiceScreen> {
                             required: true,
                             validator: (v) {
                               if (v == null || v.isEmpty) return 'Required';
-                              if ((double.tryParse(v) ?? 0) <= 0) return 'Must be > 0';
+                              if ((double.tryParse(safe(v)) ?? 0.0) <= 0) return 'Must be > 0';
                               return null;
                             },
                           ),
@@ -288,7 +355,17 @@ class _ExportInvoiceScreenState extends State<ExportInvoiceScreen> {
               _SectionCard(
                 title: '4. Buyer & Consignee',
                 icon: Icons.local_shipping,
-                action: TextButton.icon(onPressed: () => _pickCustomer(context), icon: const Icon(Icons.search), label: const Text('Select Customer')),
+                action: _state.invoiceId != null
+                    ? Chip(
+                    label: const Text('Customer Locked', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
+                    backgroundColor: Colors.grey.shade100,
+                    side: BorderSide(color: Colors.grey.shade300)
+                )
+                    : TextButton.icon(
+                    onPressed: () => _pickCustomer(context),
+                    icon: const Icon(Icons.search),
+                    label: const Text('Select Customer')
+                ),
                 child: Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -297,11 +374,11 @@ class _ExportInvoiceScreenState extends State<ExportInvoiceScreen> {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           const _SubHeader('BUYER (BILL TO)'),
-                          _CustomField(label: 'Company Name *', controller: _state.billName, required: true, onChanged: (_) => _state.handleBillToChange()),
-                          _CustomField(label: 'Address', controller: _state.billAddress, maxLines: 2, onChanged: (_) => _state.handleBillToChange()),
-                          Row(children: [Expanded(child: _CustomField(label: 'Country', controller: _state.billCountry, onChanged: (_) => _state.handleBillToChange())), const SizedBox(width: 8), Expanded(child: _CustomField(label: 'Email', controller: _state.billEmail, onChanged: (_) => _state.handleBillToChange()))]),
-                          _CustomField(label: 'Contact No.', controller: _state.billPhone, onChanged: (_) => _state.handleBillToChange()),
-                          _CustomField(label: 'Contact Person', controller: _state.billContact, onChanged: (_) => _state.handleBillToChange()),
+                          _CustomField(label: 'Company Name *', controller: _state.billName, required: true, onChanged: (_) => _state.handleBillToChange(), readOnly: _state.invoiceId != null),
+                          _CustomField(label: 'Address', controller: _state.billAddress, maxLines: 2, onChanged: (_) => _state.handleBillToChange(), readOnly: _state.invoiceId != null),
+                          Row(children: [Expanded(child: _CustomField(label: 'Country', controller: _state.billCountry, onChanged: (_) => _state.handleBillToChange(), readOnly: _state.invoiceId != null)), const SizedBox(width: 8), Expanded(child: _CustomField(label: 'Email', controller: _state.billEmail, onChanged: (_) => _state.handleBillToChange(), readOnly: _state.invoiceId != null))]),
+                          _CustomField(label: 'Contact No.', controller: _state.billPhone, onChanged: (_) => _state.handleBillToChange(), readOnly: _state.invoiceId != null),
+                          _CustomField(label: 'Contact Person', controller: _state.billContact, onChanged: (_) => _state.handleBillToChange(), readOnly: _state.invoiceId != null),
                         ],
                       ),
                     ),
@@ -312,15 +389,15 @@ class _ExportInvoiceScreenState extends State<ExportInvoiceScreen> {
                         builder: (context, sameAsBill, _) => Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [const _SubHeader('CONSIGNEE (SHIP TO)'), Row(children: [Switch(value: sameAsBill, onChanged: _state.toggleSameAsBill, activeColor: accentColor), const Text('Same as Buyer', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600))])]),
+                            Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [const _SubHeader('CONSIGNEE (SHIP TO)'), Row(children: [Switch(value: sameAsBill, onChanged: _state.invoiceId != null ? null : _state.toggleSameAsBill, activeColor: accentColor), const Text('Same as Buyer', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600))])]),
                             if (sameAsBill) Container(height: 120, decoration: BoxDecoration(color: Colors.grey.shade100, borderRadius: BorderRadius.circular(8)), child: const Center(child: Text("Consignee details matching Buyer.", style: TextStyle(color: Colors.grey))))
                             else Column(
                               children: [
-                                _CustomField(label: 'Company Name *', controller: _state.shipName, required: true),
-                                _CustomField(label: 'Address', controller: _state.shipAddress, maxLines: 2),
-                                Row(children: [Expanded(child: _CustomField(label: 'Country', controller: _state.shipCountry)), const SizedBox(width: 8), Expanded(child: _CustomField(label: 'Email', controller: _state.shipEmail))]),
-                                _CustomField(label: 'Contact No.', controller: _state.shipPhone),
-                                _CustomField(label: 'Contact Person', controller: _state.shipContact),
+                                _CustomField(label: 'Company Name *', controller: _state.shipName, required: true, readOnly: _state.invoiceId != null),
+                                _CustomField(label: 'Address', controller: _state.shipAddress, maxLines: 2, readOnly: _state.invoiceId != null),
+                                Row(children: [Expanded(child: _CustomField(label: 'Country', controller: _state.shipCountry, readOnly: _state.invoiceId != null)), const SizedBox(width: 8), Expanded(child: _CustomField(label: 'Email', controller: _state.shipEmail, readOnly: _state.invoiceId != null))]),
+                                _CustomField(label: 'Contact No.', controller: _state.shipPhone, readOnly: _state.invoiceId != null),
+                                _CustomField(label: 'Contact Person', controller: _state.shipContact, readOnly: _state.invoiceId != null),
                               ],
                             ),
                           ],
@@ -400,6 +477,42 @@ class _ExportInvoiceScreenState extends State<ExportInvoiceScreen> {
                           Expanded(child: _CustomField(label: 'Net Wt (KG)', controller: _state.netWtCtrl, keyboardType: const TextInputType.numberWithOptions(decimal: true))),
                         ],
                       ),
+                      const Divider(height: 32),
+                      Row(
+                        children: [
+                          Expanded(
+                              child: _CustomField(
+                                label: 'Freight Charges',
+                                controller: _state.freightCtrl,
+                                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                                icon: Icons.local_shipping,
+                                validator: (v) {
+                                  if (v != null && v.isNotEmpty) {
+                                    final val = double.tryParse(safe(v)) ?? 0.0;
+                                    if (val < 0) return 'Cannot be negative';
+                                  }
+                                  return null;
+                                },
+                              )
+                          ),
+                          const SizedBox(width: 16),
+                          Expanded(
+                              child: _CustomField(
+                                label: 'Insurance Charges',
+                                controller: _state.insuranceCtrl,
+                                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                                icon: Icons.security,
+                                validator: (v) {
+                                  if (v != null && v.isNotEmpty) {
+                                    final val = double.tryParse(safe(v)) ?? 0.0;
+                                    if (val < 0) return 'Cannot be negative';
+                                  }
+                                  return null;
+                                },
+                              )
+                          ),
+                        ],
+                      ),
                     ],
                   ),
                 ),
@@ -460,31 +573,36 @@ class _ExportInvoiceScreenState extends State<ExportInvoiceScreen> {
                       ],
                     ),
                     Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Expanded(
-                          child: Autocomplete<String>(
-                            initialValue: TextEditingValue(text: _state.paymentTermsCtrl.text),
-                            optionsBuilder: (TextEditingValue textEditingValue) {
-                              if (textEditingValue.text.isEmpty) return _state.paymentTermsList;
-                              return _state.paymentTermsList.where((String option) => option.toLowerCase().contains(textEditingValue.text.toLowerCase()));
-                            },
-                            onSelected: (String selection) {
-                              _state.paymentTermsCtrl.text = selection;
-                              _state.autoCalcDueDate();
-                            },
-                            fieldViewBuilder: (context, controller, focusNode, onFieldSubmitted) {
-                              return _CustomField(
-                                label: 'Payment Terms (Due Logic)',
-                                controller: controller,
-                                icon: Icons.handshake,
-                                focusNode: focusNode,
-                                suffixIcon: const Icon(Icons.arrow_drop_down, color: Colors.blueGrey),
-                                onChanged: (val) {
-                                  _state.paymentTermsCtrl.text = val;
-                                  _state.autoCalcDueDate();
-                                },
-                              );
-                            },
+                          child: ValueListenableBuilder<String>(
+                            valueListenable: _state.selectedPaymentTermState,
+                            builder: (context, currentTerm, _) => Column(
+                              children: [
+                                DropdownButtonFormField<String>(
+                                  value: currentTerm,
+                                  decoration: _inputDecoration('Payment Terms (Due Logic)', Icons.handshake),
+                                  items: _state.paymentTermsList.map((e) => DropdownMenuItem(value: e, child: Text(e))).toList(),
+                                  onChanged: (v) {
+                                    if (v != null) {
+                                      _state.selectedPaymentTermState.value = v;
+                                      _state.autoCalcDueDate();
+                                    }
+                                  },
+                                ),
+                                if (currentTerm == 'Custom Terms') ...[
+                                  const SizedBox(height: 12),
+                                  _CustomField(
+                                    label: 'Enter Custom Term Details',
+                                    controller: _state.customPaymentTermCtrl,
+                                    required: true,
+                                    validator: (v) => v == null || safe(v).isEmpty ? 'Required' : null,
+                                    onChanged: (_) => _state.autoCalcDueDate(),
+                                  ),
+                                ]
+                              ],
+                            ),
                           ),
                         ),
                         const SizedBox(width: 16),
@@ -495,8 +613,8 @@ class _ExportInvoiceScreenState extends State<ExportInvoiceScreen> {
                               onTap: () async {
                                 final d = await showDatePicker(context: context, initialDate: dueDate, firstDate: DateTime(2000), lastDate: DateTime(2100));
                                 if (d != null) {
-                                  if (_state.paymentTermsCtrl.text != 'Custom Terms') {
-                                    _state.paymentTermsCtrl.text = 'Custom Terms';
+                                  if (_state.selectedPaymentTermState.value != 'Custom Terms') {
+                                    _state.selectedPaymentTermState.value = 'Custom Terms';
                                   }
                                   _state.dueDateNotifier.value = d;
                                 }
@@ -568,7 +686,7 @@ class _ExportInvoiceScreenState extends State<ExportInvoiceScreen> {
           Container(padding: const EdgeInsets.all(24), decoration: BoxDecoration(color: _state.isCancelled ? Colors.red.shade900 : const Color(0xFF0F2A3D), border: Border(bottom: BorderSide(color: Colors.grey.shade800))), child: Row(children: [const Icon(Icons.analytics, color: Colors.white), const SizedBox(width: 12), Text(_state.isCancelled ? 'Cancelled Document' : 'Live Summary', style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold))])),
           Expanded(
             child: IgnorePointer(
-              ignoring: isLocked,
+              ignoring: isLocked || _state.isSaving.value,
               child: SingleChildScrollView(
                 padding: const EdgeInsets.all(24),
                 child: Column(
@@ -587,27 +705,60 @@ class _ExportInvoiceScreenState extends State<ExportInvoiceScreen> {
                       ),
                     ),
                     const SizedBox(height: 16),
-                    _CustomField(label: 'Freight Charges', controller: _state.freightCtrl, keyboardType: TextInputType.number),
-                    _CustomField(label: 'Insurance Charges', controller: _state.insuranceCtrl, keyboardType: TextInputType.number),
-
-                    const Divider(height: 16),
 
                     ValueListenableBuilder<ExportSummaryData>(
                       valueListenable: _state.summaryState,
                       builder: (context, summary, _) {
-                        return ExportTotalsCard(
-                          // ✅ FIX 1 & 2: Added exact new parameters and removed items parameter
-                          subtotal: summary.subtotal,
-                          freight: summary.freight,
-                          insurance: summary.insurance,
-                          taxAmt: summary.taxAmt,
-                          grandTotalForeign: summary.grandTotalForeign,
-                          exchangeRate: summary.exchangeRate,
-                          currency: _state.selectedCurrency.value,
-                          isLut: _state.isLUT.value,
-                          amountReceived: _state.existingAmountReceived,
-                          amountOutstanding: summary.outstanding,
-                          paymentStatus: summary.paymentStatus,
+                        return Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            if (summary.roundOff != 0.0)
+                              Padding(
+                                padding: const EdgeInsets.only(bottom: 8.0, right: 8.0),
+                                child: Text('Round Off: ${summary.roundOff > 0 ? '+' : ''}${summary.roundOff.toStringAsFixed(2)}', textAlign: TextAlign.right, style: TextStyle(fontStyle: FontStyle.italic, color: Colors.grey.shade600, fontWeight: FontWeight.w500)),
+                              ),
+                            ExportTotalsCard(
+                              subtotal: summary.subtotal,
+                              freight: summary.freight,
+                              insurance: summary.insurance,
+                              taxAmt: summary.taxAmt,
+                              grandTotalForeign: summary.grandTotalForeign,
+                              exchangeRate: summary.exchangeRate,
+                              currency: _state.selectedCurrency.value,
+                              isLut: _state.isLUT.value,
+                              amountReceived: _state.existingAmountReceived,
+                              amountOutstanding: summary.outstanding,
+                              paymentStatus: summary.paymentStatus,
+                            ),
+                          ],
+                        );
+                      },
+                    ),
+
+                    ValueListenableBuilder<bool>(
+                      valueListenable: _state.isReverseCharge,
+                      builder: (context, isRC, _) {
+                        if (!isRC) return const SizedBox.shrink();
+                        return Container(
+                          margin: const EdgeInsets.only(top: 16),
+                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                          decoration: BoxDecoration(
+                            color: Colors.orange.shade50,
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(color: Colors.orange.shade200),
+                          ),
+                          child: Row(
+                            children: [
+                              Icon(Icons.warning_amber_rounded, color: Colors.orange.shade700, size: 20),
+                              const SizedBox(width: 10),
+                              Expanded(
+                                child: Text(
+                                  'Tax payable under Reverse Charge',
+                                  style: TextStyle(color: Colors.orange.shade900, fontWeight: FontWeight.bold, fontSize: 13),
+                                ),
+                              ),
+                            ],
+                          ),
                         );
                       },
                     ),
@@ -630,7 +781,12 @@ class _ExportInvoiceScreenState extends State<ExportInvoiceScreen> {
                     const SizedBox(height: 12),
                     ElevatedButton.icon(onPressed: isSaving ? null : () => _handleSave(context, isDraft: true), icon: const Icon(Icons.drafts, color: Colors.black87), label: Text(_state.invoiceId != null ? 'Update Draft' : 'Save as Draft', style: const TextStyle(color: Colors.black87)), style: ElevatedButton.styleFrom(backgroundColor: Colors.grey.shade200, elevation: 0, padding: const EdgeInsets.symmetric(vertical: 16), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)))),
                     const SizedBox(height: 12),
-                    ElevatedButton.icon(onPressed: isSaving ? null : () => _handleSave(context, isDraft: false), icon: isSaving ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2)) : const Icon(Icons.check_circle), label: Text(isSaving ? 'Processing...' : 'Final Submit', style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)), style: ElevatedButton.styleFrom(backgroundColor: accentColor, foregroundColor: Colors.white, padding: const EdgeInsets.symmetric(vertical: 16), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)))),
+                    ElevatedButton.icon(
+                        onPressed: isSaving ? null : () => _handleSave(context, isDraft: false),
+                        icon: isSaving ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2)) : const Icon(Icons.check_circle),
+                        label: Text(isSaving ? 'Processing...' : 'Final Submit', style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                        style: ElevatedButton.styleFrom(backgroundColor: accentColor, foregroundColor: Colors.white, disabledBackgroundColor: Colors.blue.shade200, padding: const EdgeInsets.symmetric(vertical: 16), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)))
+                    ),
                   ],
                 ),
               ),
@@ -642,7 +798,30 @@ class _ExportInvoiceScreenState extends State<ExportInvoiceScreen> {
 
   Widget _buildMobileBottomBar(BuildContext context, bool isLocked) {
     if (isLocked) return const SizedBox.shrink();
-    return Container(padding: const EdgeInsets.all(16), decoration: BoxDecoration(color: Colors.white, boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.1), blurRadius: 10)]), child: SafeArea(child: Row(children: [Expanded(child: OutlinedButton(onPressed: () => _handlePreview(context), child: const Text('Preview'))), const SizedBox(width: 12), Expanded(child: ElevatedButton(onPressed: () => _handleSave(context, isDraft: false), style: ElevatedButton.styleFrom(backgroundColor: accentColor, foregroundColor: Colors.white), child: const Text('Submit')))])));
+    return ValueListenableBuilder<bool>(
+        valueListenable: _state.isSaving,
+        builder: (context, isSaving, _) {
+          return Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(color: Colors.white, boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.1), blurRadius: 10)]),
+              child: SafeArea(
+                  child: Row(
+                      children: [
+                        Expanded(child: OutlinedButton(onPressed: isSaving ? null : () => _handlePreview(context), child: const Text('Preview'))),
+                        const SizedBox(width: 12),
+                        Expanded(
+                            child: ElevatedButton(
+                                onPressed: isSaving ? null : () => _handleSave(context, isDraft: false),
+                                style: ElevatedButton.styleFrom(backgroundColor: accentColor, foregroundColor: Colors.white),
+                                child: isSaving ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2)) : const Text('Submit')
+                            )
+                        )
+                      ]
+                  )
+              )
+          );
+        }
+    );
   }
 
   Future<void> _pickCustomer(BuildContext context) async {
@@ -656,15 +835,17 @@ class _ExportInvoiceScreenState extends State<ExportInvoiceScreen> {
   }
 
   void _handlePreview(BuildContext context) {
-    if (_state.selectedCustomerId == null || _state.selectedCustomerId!.isEmpty) { ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Please select a customer first.'), backgroundColor: Colors.red)); return; }
-    if (_state.items.value.isEmpty) { ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Please add at least 1 item.'), backgroundColor: Colors.red)); return; }
+    if ((_state.selectedCustomerId ?? '').trim().isEmpty) { ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Please select a customer first.'), backgroundColor: Colors.red)); return; }
+    if (_state.items.value.where((e) => safe(e.name).isNotEmpty).isEmpty) { ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Please add at least 1 item.'), backgroundColor: Colors.red)); return; }
 
-    if (_state.items.value.any((item) => item.hsnCode.isEmpty)) {
+    if (_state.items.value.any((item) => safe(item.hsnCode).isEmpty)) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('HSN Code is mandatory for all export items.'), backgroundColor: Colors.red));
       return;
     }
 
-    Navigator.push(context, MaterialPageRoute(builder: (_) => ExportInvoiceDocumentView(invoice: _state.buildModel('Draft', _state.invoiceNoCtrl.text))));
+    String safeNumber = safe(_state.invoiceNoCtrl.text).replaceAll(' (Preview)', '');
+    if (safeNumber.isEmpty) safeNumber = _state.generateDraftInvoiceNumber();
+    Navigator.push(context, MaterialPageRoute(builder: (_) => ExportInvoiceDocumentView(invoice: _state.buildModel('Draft', safeNumber))));
   }
 
   Future<void> _handleSave(BuildContext context, {required bool isDraft}) async {
@@ -673,48 +854,64 @@ class _ExportInvoiceScreenState extends State<ExportInvoiceScreen> {
       return;
     }
 
-    if (_state.selectedCustomerId == null || _state.selectedCustomerId!.trim().isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('CRITICAL: Customer must be selected from the list before saving.'), backgroundColor: Colors.red));
-      return;
-    }
-    if (_state.items.value.isEmpty) { ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('At least 1 item is required to save.'), backgroundColor: Colors.red)); return; }
-
-    if (_state.items.value.any((item) => item.hsnCode.trim().isEmpty)) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('HSN Code is mandatory for all export items.'), backgroundColor: Colors.red));
-      return;
-    }
-
     if (_state.subtotal <= 0) { ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Total amount must be greater than 0.'), backgroundColor: Colors.red)); return; }
     if (!_state.formKey.currentState!.validate()) { ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Please fill all required fields correctly.'), backgroundColor: Colors.red)); return; }
 
-    final String docId = await _state.saveToFirestore(isDraft ? 'Draft' : 'Submitted');
+    try {
+      final String docId = await _state.saveToFirestore(isDraft ? 'Draft' : 'Submitted');
 
-    await _state.createOutstandingEntry(docId, isDraft: isDraft);
+      if (!mounted) return;
 
-    if (!mounted) return;
-
-    showDialog(
-        context: context, barrierDismissible: false,
-        builder: (ctx) => AlertDialog(
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-          title: const Column(children: [Icon(Icons.check_circle, color: Colors.green, size: 48), SizedBox(height: 16), Text('Invoice Saved!', textAlign: TextAlign.center, style: TextStyle(fontWeight: FontWeight.bold))]),
-          content: Text(isDraft ? 'Your draft has been securely saved.' : 'Your invoice has been securely saved to the ERP. Outstanding ledgers have been updated automatically.', textAlign: TextAlign.center),
-          actionsAlignment: MainAxisAlignment.center,
-          actions: [
-            TextButton(onPressed: () { Navigator.pop(ctx); if (widget.onBack != null) widget.onBack!(); }, child: const Text('Done', style: TextStyle(color: Colors.grey))),
-            if (!isDraft) ...[
-              ElevatedButton(
-                style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF3B82F6)),
-                onPressed: () {
-                  Navigator.pop(ctx); if (widget.onBack != null) widget.onBack!();
-                  Navigator.push(context, MaterialPageRoute(builder: (_) => RecordPaymentScreen(companyId: widget.companyId, userUid: widget.userUid, customerName: _state.billName.text)));
-                },
-                child: const Text('Record Payment', style: TextStyle(color: Colors.white)),
-              ),
+      showDialog(
+          context: context, barrierDismissible: false,
+          builder: (ctx) => AlertDialog(
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+            title: const Column(children: [Icon(Icons.check_circle, color: Colors.green, size: 48), SizedBox(height: 16), Text('Invoice Saved!', textAlign: TextAlign.center, style: TextStyle(fontWeight: FontWeight.bold))]),
+            content: Text(isDraft ? 'Your draft has been securely saved.' : 'Your invoice has been securely saved to the ERP. Outstanding ledgers have been updated automatically.', textAlign: TextAlign.center),
+            actionsAlignment: MainAxisAlignment.center,
+            actions: [
+              TextButton(onPressed: () { Navigator.pop(ctx); if (widget.onBack != null) widget.onBack!(); }, child: const Text('Done', style: TextStyle(color: Colors.grey))),
+              if (!isDraft) ...[
+                ElevatedButton(
+                  style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF3B82F6)),
+                  onPressed: () {
+                    Navigator.pop(ctx); if (widget.onBack != null) widget.onBack!();
+                    Navigator.push(context, MaterialPageRoute(builder: (_) => RecordPaymentScreen(
+                      companyId: widget.companyId,
+                      userUid: widget.userUid,
+                      customerName: safe(_state.billName.text),
+                    )));
+                  },
+                  child: const Text('Record Payment', style: TextStyle(color: Colors.white)),
+                ),
+              ],
             ],
+          )
+      );
+    } catch (e, stack) {
+      if (!mounted) return;
+      if (kDebugMode) {
+        debugPrint('❌ FIRESTORE SAVE ERROR: $e');
+        debugPrint(stack.toString());
+      }
+
+      String errorMsg = e.toString();
+      if (errorMsg.startsWith('Exception: ')) {
+        errorMsg = errorMsg.replaceFirst('Exception: ', '');
+      }
+
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Row(
+          children: [
+            const Icon(Icons.error_outline, color: Colors.white),
+            const SizedBox(width: 8),
+            Expanded(child: Text('Save Failed: $errorMsg', style: const TextStyle(fontWeight: FontWeight.bold))),
           ],
-        )
-    );
+        ),
+        backgroundColor: Colors.red.shade900,
+        behavior: SnackBarBehavior.floating,
+      ));
+    }
   }
 }
 
@@ -735,15 +932,19 @@ class ExportInvoiceState {
   final isLoading = ValueNotifier<bool>(true);
   final isSaving = ValueNotifier<bool>(false);
   final isLUT = ValueNotifier<bool>(true);
+  final isReverseCharge = ValueNotifier<bool>(false);
   final sameAsBill = ValueNotifier<bool>(false);
-
-  bool isSubmitted = false;
-  bool isCancelled = false;
 
   final selectedCurrency = ValueNotifier<String>('USD');
   final selectedTransportMode = ValueNotifier<String>('Sea / Ship');
   final selectedPaymentMode = ValueNotifier<String?>(null);
   final selectedIncoterm = ValueNotifier<String>('FOB');
+  final selectedPlaceOfSupply = ValueNotifier<String>('Out of India');
+  final selectedPaymentTermState = ValueNotifier<String>('Due on Receipt');
+
+  bool isSubmitted = false;
+  bool isCancelled = false;
+  int currentVersion = 0;
 
   final invoiceDate = ValueNotifier<DateTime>(DateTime.now());
   final buyerOrderDateNotifier = ValueNotifier<DateTime?>(null);
@@ -759,21 +960,22 @@ class ExportInvoiceState {
   final List<String> incotermsList = ['FOB', 'CIF', 'EXW', 'DAP', 'FCA', 'CFR', 'CPT', 'CIP', 'DDP'];
   final List<String> paymentModes = ['Bank Transfer', 'Wire Transfer (SWIFT / TT)', 'Letter of Credit (LC)', 'Documents Against Payment (DP)', 'Documents Against Acceptance (DA)', 'Cash', 'Cheque', 'Online Payment Gateway', 'Other'];
   final List<String> paymentTermsList = ['Advance', 'Due on Receipt', 'Net 15 Days', 'Net 30 Days', 'Net 45 Days', 'Net 60 Days', 'LC at Sight', 'DP at Sight', 'DA 30 Days', 'CAD', 'Custom Terms'];
+  final List<String> placeOfSupplyOptions = ['Out of India', 'SEZ', 'Deemed Export', 'Custom'];
   final List<String> currencies = ['USD', 'EUR', 'AED', 'GBP', 'INR', 'AUD', 'SGD'];
   final List<String> transportModes = ['Sea / Ship', 'Air / Cargo', 'Road', 'Rail', 'Other'];
 
   double existingAmountReceived = 0.0;
   String existingPaymentStatus = 'UNPAID';
 
-  final invoiceNoCtrl = TextEditingController(text: 'Auto-generated on save');
-  final placeOfSupplyCtrl = TextEditingController(text: "Out of India");
+  final invoiceNoCtrl = TextEditingController();
+  final customPlaceOfSupplyCtrl = TextEditingController();
   final exportRefCtrl = TextEditingController();
 
   final supName = TextEditingController(); final supAddress = TextEditingController(); final supGSTIN = TextEditingController(); final supPAN = TextEditingController(); final supIEC = TextEditingController(); final supState = TextEditingController();
   final lutNumberCtrl = TextEditingController(); final adCodeCtrl = TextEditingController();
   final exchangeRateCtrl = TextEditingController(text: "83.50");
 
-  final paymentTermsCtrl = TextEditingController(text: 'Due on Receipt');
+  final customPaymentTermCtrl = TextEditingController();
 
   String? selectedCustomerId;
   final billName = TextEditingController(); final billAddress = TextEditingController(); final billCountry = TextEditingController(); final billEmail = TextEditingController(); final billPhone = TextEditingController(); final billContact = TextEditingController();
@@ -819,19 +1021,58 @@ class ExportInvoiceState {
     if (invoiceId != null && invoiceId!.isNotEmpty) {
       await _loadExistingInvoice();
     } else {
+      invoiceNoCtrl.text = generateDraftInvoiceNumber();
       await _loadSupplierDetails();
       autoCalcDueDate();
     }
     isLoading.value = false;
   }
 
+  String generateDraftInvoiceNumber() {
+    final now = DateTime.now();
+    final yyyymmdd = '${now.year}${now.month.toString().padLeft(2, '0')}${now.day.toString().padLeft(2, '0')}';
+    final randomId = (now.millisecondsSinceEpoch % 10000).toString().padLeft(4, '0');
+    return 'DRAFT-$yyyymmdd-$randomId';
+  }
+
+  Future<String> generateInvoiceNumber(Transaction tx) async {
+    final counterRef = FirebaseFirestore.instance
+        .collection('companies')
+        .doc(companyId)
+        .collection('counters')
+        .doc('export_invoice_counter');
+
+    final counterSnap = await tx.get(counterRef);
+    int nextSeq = 1;
+    if (counterSnap.exists) {
+      final counterMap = counterSnap.data() as Map<String, dynamic>?;
+      nextSeq = (counterMap?['currentValue'] ?? 0) + 1;
+    }
+
+    tx.set(counterRef, {
+      'currentValue': nextSeq
+    }, SetOptions(merge: true));
+
+    final now = DateTime.now();
+    final currentYear = now.year % 100;
+    String fy;
+    if (now.month >= 4) {
+      fy = '${currentYear.toString().padLeft(2, '0')}-${(currentYear + 1).toString().padLeft(2, '0')}';
+    } else {
+      fy = '${(currentYear - 1).toString().padLeft(2, '0')}-${currentYear.toString().padLeft(2, '0')}';
+    }
+
+    return 'EXP/$fy/${nextSeq.toString().padLeft(4, '0')}';
+  }
+
   void dispose() {
-    isLoading.dispose(); isSaving.dispose(); isLUT.dispose(); sameAsBill.dispose();
+    isLoading.dispose(); isSaving.dispose(); isLUT.dispose(); isReverseCharge.dispose(); sameAsBill.dispose();
     selectedCurrency.dispose(); selectedTransportMode.dispose(); selectedPaymentMode.dispose();
     selectedIncoterm.dispose(); buyerOrderDateNotifier.dispose(); shippingBillDateNotifier.dispose();
+    selectedPlaceOfSupply.dispose(); selectedPaymentTermState.dispose();
     invoiceDate.dispose(); dueDateNotifier.dispose(); taxRate.dispose(); items.dispose(); summaryState.dispose();
-    invoiceNoCtrl.dispose(); placeOfSupplyCtrl.dispose(); exchangeRateCtrl.dispose(); exportRefCtrl.dispose();
-    paymentTermsCtrl.dispose();
+    invoiceNoCtrl.dispose(); customPlaceOfSupplyCtrl.dispose(); exchangeRateCtrl.dispose(); exportRefCtrl.dispose();
+    customPaymentTermCtrl.dispose();
     supName.dispose(); supAddress.dispose(); supGSTIN.dispose(); supPAN.dispose(); supIEC.dispose(); supState.dispose();
     lutNumberCtrl.dispose(); adCodeCtrl.dispose(); billName.dispose(); billAddress.dispose(); billCountry.dispose(); billEmail.dispose(); billPhone.dispose(); billContact.dispose();
     shipName.dispose(); shipAddress.dispose(); shipCountry.dispose(); shipEmail.dispose(); shipPhone.dispose(); shipContact.dispose();
@@ -851,29 +1092,31 @@ class ExportInvoiceState {
     String incoterm = selectedIncoterm.value.toUpperCase();
 
     if (['CFR', 'CPT'].contains(incoterm)) {
-      fr = _round(double.tryParse(freightCtrl.text) ?? 0.0);
+      fr = _round(double.tryParse(safe(freightCtrl.text)) ?? 0.0);
     } else if (['CIF', 'CIP', 'DAP', 'DDP'].contains(incoterm)) {
-      fr = _round(double.tryParse(freightCtrl.text) ?? 0.0);
-      ins = _round(double.tryParse(insuranceCtrl.text) ?? 0.0);
+      fr = _round(double.tryParse(safe(freightCtrl.text)) ?? 0.0);
+      ins = _round(double.tryParse(safe(insuranceCtrl.text)) ?? 0.0);
     }
 
     double tax = isLUT.value ? 0.0 : _round((sub + fr + ins) * (taxRate.value / 100));
-    double gt = _round(sub + fr + ins + tax);
 
-    double er;
-    try {
-      er = _round(double.parse(exchangeRateCtrl.text));
-    } catch (_) {
-      er = 0.0;
-    }
+    double rawGt = sub + fr + ins + tax;
+    double gt = rawGt.roundToDouble();
+    double roundOff = _round(gt - rawGt);
+
+    double er = double.tryParse(safe(exchangeRateCtrl.text)) ?? 0.0;
+    if (er <= 0) er = 1.0;
+    er = _round(er);
 
     double out = _round(gt - existingAmountReceived);
+    if (out < 0) out = 0;
+
     double baseOut = _round(out * er);
 
     String stat = "DRAFT";
     if (gt > 0) {
-      if (existingAmountReceived <= 0.01 && existingAmountReceived >= -0.01) stat = "UNPAID";
-      else if (existingAmountReceived >= gt - 0.01) stat = "PAID";
+      if (_round(existingAmountReceived) == 0.0) stat = "UNPAID";
+      else if (_round(existingAmountReceived) >= gt) stat = "PAID";
       else stat = "PARTIALLY PAID";
     }
 
@@ -882,6 +1125,7 @@ class ExportInvoiceState {
         freight: fr,
         insurance: ins,
         taxAmt: tax,
+        roundOff: roundOff,
         grandTotalForeign: gt,
         exchangeRate: er,
         outstanding: out,
@@ -892,7 +1136,10 @@ class ExportInvoiceState {
 
   void autoCalcDueDate() {
     final d = invoiceDate.value;
-    final term = paymentTermsCtrl.text.toLowerCase();
+    final String term = selectedPaymentTermState.value == 'Custom Terms'
+        ? safe(customPaymentTermCtrl.text).toLowerCase()
+        : selectedPaymentTermState.value.toLowerCase();
+
     if (term.contains('net 15')) dueDateNotifier.value = d.add(const Duration(days: 15));
     else if (term.contains('net 30') || term.contains('da 30')) dueDateNotifier.value = d.add(const Duration(days: 30));
     else if (term.contains('net 45')) dueDateNotifier.value = d.add(const Duration(days: 45));
@@ -910,15 +1157,34 @@ class ExportInvoiceState {
     try {
       final doc = await FirebaseFirestore.instance.collection('companies').doc(companyId).collection('export_invoices').doc(invoiceId).get();
       if (doc.exists && doc.data() != null) {
-        final inv = ExportInvoiceModel.fromMap(doc.data()!, doc.id);
+        final dataMap = doc.data()!;
+        final inv = ExportInvoiceModel.fromMap(dataMap, doc.id);
 
         isSubmitted = inv.status == 'Submitted';
         isCancelled = inv.status == 'Cancelled';
+        currentVersion = dataMap['version'] ?? 0;
         selectedCustomerId = inv.customerId;
 
         invoiceNoCtrl.text = inv.invoiceNumber; invoiceDate.value = inv.invoiceDate;
-        paymentTermsCtrl.text = inv.paymentTerms; dueDateNotifier.value = inv.dueDate;
-        placeOfSupplyCtrl.text = inv.placeOfSupply; isLUT.value = inv.exportDetails.exportType == 'WITH_LUT'; lutNumberCtrl.text = inv.exportDetails.lutNumber; adCodeCtrl.text = inv.exportDetails.adCode; selectedCurrency.value = currencies.contains(inv.currency) ? inv.currency : 'USD'; exchangeRateCtrl.text = inv.exchangeRate.toString();
+
+        if (paymentTermsList.contains(inv.paymentTerms)) {
+          selectedPaymentTermState.value = inv.paymentTerms;
+        } else {
+          selectedPaymentTermState.value = 'Custom Terms';
+          customPaymentTermCtrl.text = inv.paymentTerms;
+        }
+        dueDateNotifier.value = inv.dueDate;
+
+        if (placeOfSupplyOptions.contains(inv.placeOfSupply)) {
+          selectedPlaceOfSupply.value = inv.placeOfSupply;
+        } else {
+          selectedPlaceOfSupply.value = 'Custom';
+          customPlaceOfSupplyCtrl.text = inv.placeOfSupply;
+        }
+
+        isLUT.value = inv.exportDetails.exportType == 'WITH_LUT';
+        isReverseCharge.value = inv.taxDetails.reverseCharge;
+        lutNumberCtrl.text = inv.exportDetails.lutNumber; adCodeCtrl.text = inv.exportDetails.adCode; selectedCurrency.value = currencies.contains(inv.currency) ? inv.currency : 'USD'; exchangeRateCtrl.text = inv.exchangeRate.toString();
 
         exportRefCtrl.text = inv.exportReference;
         buyerOrderDateNotifier.value = inv.buyerOrderDate;
@@ -957,7 +1223,9 @@ class ExportInvoiceState {
       final doc = await FirebaseFirestore.instance.collection('companies').doc(companyId).get();
       if (doc.exists && doc.data() != null) {
         final data = doc.data()!;
-        supName.text = data['name'] ?? data['companyName'] ?? ''; supAddress.text = data['address'] ?? ''; supGSTIN.text = data['gstin'] ?? data['gstNo'] ?? ''; supPAN.text = data['pan'] ?? ''; supIEC.text = data['iec'] ?? data['iecCode'] ?? ''; supState.text = data['state'] ?? '';
+        supName.text = data['name'] ?? data['companyName'] ?? ''; supAddress.text = data['address'] ?? ''; supGSTIN.text = data['gstin'] ?? data['gstNo'] ?? ''; supPAN.text = data['pan'] ?? '';
+        supIEC.text = data['iec'] ?? data['iecCode'] ?? '';
+        supState.text = data['state'] ?? '';
         if(bankNameCtrl.text.isEmpty) bankNameCtrl.text = data['bankName'] ?? ''; if(accNoCtrl.text.isEmpty) accNoCtrl.text = data['accountNumber'] ?? ''; if(ifscCtrl.text.isEmpty) ifscCtrl.text = data['ifsc'] ?? ''; if(swiftCtrl.text.isEmpty) swiftCtrl.text = data['swiftCode'] ?? ''; if(lutNumberCtrl.text.isEmpty) lutNumberCtrl.text = data['lutNumber'] ?? ''; if(adCodeCtrl.text.isEmpty) adCodeCtrl.text = data['adCode'] ?? '';
       }
     } catch (e) { debugPrint("Error fetching company details: $e"); }
@@ -984,46 +1252,65 @@ class ExportInvoiceState {
   ExportInvoiceModel buildModel(String status, String calculatedInvoiceNo) {
     ExportSummaryData summary = _computeSummary();
 
-    double grandTotalINR = _round(summary.grandTotalForeign * summary.exchangeRate);
+    double grandTotalINR = _round((summary.grandTotalForeign * summary.exchangeRate));
     String finalStatus = status;
+    String finalPlaceOfSupply = selectedPlaceOfSupply.value == 'Custom' ? safe(customPlaceOfSupplyCtrl.text) : selectedPlaceOfSupply.value;
+    String finalPaymentTerm = selectedPaymentTermState.value == 'Custom Terms' ? safe(customPaymentTermCtrl.text) : selectedPaymentTermState.value;
 
     return ExportInvoiceModel(
       id: invoiceId ?? '',
       companyId: companyId,
-      customerId: selectedCustomerId!,
-      exportReference: exportRefCtrl.text.trim(),
+      customerId: selectedCustomerId ?? '',
+      exportReference: safe(exportRefCtrl.text),
       buyerOrderDate: buyerOrderDateNotifier.value,
       invoiceNumber: calculatedInvoiceNo,
       invoiceDate: invoiceDate.value,
       dueDate: dueDateNotifier.value,
-      paymentTerms: paymentTermsCtrl.text.trim(),
+      paymentTerms: finalPaymentTerm,
       baseCurrency: 'INR',
       baseAmount: grandTotalINR,
       currency: selectedCurrency.value,
       exchangeRate: summary.exchangeRate,
-      placeOfSupply: placeOfSupplyCtrl.text.trim(),
+      placeOfSupply: finalPlaceOfSupply,
       status: finalStatus,
       createdBy: userUid,
-      supplier: Party(name: supName.text.trim(), address: supAddress.text.trim(), country: "India", state: supState.text.trim(), gstin: supGSTIN.text.trim(), pan: supPAN.text.trim(), iec: supIEC.text.trim()),
-      buyer: Party(name: billName.text.trim(), address: billAddress.text.trim(), country: billCountry.text.trim(), email: billEmail.text.trim(), phone: billPhone.text.trim(), contactPerson: billContact.text.trim()),
-      consignee: Party(name: shipName.text.trim(), address: shipAddress.text.trim(), country: shipCountry.text.trim(), email: shipEmail.text.trim(), phone: shipPhone.text.trim(), contactPerson: shipContact.text.trim()),
-      exportDetails: ExportDetails(exportType: isLUT.value ? 'WITH_LUT' : 'WITH_IGST', lutNumber: lutNumberCtrl.text.trim(), adCode: adCodeCtrl.text.trim(), portCode: portCodeCtrl.text.trim(), portOfLoading: loadingCtrl.text.trim(), portOfDischarge: dischargeCtrl.text.trim(), countryOfOrigin: countryOrigin.text.trim(), countryOfDestination: countryFinal.text.trim(), incoterm: selectedIncoterm.value),
-      logistics: Logistics(preCarriageBy: preCarriageCtrl.text.trim(), modeOfTransport: selectedTransportMode.value, vesselOrFlight: carrierCtrl.text.trim(), shippingBillNo: shippingBillNoCtrl.text.trim(), shippingBillDate: shippingBillDateNotifier.value, marksAndNos: marksAndNosCtrl.text.trim(), numberOfPackages: int.tryParse(packagesCtrl.text) ?? 1, grossWeight: double.tryParse(grossWtCtrl.text) ?? 0, netWeight: double.tryParse(netWtCtrl.text) ?? 0),
-      items: items.value,
-      taxDetails: TaxDetails(taxableValue: (summary.subtotal + summary.freight + summary.insurance), igstRate: isLUT.value ? 0 : taxRate.value, igstAmount: summary.taxAmt, reverseCharge: false),
+      supplier: Party(name: safe(supName.text), address: safe(supAddress.text), country: "India", state: safe(supState.text), gstin: safe(supGSTIN.text), pan: safe(supPAN.text), iec: safe(supIEC.text)),
+      buyer: Party(name: safe(billName.text), address: safe(billAddress.text), country: safe(billCountry.text), email: safe(billEmail.text), phone: safe(billPhone.text), contactPerson: safe(billContact.text)),
+      consignee: Party(name: safe(shipName.text), address: safe(shipAddress.text), country: safe(shipCountry.text), email: safe(shipEmail.text), phone: safe(shipPhone.text), contactPerson: safe(shipContact.text)),
+      exportDetails: ExportDetails(exportType: isLUT.value ? 'WITH_LUT' : 'WITH_IGST', lutNumber: safe(lutNumberCtrl.text), adCode: safe(adCodeCtrl.text), portCode: safe(portCodeCtrl.text), portOfLoading: safe(loadingCtrl.text), portOfDischarge: safe(dischargeCtrl.text), countryOfOrigin: safe(countryOrigin.text), countryOfDestination: safe(countryFinal.text), incoterm: selectedIncoterm.value),
+      logistics: Logistics(preCarriageBy: safe(preCarriageCtrl.text), modeOfTransport: selectedTransportMode.value, vesselOrFlight: safe(carrierCtrl.text), shippingBillNo: safe(shippingBillNoCtrl.text), shippingBillDate: shippingBillDateNotifier.value, marksAndNos: safe(marksAndNosCtrl.text), numberOfPackages: int.tryParse(safe(packagesCtrl.text)) ?? 1, grossWeight: double.tryParse(safe(grossWtCtrl.text)) ?? 0, netWeight: double.tryParse(safe(netWtCtrl.text)) ?? 0),
+      items: items.value
+          .where((e) => safe(e.name).isNotEmpty && e.quantity > 0 && e.rate > 0)
+          .map((e) => ExportInvoiceItem(
+        id: e.id,
+        companyId: e.companyId,
+        name: safe(e.name),
+        description: safe(e.description),
+        hsnCode: safe(e.hsnCode),
+        quantity: e.quantity,
+        unit: safe(e.unit),
+        rate: e.rate,
+        amount: e.computedAmount,
+        createdAt: e.createdAt,
+        createdBy: e.createdBy,
+        updatedAt: DateTime.now(),
+        updatedBy: e.updatedBy,
+      ))
+          .toList(),
+      taxDetails: TaxDetails(taxableValue: (summary.subtotal + summary.freight + summary.insurance), igstRate: isLUT.value ? 0 : taxRate.value, igstAmount: summary.taxAmt, reverseCharge: isReverseCharge.value),
       totals: Totals(subTotal: summary.subtotal, freight: summary.freight, insurance: summary.insurance, tax: summary.taxAmt, grandTotal: summary.grandTotalForeign, grandTotalInr: grandTotalINR),
       paymentDetails: PaymentDetails(
-          paymentMode: selectedPaymentMode.value!,
-          paymentReference: paymentRefCtrl.text.trim(),
-          beneficiaryName: beneficiaryNameCtrl.text.trim(),
-          bankName: bankNameCtrl.text.trim(),
-          bankAddress: bankAddressCtrl.text.trim(),
-          accountNumber: accNoCtrl.text.trim(),
-          ifsc: ifscCtrl.text.trim(),
-          swiftCode: swiftCtrl.text.trim(),
-          deliveryTerms: deliveryTermsCtrl.text.trim()
+          paymentMode: selectedPaymentMode.value ?? 'Bank Transfer',
+          paymentReference: safe(paymentRefCtrl.text),
+          beneficiaryName: safe(beneficiaryNameCtrl.text),
+          bankName: safe(bankNameCtrl.text),
+          bankAddress: safe(bankAddressCtrl.text),
+          accountNumber: safe(accNoCtrl.text),
+          ifsc: safe(ifscCtrl.text),
+          swiftCode: safe(swiftCtrl.text),
+          deliveryTerms: safe(deliveryTermsCtrl.text)
       ),
-      declaration: declarationCtrl.text.trim(), notes: notesCtrl.text.trim(), authorizedSignatory: signatoryCtrl.text.trim(), createdAt: DateTime.now(), updatedAt: DateTime.now(),
+      declaration: safe(declarationCtrl.text), notes: safe(notesCtrl.text), authorizedSignatory: safe(signatoryCtrl.text), createdAt: DateTime.now(), updatedAt: DateTime.now(),
       amountReceived: existingAmountReceived,
       amountOutstanding: summary.outstanding,
       baseAmountOutstanding: summary.baseAmountOutstanding,
@@ -1031,92 +1318,203 @@ class ExportInvoiceState {
     );
   }
 
+  Map<String, dynamic> removeNulls(Map<String, dynamic> map) {
+    if (map.isEmpty) return {};
+    final result = <String, dynamic>{};
+    map.forEach((key, value) {
+      if (value == null) return;
+      if (value is Map<String, dynamic>) {
+        final cleaned = removeNulls(value);
+        if (cleaned.isNotEmpty) result[key] = cleaned;
+      } else if (value is Map) {
+        final cleaned = removeNulls(Map<String, dynamic>.from(value));
+        if (cleaned.isNotEmpty) result[key] = cleaned;
+      } else if (value is List) {
+        final cleanedList = value.map((e) {
+          if (e is Map<String, dynamic>) {
+            return removeNulls(e);
+          } else if (e is Map) {
+            return removeNulls(Map<String, dynamic>.from(e));
+          }
+          return e;
+        }).toList();
+        result[key] = cleanedList;
+      } else {
+        result[key] = value;
+      }
+    });
+    return result;
+  }
+
   Future<String> saveToFirestore(String status) async {
     isSaving.value = true;
     try {
-      final db = FirebaseFirestore.instance;
-      final collectionRef = db.collection('companies').doc(companyId).collection('export_invoices');
-      final counterRef = db.collection('companies').doc(companyId).collection('counters').doc('export_invoice_counter');
-
-      DocumentReference docRef = (invoiceId != null && invoiceId!.isNotEmpty) ? collectionRef.doc(invoiceId) : collectionRef.doc();
-
-      await db.runTransaction((tx) async {
-        final docSnap = await tx.get(docRef);
-        bool isNewDoc = !docSnap.exists;
-
-        String finalInvoiceNo = invoiceNoCtrl.text.trim();
-
-        if (isNewDoc && status == 'Submitted') {
-          final counterSnap = await tx.get(counterRef);
-          int nextSeq = 1;
-          if (counterSnap.exists) {
-            nextSeq = (counterSnap.data()?['currentValue'] ?? 0) + 1;
-          }
-
-          final now = DateTime.now();
-          final fy = now.month >= 4 ? '${now.year.toString().substring(2)}-${(now.year + 1).toString().substring(2)}' : '${(now.year - 1).toString().substring(2)}-${now.year.toString().substring(2)}';
-          finalInvoiceNo = 'EXP/$fy/${nextSeq.toString().padLeft(4, '0')}';
-
-          tx.set(counterRef, {'currentValue': nextSeq}, SetOptions(merge: true));
-          invoiceNoCtrl.text = finalInvoiceNo;
-        } else if (invoiceNoCtrl.text == 'Auto-generated on save' || invoiceNoCtrl.text.startsWith('DRAFT')) {
-          finalInvoiceNo = 'DRAFT/${DateTime.now().millisecondsSinceEpoch}';
-          invoiceNoCtrl.text = finalInvoiceNo;
-        }
-
-        final data = buildModel(status, finalInvoiceNo).toMap();
-        data['id'] = docRef.id;
-        data['updatedAt'] = FieldValue.serverTimestamp();
-
-        if (isNewDoc) {
-          data['createdAt'] = FieldValue.serverTimestamp();
-        } else {
-          data.remove('createdAt');
-          data.remove('createdBy');
-        }
-
-        tx.set(docRef, data, SetOptions(merge: true));
-      });
-
-      return docRef.id;
-    } finally {
-      isSaving.value = false;
-    }
-  }
-
-  Future<void> createOutstandingEntry(String docId, {bool isDraft = false, bool isCancel = false}) async {
-    try {
-      final model = buildModel(isCancel ? 'Cancelled' : (isDraft ? 'Draft' : 'Submitted'), invoiceNoCtrl.text);
-      final outRef = FirebaseFirestore.instance.collection('companies').doc(companyId).collection('outstanding').doc(docId);
-
-      Map<String, dynamic> outData = {
-        'invoiceId': docId,
-        'invoiceNumber': model.invoiceNumber,
-        'invoiceDate': Timestamp.fromDate(model.invoiceDate),
-        'invoiceType': 'EXPORT',
-        'customerId': model.customerId,
-        'customerName': model.buyer.name,
-        'totalAmount': model.totals.grandTotal,
-        'outstandingAmount': isCancel ? 0.0 : model.amountOutstanding,
-        'baseTotalAmount': model.baseAmount,
-        'baseOutstandingAmount': isCancel ? 0.0 : model.baseAmountOutstanding,
-        'currency': model.currency,
-        'exchangeRate': model.exchangeRate,
-        'status': isCancel ? 'CANCELLED' : (isDraft ? 'DRAFT' : model.paymentStatus),
-        'isFinalized': (!isDraft && !isCancel),
-        'dueDate': Timestamp.fromDate(model.dueDate),
-        'updatedAt': FieldValue.serverTimestamp(),
-      };
-
-      final outSnap = await outRef.get();
-      if (!outSnap.exists) {
-        outData['createdAt'] = FieldValue.serverTimestamp();
-        outData['createdBy'] = userUid;
+      if ((selectedCustomerId ?? '').trim().isEmpty) {
+        throw Exception("Validation failed: You must select a customer before saving.");
+      }
+      if (safe(companyId).isEmpty) throw Exception("Validation failed: missing companyId.");
+      if (items.value.where((e) => safe(e.name).isNotEmpty).isEmpty) {
+        throw Exception("Validation failed: At least one item is required.");
+      }
+      for (var i = 0; i < items.value.length; i++) {
+        final item = items.value[i];
+        if (safe(item.name).isEmpty) throw Exception("Validation failed: Item ${i+1} is missing a name.");
+        if (item.quantity <= 0) throw Exception("Validation failed: Item ${i+1} quantity must be greater than 0.");
+        if (item.rate <= 0) throw Exception("Validation failed: Item ${i+1} rate must be greater than 0.");
+      }
+      if (summaryState.value.grandTotalForeign <= 0) {
+        throw Exception("Validation failed: Grand Total must be greater than 0.");
       }
 
-      await outRef.set(outData, SetOptions(merge: true));
-    } catch (e) {
-      debugPrint("Warning: Failed to update outstanding hook: $e");
+      final er = double.tryParse(safe(exchangeRateCtrl.text)) ?? 0.0;
+      if (er <= 0) throw Exception("Validation failed: Exchange Rate must be greater than 0.");
+      if (safe(selectedCurrency.value).isEmpty) selectedCurrency.value = 'USD';
+
+      if (selectedPaymentMode.value == null || safe(selectedPaymentMode.value).isEmpty) {
+        throw Exception("Validation failed: Payment Mode is required.");
+      }
+
+      final db = FirebaseFirestore.instance;
+      final collectionRef = db.collection('companies').doc(companyId).collection('export_invoices');
+
+      DocumentReference docRef = (invoiceId != null && invoiceId!.isNotEmpty) ? collectionRef.doc(invoiceId) : collectionRef.doc();
+      final outRef = db.collection('companies').doc(companyId).collection('outstanding').doc(docRef.id);
+
+      int maxRetries = 3;
+      for (int attempt = 0; attempt < maxRetries; attempt++) {
+        try {
+          await db.runTransaction((tx) async {
+            final docSnap = await tx.get(docRef);
+            final outSnap = await tx.get(outRef);
+
+            bool isNewDoc = !docSnap.exists;
+            final dataMap = docSnap.data() as Map<String, dynamic>?;
+
+            if (!isNewDoc && dataMap != null) {
+              final existingCustomerId = dataMap['customerId'];
+              if (existingCustomerId != null && existingCustomerId != selectedCustomerId) {
+                throw Exception("Audit Lock: Customer cannot be modified after initial document creation.");
+              }
+              final docVersion = dataMap['version'] ?? 0;
+              if (docVersion != currentVersion) {
+                throw Exception("Conflict: Document was modified in another tab or device. Please refresh.");
+              }
+            }
+
+            String finalInvoiceNo = safe(invoiceNoCtrl.text).replaceAll(' (Preview)', '');
+            if (isNewDoc && finalInvoiceNo.isEmpty) {
+              finalInvoiceNo = generateDraftInvoiceNumber();
+            }
+
+            bool needsNewNumber = (isNewDoc || finalInvoiceNo.startsWith('DRAFT')) && status == 'Submitted';
+
+            if (needsNewNumber) {
+              finalInvoiceNo = await generateInvoiceNumber(tx);
+              invoiceNoCtrl.text = finalInvoiceNo;
+            }
+
+            final model = buildModel(status, finalInvoiceNo);
+            final rawData = model.toMap();
+            final data = Map<String, dynamic>.from(rawData);
+
+            data['id'] = docRef.id;
+
+            data.remove('updatedAt');
+            data['updatedAt'] = FieldValue.serverTimestamp();
+
+            data['lastEditedBy'] = userUid;
+            data['lastEditedAt'] = FieldValue.serverTimestamp();
+            data['version'] = isNewDoc ? 1 : currentVersion + 1;
+            data['isDeleted'] = false;
+
+            final itemsList = (data['items'] is List) ? data['items'] as List : [];
+            if (itemsList.isEmpty) {
+              throw Exception("At least one valid item required");
+            }
+
+            final totalsMap = Map<String, dynamic>.from(data['totals'] ?? {});
+            totalsMap['roundOff'] = summaryState.value.roundOff;
+            totalsMap['grandTotal'] = summaryState.value.grandTotalForeign;
+            data['totals'] = totalsMap;
+
+            if (isNewDoc) {
+              data['createdAt'] = FieldValue.serverTimestamp();
+            } else {
+              data.remove('createdAt');
+              data.remove('createdBy');
+            }
+
+            if (data.isEmpty) {
+              throw Exception("Critical Error: No data to save.");
+            }
+
+            final cleanData = removeNulls(data);
+
+            if (cleanData.isEmpty) {
+              throw Exception("Critical Error: Clean data is empty.");
+            }
+
+            bool isDraft = status == 'Draft';
+            bool isCancel = status == 'Cancelled';
+
+            Map<String, dynamic> outData = {
+              'invoiceId': docRef.id,
+              'invoiceNumber': model.invoiceNumber,
+              'invoiceDate': Timestamp.fromDate(model.invoiceDate),
+              'invoiceType': 'EXPORT',
+              'customerId': model.customerId,
+              'customerName': model.buyer.name,
+              'totalAmount': model.totals.grandTotal,
+              'outstandingAmount': isCancel ? 0.0 : model.amountOutstanding,
+              'baseTotalAmount': model.baseAmount,
+              'baseOutstandingAmount': isCancel ? 0.0 : model.baseAmountOutstanding,
+              'currency': model.currency,
+              'exchangeRate': model.exchangeRate,
+              'status': isCancel ? 'CANCELLED' : (isDraft ? 'DRAFT' : model.paymentStatus),
+              'isFinalized': (!isDraft && !isCancel),
+              'dueDate': Timestamp.fromDate(model.dueDate),
+              'updatedAt': FieldValue.serverTimestamp(),
+            };
+
+            if (!outSnap.exists) {
+              outData['createdAt'] = FieldValue.serverTimestamp();
+              outData['createdBy'] = userUid;
+            }
+
+            tx.set(docRef, cleanData, SetOptions(merge: true));
+
+            final logRef = db.collection('companies').doc(companyId).collection('invoice_activity_logs').doc();
+            tx.set(logRef, {
+              'invoiceId': docRef.id,
+              'action': isNewDoc ? 'CREATED' : 'UPDATED',
+              'status': status,
+              'timestamp': FieldValue.serverTimestamp(),
+              'uid': userUid,
+            });
+
+            tx.set(outRef, outData, SetOptions(merge: true));
+
+            if (kDebugMode) {
+              debugPrint("Invoice saved successfully");
+            }
+          });
+
+          currentVersion++;
+          return docRef.id;
+        } catch (e) {
+          if (attempt == maxRetries - 1) rethrow;
+          await Future.delayed(Duration(milliseconds: 500 * (attempt + 1)));
+        }
+      }
+      throw Exception("Transaction failed after multiple retries.");
+    } catch (e, stack) {
+      if (kDebugMode) {
+        debugPrint('❌ FIRESTORE SAVE ERROR: $e');
+        debugPrint(stack.toString());
+      }
+      rethrow;
+    } finally {
+      isSaving.value = false;
     }
   }
 
@@ -1136,11 +1534,58 @@ class ExportInvoiceState {
 
     isSaving.value = true;
     try {
-      await FirebaseFirestore.instance.collection('companies').doc(companyId).collection('export_invoices').doc(invoiceId).update({'status': 'Cancelled', 'updatedAt': FieldValue.serverTimestamp()});
-      await createOutstandingEntry(invoiceId!, isDraft: false, isCancel: true);
+      int maxRetries = 3;
+      for (int attempt = 0; attempt < maxRetries; attempt++) {
+        try {
+          final db = FirebaseFirestore.instance;
+          final batch = db.batch();
 
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Invoice Cancelled Successfully.'), backgroundColor: Colors.red));
-      if (Navigator.canPop(context)) Navigator.pop(context);
+          final invRef = db.collection('companies').doc(companyId).collection('export_invoices').doc(invoiceId);
+          final outRef = db.collection('companies').doc(companyId).collection('outstanding').doc(invoiceId);
+          final logRef = db.collection('companies').doc(companyId).collection('invoice_activity_logs').doc();
+
+          batch.update(invRef, {
+            'status': 'Cancelled',
+            'updatedAt': FieldValue.serverTimestamp(),
+            'lastEditedBy': userUid,
+            'lastEditedAt': FieldValue.serverTimestamp(),
+            'version': currentVersion + 1,
+          });
+
+          batch.set(outRef, {
+            'status': 'CANCELLED',
+            'outstandingAmount': 0.0,
+            'baseOutstandingAmount': 0.0,
+            'isFinalized': false,
+            'updatedAt': FieldValue.serverTimestamp()
+          }, SetOptions(merge: true));
+
+          batch.set(logRef, {
+            'invoiceId': invoiceId,
+            'action': 'CANCELLED',
+            'status': 'Cancelled',
+            'timestamp': FieldValue.serverTimestamp(),
+            'uid': userUid,
+          });
+
+          await batch.commit();
+          currentVersion++;
+
+          if (context.mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Invoice Cancelled Successfully.'), backgroundColor: Colors.red));
+            if (Navigator.canPop(context)) Navigator.pop(context);
+          }
+          break;
+        } catch (e) {
+          if (attempt == maxRetries - 1) {
+            if (context.mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error cancelling invoice: ${e.toString()}'), backgroundColor: Colors.red));
+            }
+            break;
+          }
+          await Future.delayed(Duration(milliseconds: 500 * (attempt + 1)));
+        }
+      }
     } finally {
       isSaving.value = false;
     }

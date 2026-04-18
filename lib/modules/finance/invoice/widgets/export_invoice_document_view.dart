@@ -1,4 +1,7 @@
+import 'dart:convert';
 import 'dart:typed_data';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:pdf/pdf.dart';
@@ -11,6 +14,14 @@ class ExportInvoiceDocumentView extends StatelessWidget {
   final ExportInvoiceModel invoice;
 
   const ExportInvoiceDocumentView({super.key, required this.invoice});
+
+  // ================= MEMORY CACHE =================
+
+  // Cache to prevent redundant network calls and endless retries on failed URLs
+  static final Map<String, pw.ImageProvider?> _logoCache = {};
+
+  // Shared formatter to prevent continuous reallocation during layout rendering
+  static final NumberFormat _numFormatter = NumberFormat('#,##0.00', 'en_US');
 
   // ================= TYPOGRAPHY & COLORS =================
 
@@ -31,8 +42,7 @@ class ExportInvoiceDocumentView extends StatelessWidget {
     else if (code == 'EUR') symbol = '€';
     else if (code == 'GBP') symbol = '£';
 
-    final formatter = NumberFormat('#,##0.00', 'en_US');
-    return '$symbol ${formatter.format(value)}';
+    return '$symbol ${_numFormatter.format(value)}';
   }
 
   String _formatDate(DateTime? d) {
@@ -96,6 +106,32 @@ class ExportInvoiceDocumentView extends StatelessWidget {
         a.address.trim().toLowerCase() == b.address.trim().toLowerCase();
   }
 
+  // ================= DATA FETCHERS =================
+
+  Future<pw.ImageProvider?> _fetchAndCacheLogo() async {
+    if (_logoCache.containsKey(invoice.companyId)) {
+      return _logoCache[invoice.companyId];
+    }
+
+    try {
+      final docSnap = await FirebaseFirestore.instance.collection('companies').doc(invoice.companyId).get();
+      final data = docSnap.data();
+      if (data != null) {
+        final logoUrl = data['logoUrl'] ?? data['logo'];
+        if (logoUrl != null && logoUrl.toString().trim().isNotEmpty) {
+          final provider = await networkImage(logoUrl.toString().trim());
+          _logoCache[invoice.companyId] = provider;
+          return provider;
+        }
+      }
+      _logoCache[invoice.companyId] = null; // Explicitly cache missing state to prevent retries
+    } catch (e) {
+      debugPrint('Export Invoice PDF: Logo fetch safely ignored - $e');
+      _logoCache[invoice.companyId] = null; // Cache failure to prevent endless network loops
+    }
+    return null;
+  }
+
   // ================= PDF COMPACT WIDGET HELPERS =================
 
   pw.Widget _metaRow(String label, String value, {bool boldValue = true}) {
@@ -146,11 +182,23 @@ class ExportInvoiceDocumentView extends StatelessWidget {
     );
   }
 
+  pw.Widget _buildSummaryLine(String label, double amount, {String? customValue}) {
+    return pw.Padding(
+      padding: const pw.EdgeInsets.only(bottom: 4),
+      child: pw.Row(
+        mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+        children: [
+          pw.Text(label, style: const pw.TextStyle(fontSize: 8, color: _textDark)),
+          pw.Text(customValue ?? _currency(amount), style: const pw.TextStyle(fontSize: 8, color: _textDark)),
+        ],
+      ),
+    );
+  }
+
   // ================= COMPACT PDF SECTIONS =================
 
-  pw.Widget _buildHeader() {
+  pw.Widget _buildHeader(pw.ImageProvider? logoProvider) {
     final isLUT = invoice.exportDetails.exportType == 'WITH_LUT';
-    final exportTypeText = isLUT ? 'LUT (Without IGST)' : 'IGST Applied';
 
     return pw.Row(
       crossAxisAlignment: pw.CrossAxisAlignment.start,
@@ -161,6 +209,14 @@ class ExportInvoiceDocumentView extends StatelessWidget {
           child: pw.Column(
             crossAxisAlignment: pw.CrossAxisAlignment.start,
             children: [
+              if (logoProvider != null) ...[
+                pw.Container(
+                  height: 40,
+                  alignment: pw.Alignment.centerLeft,
+                  child: pw.Image(logoProvider, fit: pw.BoxFit.contain),
+                ),
+                pw.SizedBox(height: 8),
+              ],
               pw.Text(invoice.supplier.name.toUpperCase(), style: pw.TextStyle(fontSize: 14, fontWeight: pw.FontWeight.bold, color: _primaryColor)),
               pw.SizedBox(height: 2),
               pw.Text(invoice.supplier.address, style: const pw.TextStyle(fontSize: 8, lineSpacing: 1.1, color: _textDark)),
@@ -193,7 +249,37 @@ class ExportInvoiceDocumentView extends StatelessWidget {
                 _metaRow('Invoice Number:', invoice.invoiceNumber),
                 _metaRow('Invoice Date:', _formatDate(invoice.invoiceDate)),
                 _metaRow('Due Date:', _formatDate(invoice.dueDate)),
-                _metaRow('Export Type:', exportTypeText, boldValue: false),
+
+                // Export Type Highlighted Badge
+                pw.Padding(
+                  padding: const pw.EdgeInsets.only(bottom: 2),
+                  child: pw.Row(
+                    crossAxisAlignment: pw.CrossAxisAlignment.start,
+                    children: [
+                      pw.SizedBox(
+                        width: 75,
+                        child: pw.Text('Export Type:', style: pw.TextStyle(fontSize: 7.5, color: _textLight)),
+                      ),
+                      pw.Expanded(
+                          child: pw.Align(
+                              alignment: pw.Alignment.centerLeft,
+                              child: pw.Container(
+                                  padding: const pw.EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                                  decoration: pw.BoxDecoration(
+                                    color: isLUT ? PdfColors.green100 : PdfColors.blue100,
+                                    borderRadius: const pw.BorderRadius.all(pw.Radius.circular(2)),
+                                  ),
+                                  child: pw.Text(
+                                      isLUT ? 'LUT (No IGST)' : 'IGST Applied',
+                                      style: pw.TextStyle(fontSize: 7, color: isLUT ? PdfColors.green800 : PdfColors.blue800, fontWeight: pw.FontWeight.bold)
+                                  )
+                              )
+                          )
+                      ),
+                    ],
+                  ),
+                ),
+
                 if (isLUT)
                   _metaRow('LUT ARN:', invoice.exportDetails.lutNumber.isNotEmpty ? 'ARN - ${invoice.exportDetails.lutNumber}' : 'Not Available'),
                 _metaRow('Place of Supply:', invoice.placeOfSupply),
@@ -275,7 +361,7 @@ class ExportInvoiceDocumentView extends StatelessWidget {
   }
 
   pw.Widget _buildItemsTable() {
-    final headers = ['S.No.', 'Description of Goods', 'HSN', 'Qty', 'Rate', 'Amount'];
+    final headers = const ['S.No.', 'Description of Goods', 'HSN', 'Qty', 'Rate', 'Amount'];
 
     return pw.Table(
       columnWidths: {
@@ -346,130 +432,175 @@ class ExportInvoiceDocumentView extends StatelessWidget {
     final double displayOutstanding = isOverpaid ? 0.0 : invoice.amountOutstanding;
     final double excessAmount = isOverpaid ? invoice.amountOutstanding.abs() : 0.0;
 
+    // Payment Status Logic
+    PdfColor badgeBg = PdfColors.red100;
+    PdfColor badgeText = PdfColors.red800;
+    String statusStr = 'UNPAID';
+
+    if (totalReceived >= invoice.totals.grandTotal - 0.01) {
+      statusStr = 'PAID';
+      badgeBg = PdfColors.green100;
+      badgeText = PdfColors.green800;
+    } else if (totalReceived > 0.01) {
+      statusStr = 'PARTIALLY PAID';
+      badgeBg = PdfColors.orange100;
+      badgeText = PdfColors.orange800;
+    }
+
+    // Incoterm Freight & Insurance Logic
+    final String incoterm = invoice.exportDetails.incoterm.toUpperCase();
+    final bool hideFreight = incoterm == 'FOB';
+    final bool hideInsurance = incoterm == 'FOB' || incoterm == 'CFR';
+
+    // Safe Round-Off Calculation
+    final double rawTotal = invoice.totals.subTotal + invoice.totals.freight + invoice.totals.insurance + invoice.totals.tax;
+    final double computedRoundOff = invoice.totals.grandTotal - rawTotal;
+
     return pw.Container(
         margin: const pw.EdgeInsets.only(top: 8),
         child: pw.Row(
-            crossAxisAlignment: pw.CrossAxisAlignment.start,
-            children: [
+          crossAxisAlignment: pw.CrossAxisAlignment.start,
+          children: [
             // Left: Amount in Words & Exchange Rate Info
             pw.Expanded(
-            flex: 6,
-            child: pw.Column(
-                crossAxisAlignment: pw.CrossAxisAlignment.start,
-                children: [
-                  pw.Text('Amount in Words:', style: pw.TextStyle(fontSize: 7.5, color: _textLight)),
-                  pw.SizedBox(height: 1),
-                  pw.Text(_amountInWordsWithCents(invoice.totals.grandTotal, invoice.currency), style: pw.TextStyle(fontSize: 9, fontWeight: pw.FontWeight.bold, color: _textDark)),
+                flex: 6,
+                child: pw.Column(
+                    crossAxisAlignment: pw.CrossAxisAlignment.start,
+                    children: [
+                      pw.Text('Amount in Words:', style: pw.TextStyle(fontSize: 7.5, color: _textLight)),
+                      pw.SizedBox(height: 1),
+                      pw.Text(_amountInWordsWithCents(invoice.totals.grandTotal, invoice.currency), style: pw.TextStyle(fontSize: 9, fontWeight: pw.FontWeight.bold, color: _textDark)),
 
-                  pw.SizedBox(height: 8),
-                  pw.Text(
-                      'Exchange Rate: 1 ${invoice.currency.toUpperCase()} = INR ${invoice.exchangeRate.toStringAsFixed(2)}  |  Total Value: INR ${invoice.totals.grandTotalInr.toStringAsFixed(2)}',
-                      style: const pw.TextStyle(fontSize: 7.5, color: _textDark)
-                  ),
-                  if (invoice.taxDetails.reverseCharge) ...[
-                    pw.SizedBox(height: 4),
-                    pw.Text('* Subject to Reverse Charge Mechanism', style: pw.TextStyle(fontSize: 8, fontStyle: pw.FontStyle.italic, color: _textLight)),
-                  ]
-                ]
-            )
-        ),
+                      pw.SizedBox(height: 8),
+                      pw.Text(
+                          'Exchange Rate: 1 ${invoice.currency.toUpperCase()} = INR ${invoice.exchangeRate.toStringAsFixed(2)}  |  Total Value: INR ${invoice.totals.grandTotalInr.toStringAsFixed(2)}',
+                          style: const pw.TextStyle(fontSize: 7.5, color: _textDark)
+                      ),
 
-        pw.SizedBox(width: 16),
+                      // Highlighted Reverse Charge compliance
+                      if (invoice.taxDetails.reverseCharge) ...[
+                        pw.SizedBox(height: 8),
+                        pw.Container(
+                            padding: const pw.EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                            decoration: pw.BoxDecoration(
+                                color: PdfColor.fromHex('#FFF7ED'),
+                                border: pw.Border.all(color: PdfColor.fromHex('#F97316'), width: 0.5),
+                                borderRadius: const pw.BorderRadius.all(pw.Radius.circular(4))
+                            ),
+                            child: pw.Center(
+                                child: pw.Text('Tax payable under Reverse Charge', style: pw.TextStyle(color: PdfColor.fromHex('#C2410C'), fontSize: 8, fontWeight: pw.FontWeight.bold))
+                            )
+                        )
+                      ]
+                    ]
+                )
+            ),
 
-        // Right: Totals Breakdown
-        pw.Expanded(
-            flex: 4,
-            child: pw.Column(
+            pw.SizedBox(width: 16),
+
+            // Right: Totals Breakdown
+            pw.Expanded(
+              flex: 4,
+              child: pw.Column(
                 crossAxisAlignment: pw.CrossAxisAlignment.stretch,
                 children: [
-                _buildSummaryLine('Subtotal', invoice.totals.subTotal),
-            if (invoice.totals.freight > 0) _buildSummaryLine('Freight', invoice.totals.freight),
-    if (invoice.totals.insurance > 0) _buildSummaryLine('Insurance', invoice.totals.insurance),
-    if (!isLUT && invoice.totals.tax > 0) _buildSummaryLine('IGST', invoice.totals.tax),
+                  pw.Row(
+                      mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+                      children: [
+                        pw.Text('Payment Status', style: pw.TextStyle(fontSize: 8, color: _textLight, fontWeight: pw.FontWeight.bold)),
+                        pw.Container(
+                            padding: const pw.EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+                            decoration: pw.BoxDecoration(color: badgeBg, borderRadius: const pw.BorderRadius.all(pw.Radius.circular(4))),
+                            child: pw.Text(statusStr, style: pw.TextStyle(color: badgeText, fontSize: 7, fontWeight: pw.FontWeight.bold))
+                        )
+                      ]
+                  ),
+                  pw.SizedBox(height: 6),
 
-    pw.SizedBox(height: 4),
-    pw.Divider(color: _primaryColor, thickness: 0.5),
-    pw.SizedBox(height: 4),
+                  _buildSummaryLine('Subtotal', invoice.totals.subTotal),
 
-    pw.Row(
-    mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
-    children: [
-    pw.Text('Grand Total', style: pw.TextStyle(fontSize: 10, fontWeight: pw.FontWeight.bold, color: _primaryColor)),
-    pw.Text(_currency(invoice.totals.grandTotal), style: pw.TextStyle(fontSize: 10, fontWeight: pw.FontWeight.bold, color: _primaryColor)),
-    ],
-    ),
+                  if (!hideFreight && invoice.totals.freight > 0)
+                    _buildSummaryLine('Freight', invoice.totals.freight),
 
-    // Payments Breakdown
-    if (totalReceived > 0) ...[
-    pw.SizedBox(height: 4),
-    pw.Divider(color: _borderColor, thickness: 0.5),
-    pw.SizedBox(height: 4),
+                  if (!hideInsurance && invoice.totals.insurance > 0)
+                    _buildSummaryLine('Insurance', invoice.totals.insurance),
 
-    if (invoice.advanceAmount > 0)
-    _buildSummaryLine('Advance Applied', invoice.advanceAmount),
+                  if (!isLUT && invoice.totals.tax > 0)
+                    _buildSummaryLine('IGST', invoice.totals.tax),
 
-    if (totalReceived > invoice.advanceAmount)
-    _buildSummaryLine('Additional Payments', totalReceived - invoice.advanceAmount),
+                  if (computedRoundOff.abs() > 0.001) ...[
+                    _buildSummaryLine(
+                        'Round Off',
+                        computedRoundOff,
+                        customValue: '${computedRoundOff > 0 ? '+' : ''}${_currency(computedRoundOff.abs())}'
+                    ),
+                  ],
 
-      if (invoice.advanceAmount > 0)
-        _buildSummaryLine('Advance Applied', invoice.advanceAmount),
+                  pw.SizedBox(height: 4),
+                  pw.Divider(color: _primaryColor, thickness: 0.5),
+                  pw.SizedBox(height: 4),
 
-      if (totalReceived > invoice.advanceAmount)
-        _buildSummaryLine('Subsequent Payments', totalReceived - invoice.advanceAmount),
+                  pw.Row(
+                    mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+                    children: [
+                      pw.Text('Grand Total', style: pw.TextStyle(fontSize: 10, fontWeight: pw.FontWeight.bold, color: _primaryColor)),
+                      pw.Text(_currency(invoice.totals.grandTotal), style: pw.TextStyle(fontSize: 10, fontWeight: pw.FontWeight.bold, color: _primaryColor)),
+                    ],
+                  ),
 
-      _buildSummaryLine('Total Payments Received', totalReceived),
+                  // Payments Breakdown Cleaned
+                  if (totalReceived > 0) ...[
+                    pw.SizedBox(height: 4),
+                    pw.Divider(color: _borderColor, thickness: 0.5),
+                    pw.SizedBox(height: 4),
 
-    pw.SizedBox(height: 4),
-    pw.Divider(color: _borderColor, thickness: 0.5),
-    pw.SizedBox(height: 4),
+                    if (invoice.advanceAmount > 0)
+                      _buildSummaryLine('Advance Received', invoice.advanceAmount),
 
-    pw.Row(
-    mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
-    children: [
-    pw.Text('Balance Due', style: pw.TextStyle(fontSize: 10, fontWeight: pw.FontWeight.bold, color: _textDark)),
-    pw.Text(_currency(displayOutstanding), style: pw.TextStyle(fontSize: 10, fontWeight: pw.FontWeight.bold, color: _textDark)),
-    ],
-    ),
-    if (isOverpaid) ...[
-    pw.SizedBox(height: 2),
-    pw.Row(
-    mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
-    children: [
-    pw.Text('Excess Received', style: const pw.TextStyle(fontSize: 8, color: _textLight)),
-    pw.Text(_currency(excessAmount), style: const pw.TextStyle(fontSize: 8, color: _textLight)),
-    ],
-    ),
-    ]
-    ] else ...[
-    pw.SizedBox(height: 4),
-    pw.Divider(color: _borderColor, thickness: 0.5),
-    pw.SizedBox(height: 4),
-    pw.Row(
-    mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
-    children: [
-    pw.Text('Balance Due', style: pw.TextStyle(fontSize: 10, fontWeight: pw.FontWeight.bold, color: _textDark)),
-    pw.Text(_currency(invoice.totals.grandTotal), style: pw.TextStyle(fontSize: 10, fontWeight: pw.FontWeight.bold, color: _textDark)),
-    ],
-    ),
-    ]
-    ],
-    ),
-    )
-    ],
-    )
-    );
-  }
+                    if (totalReceived > invoice.advanceAmount)
+                      _buildSummaryLine('Remaining Payment Received', totalReceived - invoice.advanceAmount),
 
-  pw.Widget _buildSummaryLine(String label, double amount) {
-    return pw.Padding(
-      padding: const pw.EdgeInsets.only(bottom: 4),
-      child: pw.Row(
-        mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
-        children: [
-          pw.Text(label, style: const pw.TextStyle(fontSize: 8, color: _textDark)),
-          pw.Text(_currency(amount), style: const pw.TextStyle(fontSize: 8, color: _textDark)),
-        ],
-      ),
+                    _buildSummaryLine('Total Payments Received', totalReceived),
+
+                    pw.SizedBox(height: 4),
+                    pw.Divider(color: _borderColor, thickness: 0.5),
+                    pw.SizedBox(height: 4),
+
+                    pw.Row(
+                      mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+                      children: [
+                        pw.Text('Balance Due', style: pw.TextStyle(fontSize: 10, fontWeight: pw.FontWeight.bold, color: _textDark)),
+                        pw.Text(_currency(displayOutstanding), style: pw.TextStyle(fontSize: 10, fontWeight: pw.FontWeight.bold, color: _textDark)),
+                      ],
+                    ),
+
+                    if (isOverpaid) ...[
+                      pw.SizedBox(height: 2),
+                      pw.Row(
+                        mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+                        children: [
+                          pw.Text('Excess Received', style: const pw.TextStyle(fontSize: 8, color: _textLight)),
+                          pw.Text(_currency(excessAmount), style: const pw.TextStyle(fontSize: 8, color: _textLight)),
+                        ],
+                      ),
+                    ]
+                  ] else ...[
+                    pw.SizedBox(height: 4),
+                    pw.Divider(color: _borderColor, thickness: 0.5),
+                    pw.SizedBox(height: 4),
+                    pw.Row(
+                      mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+                      children: [
+                        pw.Text('Balance Due', style: pw.TextStyle(fontSize: 10, fontWeight: pw.FontWeight.bold, color: _textDark)),
+                        pw.Text(_currency(invoice.totals.grandTotal), style: pw.TextStyle(fontSize: 10, fontWeight: pw.FontWeight.bold, color: _textDark)),
+                      ],
+                    ),
+                  ]
+                ],
+              ),
+            )
+          ],
+        )
     );
   }
 
@@ -478,6 +609,15 @@ class ExportInvoiceDocumentView extends StatelessWidget {
     final declarationText = invoice.declaration.isNotEmpty
         ? invoice.declaration
         : 'We declare that this invoice shows the actual price of the goods described and that all particulars are true and correct. ${isLUT ? 'Export under LUT - IGST not applicable.' : 'Export on payment of IGST.'}';
+
+    final String qrData = jsonEncode({
+      "invoiceNo": invoice.invoiceNumber,
+      "date": _formatDate(invoice.invoiceDate),
+      "amount": invoice.totals.grandTotal,
+      "currency": invoice.currency,
+      "companyName": invoice.supplier.name,
+      "customerName": invoice.buyer.name,
+    });
 
     return pw.Container(
         margin: const pw.EdgeInsets.only(top: 12),
@@ -547,10 +687,14 @@ class ExportInvoiceDocumentView extends StatelessWidget {
                     children: [
                       pw.Text('For ${invoice.supplier.name.toUpperCase()}', style: pw.TextStyle(fontSize: 8, fontWeight: pw.FontWeight.bold, color: _textDark), textAlign: pw.TextAlign.right),
                       pw.SizedBox(height: 35),
+                      pw.Container(width: 130, height: 0.5, color: _textDark),
+                      pw.SizedBox(height: 2),
                       pw.Text(
                           invoice.authorizedSignatory.isNotEmpty ? invoice.authorizedSignatory : 'Authorised Signatory',
                           style: pw.TextStyle(fontSize: 8, fontStyle: pw.FontStyle.italic, color: _textDark)
                       ),
+                      pw.SizedBox(height: 2),
+                      pw.Text('This is a digitally generated document', style: const pw.TextStyle(fontSize: 5, color: _textLight)),
                       pw.SizedBox(height: 8),
                       pw.Row(
                           mainAxisAlignment: pw.MainAxisAlignment.end,
@@ -562,7 +706,7 @@ class ExportInvoiceDocumentView extends StatelessWidget {
                                 width: 35,
                                 child: pw.BarcodeWidget(
                                   barcode: pw.Barcode.qrCode(),
-                                  data: 'INV:${invoice.invoiceNumber}|DT:${_formatDate(invoice.invoiceDate)}|AMT:${invoice.totals.grandTotal}|CUR:${invoice.currency}|CUST:${invoice.buyer.name}',
+                                  data: qrData,
                                   drawText: false,
                                   color: _textDark,
                                 )
@@ -580,6 +724,8 @@ class ExportInvoiceDocumentView extends StatelessWidget {
   // ================= MAIN PDF GENERATOR =================
 
   Future<Uint8List> _buildPdf(PdfPageFormat format) async {
+    final logoProvider = await _fetchAndCacheLogo();
+
     final doc = pw.Document(
       theme: pw.ThemeData.withFont(
         base: pw.Font.helvetica(),
@@ -602,7 +748,7 @@ class ExportInvoiceDocumentView extends StatelessWidget {
                 crossAxisAlignment: pw.CrossAxisAlignment.stretch,
                 mainAxisSize: pw.MainAxisSize.min,
                 children: [
-                  _buildHeader(),
+                  _buildHeader(logoProvider),
                   pw.Divider(color: _borderColor, thickness: 0.5, height: 12),
                   _buildParties(),
                   _buildShippingDetails(),

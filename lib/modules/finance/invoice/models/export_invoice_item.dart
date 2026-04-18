@@ -46,6 +46,7 @@ class ExportInvoiceItem {
   bool get isAmountMismatch =>
       (amount - computedAmount).abs() > 0.01;
 
+  // ✅ CLEAN & PRODUCTION SAFE MAP
   Map<String, dynamic> toMap() {
     return {
       'id': id,
@@ -56,21 +57,30 @@ class ExportInvoiceItem {
       'quantity': quantity,
       'unit': unit,
       'rate': rate,
-      // ✅ Always save computed value
-      'amount': computedAmount,
+
+      // ✅ Rounded value (avoid floating issues)
+      'amount': double.parse(computedAmount.toStringAsFixed(2)),
+
+      // ✅ Proper timestamp handling
       'createdAt': Timestamp.fromDate(createdAt),
       'createdBy': createdBy,
-      'updatedAt': Timestamp.fromDate(updatedAt),
+      'updatedAt': FieldValue.serverTimestamp(),
       'updatedBy': updatedBy,
+
       'isActive': isActive,
       'isDeleted': isDeleted,
     };
   }
 
+  // ✅ DEFENSIVE & STABLE PARSING
   factory ExportInvoiceItem.fromMap(Map<String, dynamic> map, String docId) {
-    final qty = (map['quantity'] ?? 0.0).toDouble();
-    final rateVal = (map['rate'] ?? 0.0).toDouble();
-    final storedAmount = (map['amount'] ?? 0.0).toDouble();
+    final qty = (map['quantity'] is num)
+        ? map['quantity'].toDouble()
+        : double.tryParse(map['quantity'].toString()) ?? 0.0;
+
+    final rateVal = (map['rate'] is num)
+        ? map['rate'].toDouble()
+        : double.tryParse(map['rate'].toString()) ?? 0.0;
 
     final computed = qty * rateVal;
 
@@ -84,7 +94,7 @@ class ExportInvoiceItem {
       unit: map['unit'] ?? '',
       rate: rateVal,
 
-      // ✅ ALWAYS trust computed value (ERP standard)
+      // ✅ Always trust computed value
       amount: computed,
 
       createdAt:
