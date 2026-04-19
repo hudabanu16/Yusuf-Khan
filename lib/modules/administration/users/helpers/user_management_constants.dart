@@ -1,3 +1,4 @@
+// lib/modules/administration/users/helpers/user_management_constants.dart
 import 'package:flutter/material.dart';
 
 /// ------------------------------------------------------------
@@ -267,7 +268,7 @@ class DispatchSubmodules {
 
 class FinanceSubmodules {
   static const String proformaInvoice = 'proformaInvoice';
-  static const String taxInvoice = 'taxInvoice';
+  static const String taxInvoice = 'taxInvoice'; // Key stays exactly the same
   static const String paymentReceived = 'paymentReceived';
   static const String outstanding = 'outstanding';
   static const String expenseEntries = 'expenseEntries';
@@ -379,7 +380,7 @@ const Map<String, String> permissionSubmoduleLabels = {
   DispatchSubmodules.deliveredOrders: 'Delivered Orders',
 
   FinanceSubmodules.proformaInvoice: 'Proforma Invoice',
-  FinanceSubmodules.taxInvoice: 'Tax Invoice',
+  FinanceSubmodules.taxInvoice: 'Invoice', // Changed from 'Tax Invoice' to 'Invoice'
   FinanceSubmodules.paymentReceived: 'Payment Received',
   FinanceSubmodules.outstanding: 'Outstanding',
   FinanceSubmodules.expenseEntries: 'Expense Entries',

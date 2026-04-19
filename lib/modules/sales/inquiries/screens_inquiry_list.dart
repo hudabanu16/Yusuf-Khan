@@ -21,34 +21,158 @@ class _ScreensInquiryListState extends State<ScreensInquiryList> {
   String _statusFilter = 'All';
   String _priorityFilter = 'All';
 
+  Future<Map<String, dynamic>?>? _profileDataFuture;
+  Query<Map<String, dynamic>>? _inquiryQuery;
+
+  @override
+  void initState() {
+    super.initState();
+    final user = FirebaseAuth.instance.currentUser;
+    if (user != null) {
+      _profileDataFuture = _loadProfileAndQuery(user.uid);
+    }
+  }
+
   @override
   void dispose() {
     _searchController.dispose();
     super.dispose();
   }
 
+  Future<Map<String, dynamic>?> _loadProfileAndQuery(String uid) async {
+    final userData = await _loadCurrentUserProfile(uid);
+    if (userData != null) {
+      final companyId = _safeString(userData['companyId']);
+      if (companyId.isNotEmpty) {
+        _inquiryQuery = await _resolveInquiryQuery(companyId);
+      }
+    }
+    return userData;
+  }
+
+  // --- 1. FULL MULTI-TENANT PROFILE LOADER ---
   Future<Map<String, dynamic>?> _loadCurrentUserProfile(String uid) async {
-    final doc = await FirebaseFirestore.instance
+    final globalDoc = await FirebaseFirestore.instance
         .collection('users')
         .doc(uid)
         .get();
-    return doc.data();
+
+    if (!globalDoc.exists) return null;
+
+    Map<String, dynamic> userData = globalDoc.data() ?? {};
+
+    // Cascading Fallback for Company ID
+    String resolvedCompanyId = _safeString(userData['activeCompanyId']);
+
+    if (resolvedCompanyId.isEmpty) {
+      resolvedCompanyId = _safeString(userData['companyId']);
+    }
+
+    if (resolvedCompanyId.isEmpty && userData['companyIds'] is List && (userData['companyIds'] as List).isNotEmpty) {
+      resolvedCompanyId = _safeString((userData['companyIds'] as List).first);
+    }
+
+    if (resolvedCompanyId.isEmpty && userData['memberships'] is Map && (userData['memberships'] as Map).isNotEmpty) {
+      resolvedCompanyId = _safeString((userData['memberships'] as Map).keys.first);
+    }
+
+    userData['companyId'] = resolvedCompanyId;
+
+    // Merge Company-Scoped Data Override
+    if (resolvedCompanyId.isNotEmpty) {
+      final companyUserDoc = await FirebaseFirestore.instance
+          .collection('companies')
+          .doc(resolvedCompanyId)
+          .collection('users')
+          .doc(uid)
+          .get();
+
+      if (companyUserDoc.exists && companyUserDoc.data() != null) {
+        userData.addAll(companyUserDoc.data()!);
+        userData['companyId'] = resolvedCompanyId; // Re-enforce
+      } else {
+        if (userData['memberships'] is Map) {
+          final membershipsMap = userData['memberships'] as Map;
+          if (membershipsMap[resolvedCompanyId] is Map) {
+            final memberData = membershipsMap[resolvedCompanyId];
+            if ((userData['role'] ?? '').toString().isEmpty) {
+              userData['role'] = memberData['role'];
+            }
+            userData['permissions'] ??= memberData['permissions'];
+          }
+        }
+      }
+    }
+
+    return userData;
   }
 
+  // --- 2. UPGRADED ROLE LOGIC ---
   bool _isAdminOrManager(String role) {
     final r = role.trim().toLowerCase();
-    return r == 'admin' || r == 'manager';
+    return r == 'admin' ||
+        r == 'manager' ||
+        r == 'owner' ||
+        r == 'founder' ||
+        r == 'ceo' ||
+        r == 'superadmin';
   }
 
+  // --- 3. ROBUST PERMISSION SYSTEM ---
   bool _hasInquiryPermission(Map<String, dynamic> userData) {
     final role = (userData['role'] ?? '').toString().trim().toLowerCase();
 
+    // Priority 1: Admin-level roles get full access
     if (_isAdminOrManager(role)) return true;
 
-    final permissions = Map<String, dynamic>.from(
-      userData['permissions'] ?? {},
-    );
-    return permissions['inquiries'] == true;
+    final permissions = userData['permissions'];
+    if (permissions is Map) {
+      // Priority 2: Deep nested permission structure
+      final salesPerms = permissions['sales'];
+      if (salesPerms is Map) {
+        final inquiryPerms = salesPerms['inquiries'];
+        if (inquiryPerms is Map) {
+          if (inquiryPerms['view'] == true) return true;
+        }
+      }
+
+      // Priority 3: Backward compatible flat permission
+      if (permissions['inquiries'] == true) return true;
+    }
+
+    return false;
+  }
+
+  // --- 4. SMART FIRESTORE AUTO-FALLBACK QUERY ---
+  Future<Query<Map<String, dynamic>>> _resolveInquiryQuery(String companyId) async {
+    debugPrint("CompanyId: $companyId");
+    final scopedQuery = FirebaseFirestore.instance
+        .collection('companies')
+        .doc(companyId)
+        .collection('inquiries');
+
+    try {
+      final scopedSnap = await scopedQuery.limit(1).get();
+      if (scopedSnap.docs.isNotEmpty) {
+        debugPrint("Using company scoped inquiries");
+        return scopedQuery.orderBy('createdAt', descending: true);
+      }
+
+      final rootQuery = FirebaseFirestore.instance
+          .collection('inquiries')
+          .where('companyId', isEqualTo: companyId);
+
+      final rootSnap = await rootQuery.limit(1).get();
+      if (rootSnap.docs.isNotEmpty) {
+        debugPrint("Using root collection inquiries (Fallback)");
+        return rootQuery; // UI sorts chronologically locally, protects against missing composite index
+      }
+    } catch (e) {
+      debugPrint("Query resolution error: $e");
+    }
+
+    debugPrint("Using company scoped inquiries (Default/Empty)");
+    return scopedQuery.orderBy('createdAt', descending: true);
   }
 
   String _safeString(dynamic value) {
@@ -111,12 +235,12 @@ class _ScreensInquiryListState extends State<ScreensInquiryList> {
           .toLowerCase();
 
       final mobile =
-          (data['contactMobile'] ??
-                  data['contactPhone'] ??
-                  data['mobile'] ??
-                  '')
-              .toString()
-              .toLowerCase();
+      (data['contactMobile'] ??
+          data['contactPhone'] ??
+          data['mobile'] ??
+          '')
+          .toString()
+          .toLowerCase();
 
       final projectName = (data['projectName'] ?? '').toString().toLowerCase();
 
@@ -131,15 +255,15 @@ class _ScreensInquiryListState extends State<ScreensInquiryList> {
 
       final matchesSearch =
           normalizedSearch.isEmpty ||
-          inquiryCode.contains(normalizedSearch) ||
-          customerCode.contains(normalizedSearch) ||
-          customerName.contains(normalizedSearch) ||
-          subject.contains(normalizedSearch) ||
-          contactName.contains(normalizedSearch) ||
-          mobile.contains(normalizedSearch) ||
-          projectName.contains(normalizedSearch) ||
-          source.contains(normalizedSearch) ||
-          requiredProducts.contains(normalizedSearch);
+              inquiryCode.contains(normalizedSearch) ||
+              customerCode.contains(normalizedSearch) ||
+              customerName.contains(normalizedSearch) ||
+              subject.contains(normalizedSearch) ||
+              contactName.contains(normalizedSearch) ||
+              mobile.contains(normalizedSearch) ||
+              projectName.contains(normalizedSearch) ||
+              source.contains(normalizedSearch) ||
+              requiredProducts.contains(normalizedSearch);
 
       final matchesStatus = _statusFilter == 'All' || status == _statusFilter;
       final matchesPriority =
@@ -389,7 +513,7 @@ class _ScreensInquiryListState extends State<ScreensInquiryList> {
       MaterialPageRoute(
         builder: (_) => QuotationScreenLocal(
           userId:
-              (FirebaseAuth.instance.currentUser?.uid.hashCode ?? 0).abs() %
+          (FirebaseAuth.instance.currentUser?.uid.hashCode ?? 0).abs() %
               1000000,
         ),
       ),
@@ -657,34 +781,34 @@ class _ScreensInquiryListState extends State<ScreensInquiryList> {
               ),
               child: isTight
                   ? Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        footerLeft,
-                        const SizedBox(height: 10),
-                        _buildFooterRight(inquiry),
-                        const SizedBox(height: 10),
-                        actions,
-                      ],
-                    )
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  footerLeft,
+                  const SizedBox(height: 10),
+                  _buildFooterRight(inquiry),
+                  const SizedBox(height: 10),
+                  actions,
+                ],
+              )
                   : Column(
-                      children: [
-                        Row(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Expanded(child: footerLeft),
-                            const SizedBox(width: 12),
-                            Expanded(
-                              child: Align(
-                                alignment: Alignment.centerRight,
-                                child: _buildFooterRight(inquiry),
-                              ),
-                            ),
-                          ],
+                children: [
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Expanded(child: footerLeft),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Align(
+                          alignment: Alignment.centerRight,
+                          child: _buildFooterRight(inquiry),
                         ),
-                        const SizedBox(height: 12),
-                        Align(alignment: Alignment.centerRight, child: actions),
-                      ],
-                    ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  Align(alignment: Alignment.centerRight, child: actions),
+                ],
+              ),
             );
 
             return Column(
@@ -768,14 +892,14 @@ class _ScreensInquiryListState extends State<ScreensInquiryList> {
                 suffixIcon: _searchText.trim().isEmpty
                     ? null
                     : IconButton(
-                        onPressed: () {
-                          _searchController.clear();
-                          setState(() {
-                            _searchText = '';
-                          });
-                        },
-                        icon: const Icon(Icons.close),
-                      ),
+                  onPressed: () {
+                    _searchController.clear();
+                    setState(() {
+                      _searchText = '';
+                    });
+                  },
+                  icon: const Icon(Icons.close),
+                ),
                 filled: true,
                 fillColor: Colors.white,
                 contentPadding: const EdgeInsets.symmetric(
@@ -852,16 +976,16 @@ class _ScreensInquiryListState extends State<ScreensInquiryList> {
             children: statuses
                 .map(
                   (e) => _buildFilterChip(
-                    label: e,
-                    selected: _statusFilter == e,
-                    selectedColor: e == 'All'
-                        ? const Color(0xFF2563EB)
-                        : _statusColor(e),
-                    onTap: () {
-                      setState(() => _statusFilter = e);
-                    },
-                  ),
-                )
+                label: e,
+                selected: _statusFilter == e,
+                selectedColor: e == 'All'
+                    ? const Color(0xFF2563EB)
+                    : _statusColor(e),
+                onTap: () {
+                  setState(() => _statusFilter = e);
+                },
+              ),
+            )
                 .toList(),
           ),
           const SizedBox(height: 14),
@@ -880,16 +1004,16 @@ class _ScreensInquiryListState extends State<ScreensInquiryList> {
             children: priorities
                 .map(
                   (e) => _buildFilterChip(
-                    label: e,
-                    selected: _priorityFilter == e,
-                    selectedColor: e == 'All'
-                        ? const Color(0xFF2563EB)
-                        : _priorityColor(e),
-                    onTap: () {
-                      setState(() => _priorityFilter = e);
-                    },
-                  ),
-                )
+                label: e,
+                selected: _priorityFilter == e,
+                selectedColor: e == 'All'
+                    ? const Color(0xFF2563EB)
+                    : _priorityColor(e),
+                onTap: () {
+                  setState(() => _priorityFilter = e);
+                },
+              ),
+            )
                 .toList(),
           ),
         ],
@@ -898,8 +1022,8 @@ class _ScreensInquiryListState extends State<ScreensInquiryList> {
   }
 
   Widget _buildSummarySection(
-    List<QueryDocumentSnapshot<Map<String, dynamic>>> docs,
-  ) {
+      List<QueryDocumentSnapshot<Map<String, dynamic>>> docs,
+      ) {
     int total = docs.length;
     int open = 0;
     int followUp = 0;
@@ -961,10 +1085,10 @@ class _ScreensInquiryListState extends State<ScreensInquiryList> {
               children: cards
                   .map(
                     (e) => Padding(
-                      padding: const EdgeInsets.only(bottom: 12),
-                      child: e,
-                    ),
-                  )
+                  padding: const EdgeInsets.only(bottom: 12),
+                  child: e,
+                ),
+              )
                   .toList(),
             );
           }
@@ -1027,8 +1151,11 @@ class _ScreensInquiryListState extends State<ScreensInquiryList> {
       return const Scaffold(body: Center(child: Text('User not logged in')));
     }
 
+    // Safety fallback just in case initState didn't bind
+    _profileDataFuture ??= _loadProfileAndQuery(firebaseUser.uid);
+
     return FutureBuilder<Map<String, dynamic>?>(
-      future: _loadCurrentUserProfile(firebaseUser.uid),
+      future: _profileDataFuture,
       builder: (context, userSnap) {
         if (userSnap.connectionState == ConnectionState.waiting) {
           return const Scaffold(
@@ -1081,10 +1208,12 @@ class _ScreensInquiryListState extends State<ScreensInquiryList> {
           );
         }
 
-        final inquiryRef = FirebaseFirestore.instance
-            .collection('companies')
-            .doc(companyId)
-            .collection('inquiries');
+        if (_inquiryQuery == null) {
+          return Scaffold(
+            appBar: AppBar(title: const Text('Inquiries')),
+            body: const Center(child: Text('Error resolving data path')),
+          );
+        }
 
         return Scaffold(
           backgroundColor: const Color(0xFFF5F7FB),
@@ -1120,15 +1249,16 @@ class _ScreensInquiryListState extends State<ScreensInquiryList> {
                     backgroundColor: Colors.green,
                   ),
                 );
-                setState(() {});
+                // Hard-reload the future to force a complete re-fetch
+                setState(() {
+                  _profileDataFuture = _loadProfileAndQuery(firebaseUser.uid);
+                });
               }
             },
             child: const Icon(Icons.add),
           ),
           body: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-            stream: inquiryRef
-                .orderBy('createdAt', descending: true)
-                .snapshots(),
+            stream: _inquiryQuery!.snapshots(),
             builder: (context, snapshot) {
               if (snapshot.hasError) {
                 return Center(
@@ -1148,6 +1278,7 @@ class _ScreensInquiryListState extends State<ScreensInquiryList> {
               }
 
               final allDocs = snapshot.data?.docs.toList() ?? [];
+              debugPrint("Docs count: ${allDocs.length}");
 
               final docs = _applyLocalFilters(
                 docs: allDocs,
@@ -1157,7 +1288,12 @@ class _ScreensInquiryListState extends State<ScreensInquiryList> {
 
               return RefreshIndicator(
                 onRefresh: () async {
-                  setState(() {});
+                  // Re-bind future to force a true data reload from Firestore
+                  if (mounted) {
+                    setState(() {
+                      _profileDataFuture = _loadProfileAndQuery(firebaseUser.uid);
+                    });
+                  }
                   await Future.delayed(const Duration(milliseconds: 400));
                 },
                 child: SingleChildScrollView(

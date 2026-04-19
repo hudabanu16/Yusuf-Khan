@@ -1,3 +1,5 @@
+// FILE PATH: lib/auth/register/register_workspace_service.dart
+
 import 'dart:typed_data';
 
 import 'package:cloud_firestore/cloud_firestore.dart';

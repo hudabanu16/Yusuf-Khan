@@ -1,3 +1,5 @@
+// FILE PATH: lib/auth/register/register_screen_local.dart
+
 import 'package:flutter/material.dart';
 
 import 'register_constants.dart';

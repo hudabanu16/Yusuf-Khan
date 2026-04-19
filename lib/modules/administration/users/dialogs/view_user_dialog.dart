@@ -1,3 +1,5 @@
+// FILE PATH: lib/modules/administration/users/dialogs/view_user_dialog.dart
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 
@@ -32,6 +34,7 @@ Future<void> showViewUserDialog({
   final isActive = (data['isActive'] ?? true) == true;
   final isDeleted = (data['isDeleted'] ?? false) == true;
   final storedStatus = (data['status'] ?? '').toString().trim();
+  final industry = (data['industry'] ?? '').toString().trim();
 
   final createdAt = formatTimestamp(data['createdAt']);
   final updatedAt = formatTimestamp(data['updatedAt']);
@@ -52,7 +55,9 @@ Future<void> showViewUserDialog({
   );
 
   final permissions = Map<String, dynamic>.from(data['permissions'] ?? {});
-  final enabledPermissions = _extractEnabledPermissions(permissions);
+
+  final bool isExportImport = industry == 'export_import';
+  final enabledPermissions = _extractEnabledPermissions(permissions, isExportImport);
 
   await showDialog<void>(
     context: context,
@@ -486,12 +491,24 @@ Widget _detailRow(
   );
 }
 
-List<String> _extractEnabledPermissions(Map<String, dynamic> permissions) {
+List<String> _extractEnabledPermissions(Map<String, dynamic> permissions, bool isExportImport) {
   final enabled = <String>[];
 
-  permissions.forEach((key, value) {
-    if (value == true) {
-      enabled.add(key);
+  permissions.forEach((module, submodules) {
+    if (submodules is Map) {
+      submodules.forEach((submodule, actions) {
+        if (_isModuleAllowed(module, submodule, isExportImport)) {
+          if (actions is Map) {
+            actions.forEach((action, value) {
+              if (value == true) {
+                enabled.add('$module.$submodule.$action');
+              }
+            });
+          } else if (actions == true) {
+            enabled.add('$module.$submodule');
+          }
+        }
+      });
     }
   });
 
@@ -499,14 +516,25 @@ List<String> _extractEnabledPermissions(Map<String, dynamic> permissions) {
   return enabled;
 }
 
+bool _isModuleAllowed(String module, String submodule, bool isExportImport) {
+  if (!isExportImport) return true;
+  if (module == 'dashboard') return true;
+  if (module == 'sales' && (submodule == 'inquiries' || submodule == 'quotations')) return true;
+  if (module == 'crm' && submodule == 'customers') return true;
+  if (module == 'finance' && ['taxInvoice', 'paymentReceived', 'outstanding', 'expenseEntries'].contains(submodule)) return true;
+  if (module == 'reports' && ['salesReport', 'inquiryReport', 'customerReport', 'paymentReport'].contains(submodule)) return true;
+  return false;
+}
+
 String _permissionDisplayLabel(String key) {
   if (key.contains('.')) {
     final parts = key.split('.');
-    if (parts.length == 2) {
+    if (parts.length == 3) {
+      return '${_moduleLabel(parts[0])} • ${_submoduleLabel(parts[1])} • ${formatPermissionActionLabel(parts[2])}';
+    } else if (parts.length == 2) {
       return '${_moduleLabel(parts[0])} • ${_submoduleLabel(parts[1])}';
     }
   }
-
   return permissionLabel(key);
 }
 
@@ -563,7 +591,7 @@ String _submoduleLabel(String key) {
     'shipmentTracking': 'Shipment Tracking',
     'deliveredOrders': 'Delivered Orders',
     'proformaInvoice': 'Proforma Invoice',
-    'taxInvoice': 'Tax Invoice',
+    'taxInvoice': 'Invoice', // Updated from 'Tax Invoice' to 'Invoice'
     'paymentReceived': 'Payment Received',
     'outstanding': 'Outstanding',
     'expenseEntries': 'Expense Entries',

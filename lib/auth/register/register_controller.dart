@@ -1,3 +1,5 @@
+// FILE PATH: lib/auth/register/register_controller.dart
+
 import 'dart:typed_data';
 
 import 'package:file_picker/file_picker.dart';
