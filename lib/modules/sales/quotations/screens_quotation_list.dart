@@ -27,14 +27,42 @@ class _ScreensQuotationListState extends State<ScreensQuotationList> {
   String? _errorMessage;
   String _searchText = '';
 
+  // Single Source of Truth for Queries
+  Query<Map<String, dynamic>>? _primaryQuery;
+  Query<Map<String, dynamic>>? _fallbackQuery;
+
+  // Dynamically resolved path for CRUD operations
+  CollectionReference<Map<String, dynamic>>? _dynamicQuotationCollection;
+  CollectionReference<Map<String, dynamic>>? _primaryCollection;
+  CollectionReference<Map<String, dynamic>>? _fallbackCollection;
+
   bool get _isAdminOrManager {
-    final role = _currentUserRole.trim().toLowerCase();
+    final role = _currentUserRole.trim().toLowerCase().replaceAll('_', '');
     return role == 'admin' ||
         role == 'manager' ||
-        role == 'director' ||
-        role == 'md' ||
+        role == 'owner' ||
+        role == 'founder' ||
         role == 'ceo' ||
-        role == 'super_admin';
+        role == 'superadmin' ||
+        role == 'director' ||
+        role == 'md';
+  }
+
+  bool _hasQuotationPermission(Map<String, dynamic> userData) {
+    if (_isAdminOrManager) return true;
+
+    final permissions = userData['permissions'];
+    if (permissions is Map) {
+      final salesPerms = permissions['sales'];
+      if (salesPerms is Map) {
+        final quotePerms = salesPerms['quotations'];
+        if (quotePerms is Map) {
+          if (quotePerms['view'] == true) return true;
+        }
+      }
+      if (permissions['quotations'] == true) return true;
+    }
+    return false;
   }
 
   @override
@@ -49,57 +77,151 @@ class _ScreensQuotationListState extends State<ScreensQuotationList> {
 
       if (user == null) {
         setState(() {
-          _errorMessage = 'No logged-in user found.';
+          _errorMessage = 'User authentication required. Please log in again.';
           _isLoadingContext = false;
         });
         return;
       }
+
+      _currentUserUid = user.uid;
 
       final rootUserDoc = await FirebaseFirestore.instance
           .collection('users')
           .doc(user.uid)
           .get();
 
-      final data = rootUserDoc.data() ?? <String, dynamic>{};
+      Map<String, dynamic> userData = rootUserDoc.data() ?? {};
 
-      final companyId = (data['companyId'] ?? '').toString().trim();
-      final role = (data['role'] ?? 'sales').toString().trim();
+      String resolvedCompanyId = _safeString(userData['activeCompanyId']);
+
+      if (resolvedCompanyId.isEmpty) {
+        resolvedCompanyId = _safeString(userData['companyId']);
+      }
+
+      if (resolvedCompanyId.isEmpty && userData['companyIds'] is List && (userData['companyIds'] as List).isNotEmpty) {
+        resolvedCompanyId = _safeString((userData['companyIds'] as List).first);
+      }
+
+      if (resolvedCompanyId.isEmpty && userData['memberships'] is Map && (userData['memberships'] as Map).isNotEmpty) {
+        resolvedCompanyId = _safeString((userData['memberships'] as Map).keys.first);
+      }
+
+      _companyId = resolvedCompanyId;
+      userData['companyId'] = resolvedCompanyId;
+
+      debugPrint("CompanyId: $_companyId");
+
+      if (resolvedCompanyId.isEmpty) {
+        setState(() {
+          _errorMessage = 'No active workspace linked. Please join a company first.';
+          _isLoadingContext = false;
+        });
+        return;
+      }
+
+      final companyUserDoc = await FirebaseFirestore.instance
+          .collection('companies')
+          .doc(resolvedCompanyId)
+          .collection('users')
+          .doc(user.uid)
+          .get();
+
+      if (companyUserDoc.exists && companyUserDoc.data() != null) {
+        userData.addAll(companyUserDoc.data()!);
+        userData['companyId'] = resolvedCompanyId;
+      } else {
+        if (userData['memberships'] is Map) {
+          final membershipsMap = userData['memberships'] as Map;
+          if (membershipsMap[resolvedCompanyId] is Map) {
+            final memberData = membershipsMap[resolvedCompanyId];
+            if ((userData['role'] ?? '').toString().isEmpty) {
+              userData['role'] = memberData['role'];
+            }
+            userData['permissions'] ??= memberData['permissions'];
+          }
+        }
+      }
+
+      _currentUserRole = (userData['role'] ?? 'sales').toString().trim();
+
+      if (!_hasQuotationPermission(userData)) {
+        setState(() {
+          _errorMessage = 'Access Denied: You lack permissions to view quotations.';
+          _isLoadingContext = false;
+        });
+        return;
+      }
+
+      _setupQueries(resolvedCompanyId);
 
       setState(() {
-        _currentUserUid = user.uid;
-        _companyId = companyId;
-        _currentUserRole = role;
         _isLoadingContext = false;
-        _errorMessage = companyId.isEmpty
-            ? 'Company context not found for current user.'
-            : null;
+        _errorMessage = null;
       });
     } catch (e) {
+      debugPrint("User Profile Load Error: $e");
       setState(() {
-        _errorMessage = 'Failed to load user context: $e';
+        _errorMessage = 'Failed to load user context safely. Please try again.';
         _isLoadingContext = false;
       });
     }
+  }
+
+  void _setupQueries(String companyId) {
+    _primaryCollection = FirebaseFirestore.instance
+        .collection('companies')
+        .doc(companyId)
+        .collection('quotations');
+
+    _fallbackCollection = FirebaseFirestore.instance
+        .collection('quotations');
+
+    Query<Map<String, dynamic>> pQuery = _primaryCollection!;
+    Query<Map<String, dynamic>> fQuery = _fallbackCollection!.where('companyId', isEqualTo: companyId);
+
+    // --- 1 & 2. SAFE FILTER.OR FALLBACK ---
+    if (!_isAdminOrManager && _currentUserUid != null) {
+      try {
+        final accessFilter = Filter.or(
+          Filter('createdByUid', isEqualTo: _currentUserUid),
+          Filter('assignedToUid', isEqualTo: _currentUserUid),
+        );
+        pQuery = pQuery.where(accessFilter);
+        fQuery = fQuery.where(accessFilter);
+      } catch (e) {
+        debugPrint("Filter.or not supported, fallback applied: $e");
+        pQuery = pQuery.where('createdByUid', isEqualTo: _currentUserUid);
+        fQuery = fQuery.where('createdByUid', isEqualTo: _currentUserUid);
+      }
+    }
+
+    // --- 3. INDEX-SAFE ORDERBY ---
+    try {
+      pQuery = pQuery.orderBy('createdAt', descending: true);
+    } catch (e) {
+      debugPrint("orderBy failed due to missing index on primary query: $e");
+    }
+
+    try {
+      fQuery = fQuery.orderBy('createdAt', descending: true);
+    } catch (e) {
+      debugPrint("orderBy failed due to missing index on fallback query: $e");
+    }
+
+    _primaryQuery = pQuery;
+    _fallbackQuery = fQuery;
+
+    _dynamicQuotationCollection = _primaryCollection;
+    debugPrint("Initial CRUD Collection path initialized: ${_dynamicQuotationCollection?.path}");
   }
 
   CollectionReference<Map<String, dynamic>> get _quotationCollection {
-    return FirebaseFirestore.instance
-        .collection('companies')
-        .doc(_companyId)
-        .collection('quotations');
+    assert(_dynamicQuotationCollection != null, "Quotation collection path must be resolved before CRUD operations.");
+    return _dynamicQuotationCollection!;
   }
 
-  Query<Map<String, dynamic>> _quotationQuery() {
-    Query<Map<String, dynamic>> query = _quotationCollection.orderBy(
-      'createdAt',
-      descending: true,
-    );
-
-    if (!_isAdminOrManager && _currentUserUid != null) {
-      query = query.where('createdByUid', isEqualTo: _currentUserUid);
-    }
-
-    return query;
+  String _safeString(dynamic value) {
+    return (value ?? '').toString().trim();
   }
 
   String _formatTimestamp(dynamic value) {
@@ -125,34 +247,28 @@ class _ScreensQuotationListState extends State<ScreensQuotationList> {
 
   Color _statusTextColor(String status) {
     final s = status.trim().toLowerCase();
-
     if (s == 'draft') return Colors.orange.shade800;
     if (s == 'converted to so') return Colors.green.shade800;
     if (s == 'approved') return Colors.green.shade800;
     if (s == 'sent') return Colors.blue.shade800;
-
     return Colors.grey.shade800;
   }
 
   Color _statusBgColor(String status) {
     final s = status.trim().toLowerCase();
-
     if (s == 'draft') return Colors.orange.shade50;
     if (s == 'converted to so') return Colors.green.shade50;
     if (s == 'approved') return Colors.green.shade50;
     if (s == 'sent') return Colors.blue.shade50;
-
     return Colors.grey.shade100;
   }
 
   Color _statusBorderColor(String status) {
     final s = status.trim().toLowerCase();
-
     if (s == 'draft') return Colors.orange.shade300;
     if (s == 'converted to so') return Colors.green.shade300;
     if (s == 'approved') return Colors.green.shade300;
     if (s == 'sent') return Colors.blue.shade300;
-
     return Colors.grey.shade300;
   }
 
@@ -166,22 +282,19 @@ class _ScreensQuotationListState extends State<ScreensQuotationList> {
     );
 
     if (!mounted) return;
-
     if (result == true) {
       setState(() {});
     }
   }
 
   Future<void> _openQuotationForEdit(
-    String docId,
-    Map<String, dynamic> data,
-  ) async {
+      String docId,
+      Map<String, dynamic> data,
+      ) async {
     final result = await Navigator.of(context).push(
       MaterialPageRoute(
         builder: (_) => QuotationScreenLocal(
           userId: widget.userId,
-          // Jab aap quotation_screen_local me edit support add kar chuke ho
-          // tab yeh 2 params uncomment / use karna:
           // existingQuotationDoc: _quotationCollection.doc(docId),
           // existingQuotationData: data,
         ),
@@ -202,9 +315,9 @@ class _ScreensQuotationListState extends State<ScreensQuotationList> {
   }
 
   Future<void> _openQuotationDetails(
-    String docId,
-    Map<String, dynamic> data,
-  ) async {
+      String docId,
+      Map<String, dynamic> data,
+      ) async {
     await showDialog<void>(
       context: context,
       builder: (context) {
@@ -245,9 +358,9 @@ class _ScreensQuotationListState extends State<ScreensQuotationList> {
   }
 
   Future<void> _convertToSalesOrder(
-    String docId,
-    Map<String, dynamic> data,
-  ) async {
+      String docId,
+      Map<String, dynamic> data,
+      ) async {
     final quoteNumber = (data['quoteNumber'] ?? '-').toString();
     final currentStatus = (data['status'] ?? 'Draft').toString();
 
@@ -300,7 +413,7 @@ class _ScreensQuotationListState extends State<ScreensQuotationList> {
 
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Quotation converted to sales order status'),
+          content: Text('Quotation converted to sales order successfully.'),
           backgroundColor: Colors.green,
         ),
       );
@@ -308,20 +421,20 @@ class _ScreensQuotationListState extends State<ScreensQuotationList> {
       setState(() {});
     } catch (e) {
       if (!mounted) return;
-
+      debugPrint("Convert SO Error: $e");
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Failed to convert quotation: $e'),
-          backgroundColor: Colors.red,
+          content: const Text('Failed to convert quotation due to a server error.'),
+          backgroundColor: Colors.red.shade800,
         ),
       );
     }
   }
 
   Future<void> _confirmDeleteQuotation(
-    String docId,
-    Map<String, dynamic> data,
-  ) async {
+      String docId,
+      Map<String, dynamic> data,
+      ) async {
     final quoteNumber = (data['quoteNumber'] ?? '').toString();
 
     final shouldDelete = await showDialog<bool>(
@@ -330,7 +443,7 @@ class _ScreensQuotationListState extends State<ScreensQuotationList> {
         return AlertDialog(
           title: const Text('Delete Quotation'),
           content: Text(
-            'Are you sure you want to delete quotation $quoteNumber?',
+            'Are you sure you want to permanently delete quotation $quoteNumber?',
           ),
           actions: [
             TextButton(
@@ -365,11 +478,11 @@ class _ScreensQuotationListState extends State<ScreensQuotationList> {
       );
     } catch (e) {
       if (!mounted) return;
-
+      debugPrint("Delete Quotation Error: $e");
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Failed to delete quotation: $e'),
-          backgroundColor: Colors.red,
+          content: const Text('Deletion failed. Ensure you have the required permissions.'),
+          backgroundColor: Colors.red.shade800,
         ),
       );
     }
@@ -394,6 +507,174 @@ class _ScreensQuotationListState extends State<ScreensQuotationList> {
         ),
       ),
     );
+  }
+
+  Widget _buildListView(List<QueryDocumentSnapshot<Map<String, dynamic>>> filtered) {
+    if (filtered.isEmpty) {
+      return Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(32),
+        decoration: BoxDecoration(
+          border: Border.all(color: Colors.grey.shade300),
+          borderRadius: BorderRadius.circular(12),
+          color: Colors.white,
+        ),
+        child: const Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              Icons.receipt_long,
+              size: 54,
+              color: Colors.grey,
+            ),
+            SizedBox(height: 12),
+            Text(
+              'No quotations found',
+              style: TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            SizedBox(height: 6),
+            Text(
+              'Create your first quotation to see it here.',
+              style: TextStyle(color: Colors.grey),
+            ),
+          ],
+        ),
+      );
+    }
+
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        border: Border.all(color: Colors.grey.shade300),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: ListView.separated(
+        itemCount: filtered.length,
+        separatorBuilder: (_, __) => Divider(height: 1, color: Colors.grey.shade300),
+        itemBuilder: (context, index) {
+          final doc = filtered[index];
+          final data = doc.data();
+
+          final quoteNumber = (data['quoteNumber'] ?? '-').toString();
+          final customer = (data['clientName'] ?? '-').toString();
+          final status = (data['status'] ?? 'Draft').toString();
+          final quoteDate = _formatTimestamp(data['quoteDate']);
+          final grandTotal = _money(data['grandTotal']);
+
+          return ListTile(
+            contentPadding: const EdgeInsets.symmetric(
+              horizontal: 16,
+              vertical: 10,
+            ),
+            title: Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    quoteNumber,
+                    style: const TextStyle(
+                      fontWeight: FontWeight.bold,
+                      color: primaryColor,
+                    ),
+                  ),
+                ),
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 4,
+                  ),
+                  decoration: BoxDecoration(
+                    color: _statusBgColor(status),
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(
+                      color: _statusBorderColor(status),
+                    ),
+                  ),
+                  child: Text(
+                    status,
+                    style: TextStyle(
+                      fontWeight: FontWeight.w600,
+                      color: _statusTextColor(status),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            subtitle: Padding(
+              padding: const EdgeInsets.only(top: 8),
+              child: Wrap(
+                spacing: 18,
+                runSpacing: 8,
+                children: [
+                  Text('Customer: $customer'),
+                  Text('Date: $quoteDate'),
+                  Text('Total: $grandTotal'),
+                ],
+              ),
+            ),
+            trailing: Wrap(
+              spacing: 2,
+              children: [
+                IconButton(
+                  icon: const Icon(Icons.visibility_outlined),
+                  tooltip: 'View',
+                  onPressed: () => _openQuotationDetails(doc.id, data),
+                ),
+                IconButton(
+                  icon: const Icon(
+                    Icons.edit_outlined,
+                    color: Colors.blueGrey,
+                  ),
+                  tooltip: 'Edit',
+                  onPressed: () => _openQuotationForEdit(doc.id, data),
+                ),
+                IconButton(
+                  icon: const Icon(
+                    Icons.shopping_cart_checkout_outlined,
+                    color: Colors.green,
+                  ),
+                  tooltip: 'Convert to Sales Order',
+                  onPressed: () => _convertToSalesOrder(doc.id, data),
+                ),
+                IconButton(
+                  icon: const Icon(
+                    Icons.delete_outline,
+                    color: Colors.red,
+                  ),
+                  tooltip: 'Delete',
+                  onPressed: () => _confirmDeleteQuotation(doc.id, data),
+                ),
+              ],
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  // --- 4. LOCAL SORTING BACKUP IN UI ---
+  List<QueryDocumentSnapshot<Map<String, dynamic>>> _applyLocalFilters(List<QueryDocumentSnapshot<Map<String, dynamic>>> docs) {
+    // Local sort safeguard in case Firestore index ordering fails/is bypassed
+    docs.sort((a, b) {
+      final aDate = (a.data()['createdAt'] as Timestamp?)?.toDate();
+      final bDate = (b.data()['createdAt'] as Timestamp?)?.toDate();
+      return (bDate ?? DateTime(2000)).compareTo(aDate ?? DateTime(2000));
+    });
+
+    return docs.where((doc) {
+      final data = doc.data();
+      final quoteNumber = (data['quoteNumber'] ?? '').toString().toLowerCase();
+      final customer = (data['clientName'] ?? '').toString().toLowerCase();
+      final status = (data['status'] ?? '').toString().toLowerCase();
+
+      if (_searchText.isEmpty) return true;
+
+      return quoteNumber.contains(_searchText) ||
+          customer.contains(_searchText) ||
+          status.contains(_searchText);
+    }).toList();
   }
 
   @override
@@ -421,6 +702,13 @@ class _ScreensQuotationListState extends State<ScreensQuotationList> {
             ),
           ),
         ),
+      );
+    }
+
+    // --- 6. NULL SAFETY BEFORE STREAM ---
+    if (_primaryQuery == null || _fallbackQuery == null) {
+      return const Scaffold(
+        body: Center(child: Text('System initialization failed')),
       );
     }
 
@@ -478,194 +766,69 @@ class _ScreensQuotationListState extends State<ScreensQuotationList> {
             const SizedBox(height: 16),
             Expanded(
               child: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-                stream: _quotationQuery().snapshots(),
-                builder: (context, snapshot) {
-                  if (snapshot.hasError) {
-                    return Center(
-                      child: Text(
-                        'Error loading quotations: ${snapshot.error}',
-                        style: const TextStyle(color: Colors.red),
-                        textAlign: TextAlign.center,
-                      ),
-                    );
-                  }
+                stream: _primaryQuery?.snapshots(),
+                builder: (context, primarySnap) {
+                  if (primarySnap.hasError) {
+                    debugPrint("🔥 Firestore Query Error (Primary): ${primarySnap.error}");
+                    // On error (like missing index), gracefully cascade to fallback stream
+                  } else if (primarySnap.connectionState == ConnectionState.waiting) {
+                    return const Center(child: CircularProgressIndicator());
+                  } else {
+                    debugPrint("Using primary query");
+                    // Ensure toList() to create a mutable list for sorting
+                    final primaryDocs = primarySnap.data?.docs.toList() ?? [];
+                    debugPrint("Docs count: ${primaryDocs.length}");
 
-                  if (snapshot.connectionState == ConnectionState.waiting) {
-                    return const Center(
-                      child: CircularProgressIndicator(),
-                    );
-                  }
-
-                  final docs = snapshot.data?.docs ?? [];
-
-                  final filtered = docs.where((doc) {
-                    final data = doc.data();
-
-                    final quoteNumber =
-                        (data['quoteNumber'] ?? '').toString().toLowerCase();
-                    final customer =
-                        (data['clientName'] ?? '').toString().toLowerCase();
-                    final status =
-                        (data['status'] ?? '').toString().toLowerCase();
-
-                    if (_searchText.isEmpty) {
-                      return true;
+                    if (primaryDocs.isNotEmpty) {
+                      if (_dynamicQuotationCollection != _primaryCollection) {
+                        WidgetsBinding.instance.addPostFrameCallback((_) {
+                          if (mounted) setState(() => _dynamicQuotationCollection = _primaryCollection);
+                        });
+                      }
+                      return _buildListView(_applyLocalFilters(primaryDocs));
                     }
-
-                    return quoteNumber.contains(_searchText) ||
-                        customer.contains(_searchText) ||
-                        status.contains(_searchText);
-                  }).toList();
-
-                  if (filtered.isEmpty) {
-                    return Container(
-                      width: double.infinity,
-                      padding: const EdgeInsets.all(32),
-                      decoration: BoxDecoration(
-                        border: Border.all(color: Colors.grey.shade300),
-                        borderRadius: BorderRadius.circular(12),
-                        color: Colors.white,
-                      ),
-                      child: const Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(
-                            Icons.receipt_long,
-                            size: 54,
-                            color: Colors.grey,
-                          ),
-                          SizedBox(height: 12),
-                          Text(
-                            'No quotations found',
-                            style: TextStyle(
-                              fontSize: 18,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                          SizedBox(height: 6),
-                          Text(
-                            'Create your first quotation to see it here.',
-                            style: TextStyle(color: Colors.grey),
-                          ),
-                        ],
-                      ),
-                    );
                   }
 
-                  return Container(
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      border: Border.all(color: Colors.grey.shade300),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: ListView.separated(
-                      itemCount: filtered.length,
-                      separatorBuilder: (_, __) =>
-                          Divider(height: 1, color: Colors.grey.shade300),
-                      itemBuilder: (context, index) {
-                        final doc = filtered[index];
-                        final data = doc.data();
-
-                        final quoteNumber =
-                            (data['quoteNumber'] ?? '-').toString();
-                        final customer =
-                            (data['clientName'] ?? '-').toString();
-                        final status =
-                            (data['status'] ?? 'Draft').toString();
-                        final quoteDate = _formatTimestamp(data['quoteDate']);
-                        final grandTotal = _money(data['grandTotal']);
-
-                        return ListTile(
-                          contentPadding: const EdgeInsets.symmetric(
-                            horizontal: 16,
-                            vertical: 10,
-                          ),
-                          title: Row(
-                            children: [
-                              Expanded(
-                                child: Text(
-                                  quoteNumber,
-                                  style: const TextStyle(
-                                    fontWeight: FontWeight.bold,
-                                    color: primaryColor,
-                                  ),
-                                ),
-                              ),
-                              Container(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 10,
-                                  vertical: 4,
-                                ),
-                                decoration: BoxDecoration(
-                                  color: _statusBgColor(status),
-                                  borderRadius: BorderRadius.circular(20),
-                                  border: Border.all(
-                                    color: _statusBorderColor(status),
-                                  ),
-                                ),
-                                child: Text(
-                                  status,
-                                  style: TextStyle(
-                                    fontWeight: FontWeight.w600,
-                                    color: _statusTextColor(status),
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-                          subtitle: Padding(
-                            padding: const EdgeInsets.only(top: 8),
-                            child: Wrap(
-                              spacing: 18,
-                              runSpacing: 8,
-                              children: [
-                                Text('Customer: $customer'),
-                                Text('Date: $quoteDate'),
-                                Text('Total: $grandTotal'),
-                              ],
-                            ),
-                          ),
-                          trailing: Wrap(
-                            spacing: 2,
-                            children: [
-                              IconButton(
-                                icon: const Icon(Icons.visibility_outlined),
-                                tooltip: 'View',
-                                onPressed: () =>
-                                    _openQuotationDetails(doc.id, data),
-                              ),
-                              IconButton(
-                                icon: const Icon(
-                                  Icons.edit_outlined,
-                                  color: Colors.blueGrey,
-                                ),
-                                tooltip: 'Edit',
-                                onPressed: () =>
-                                    _openQuotationForEdit(doc.id, data),
-                              ),
-                              IconButton(
-                                icon: const Icon(
-                                  Icons.shopping_cart_checkout_outlined,
-                                  color: Colors.green,
-                                ),
-                                tooltip: 'Convert to Sales Order',
-                                onPressed: () =>
-                                    _convertToSalesOrder(doc.id, data),
-                              ),
-                              IconButton(
-                                icon: const Icon(
-                                  Icons.delete_outline,
-                                  color: Colors.red,
-                                ),
-                                tooltip: 'Delete',
-                                onPressed: () =>
-                                    _confirmDeleteQuotation(doc.id, data),
-                              ),
-                            ],
+                  // Fallback query resolution
+                  return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+                    stream: _fallbackQuery?.snapshots(),
+                    builder: (context, fallbackSnap) {
+                      if (fallbackSnap.hasError) {
+                        debugPrint("🔥 Firestore Query Error (Fallback): ${fallbackSnap.error}");
+                        return Center(
+                          child: Text(
+                            'System setup required. Please contact admin or check Firestore index.',
+                            style: TextStyle(color: Colors.red.shade800),
+                            textAlign: TextAlign.center,
                           ),
                         );
-                      },
-                    ),
+                      }
+
+                      if (fallbackSnap.connectionState == ConnectionState.waiting) {
+                        return const Center(child: CircularProgressIndicator());
+                      }
+
+                      debugPrint("Using fallback query");
+                      final fallbackDocs = fallbackSnap.data?.docs.toList() ?? [];
+                      debugPrint("Docs count: ${fallbackDocs.length}");
+
+                      if (fallbackDocs.isNotEmpty) {
+                        if (_dynamicQuotationCollection != _fallbackCollection) {
+                          WidgetsBinding.instance.addPostFrameCallback((_) {
+                            if (mounted) setState(() => _dynamicQuotationCollection = _fallbackCollection);
+                          });
+                        }
+                        return _buildListView(_applyLocalFilters(fallbackDocs));
+                      }
+
+                      // Completely empty default state
+                      if (_dynamicQuotationCollection != _primaryCollection) {
+                        WidgetsBinding.instance.addPostFrameCallback((_) {
+                          if (mounted) setState(() => _dynamicQuotationCollection = _primaryCollection);
+                        });
+                      }
+                      return _buildListView([]);
+                    },
                   );
                 },
               ),
