@@ -496,19 +496,27 @@ List<String> _extractEnabledPermissions(Map<String, dynamic> permissions, bool i
 
   permissions.forEach((module, submodules) {
     if (submodules is Map) {
-      submodules.forEach((submodule, actions) {
-        if (_isModuleAllowed(module, submodule, isExportImport)) {
-          if (actions is Map) {
-            actions.forEach((action, value) {
-              if (value == true) {
-                enabled.add('$module.$submodule.$action');
-              }
-            });
-          } else if (actions == true) {
-            enabled.add('$module.$submodule');
+      if (module == 'dashboard') {
+        submodules.forEach((action, value) {
+          if (value == true && _isModuleAllowed(module, null, isExportImport)) {
+            enabled.add('$module.$action');
           }
-        }
-      });
+        });
+      } else {
+        submodules.forEach((submodule, actions) {
+          if (_isModuleAllowed(module, submodule, isExportImport)) {
+            if (actions is Map) {
+              actions.forEach((action, value) {
+                if (value == true) {
+                  enabled.add('$module.$submodule.$action');
+                }
+              });
+            } else if (actions == true) {
+              enabled.add('$module.$submodule');
+            }
+          }
+        });
+      }
     }
   });
 
@@ -516,13 +524,18 @@ List<String> _extractEnabledPermissions(Map<String, dynamic> permissions, bool i
   return enabled;
 }
 
-bool _isModuleAllowed(String module, String submodule, bool isExportImport) {
+bool _isModuleAllowed(String module, String? submodule, bool isExportImport) {
   if (!isExportImport) return true;
+
   if (module == 'dashboard') return true;
-  if (module == 'sales' && (submodule == 'inquiries' || submodule == 'quotations')) return true;
-  if (module == 'crm' && submodule == 'customers') return true;
-  if (module == 'finance' && ['taxInvoice', 'paymentReceived', 'outstanding', 'expenseEntries'].contains(submodule)) return true;
-  if (module == 'reports' && ['salesReport', 'inquiryReport', 'customerReport', 'paymentReport'].contains(submodule)) return true;
+  if (module == 'sales') return false; // Strictly blocked
+  if (module == 'crm') return submodule == 'customers';
+  if (module == 'finance') {
+    return ['taxInvoice', 'paymentReceived', 'outstanding', 'expenseEntries'].contains(submodule);
+  }
+  if (module == 'reports') {
+    return ['salesReport', 'customerReport', 'paymentReport'].contains(submodule);
+  }
   return false;
 }
 
@@ -531,6 +544,8 @@ String _permissionDisplayLabel(String key) {
     final parts = key.split('.');
     if (parts.length == 3) {
       return '${_moduleLabel(parts[0])} • ${_submoduleLabel(parts[1])} • ${formatPermissionActionLabel(parts[2])}';
+    } else if (parts.length == 2 && parts[0] == 'dashboard') {
+      return '${_moduleLabel(parts[0])} • ${formatPermissionActionLabel(parts[1])}';
     } else if (parts.length == 2) {
       return '${_moduleLabel(parts[0])} • ${_submoduleLabel(parts[1])}';
     }
@@ -591,7 +606,7 @@ String _submoduleLabel(String key) {
     'shipmentTracking': 'Shipment Tracking',
     'deliveredOrders': 'Delivered Orders',
     'proformaInvoice': 'Proforma Invoice',
-    'taxInvoice': 'Invoice', // Updated from 'Tax Invoice' to 'Invoice'
+    'taxInvoice': 'Invoice',
     'paymentReceived': 'Payment Received',
     'outstanding': 'Outstanding',
     'expenseEntries': 'Expense Entries',

@@ -17,7 +17,7 @@ import 'package:QUIK/modules/finance/invoice/screens/invoice_list_screen.dart';
 import 'package:QUIK/modules/finance/invoice/screens/export_invoice_screen.dart';
 import 'package:QUIK/modules/finance/invoice/screens/tax_invoice_screen.dart';
 
-// 🔥 NEW: Real Payments & Outstanding Sub-Modules
+// Payments & Outstanding Sub-Modules
 import 'package:QUIK/modules/finance/payments_received/screens/payments_list_screen.dart';
 import 'package:QUIK/modules/finance/outstanding/screens/outstanding_screen.dart';
 
@@ -147,7 +147,7 @@ extension ShellPageX on ShellPage {
       case ShellPage.financeExportInvoiceCreate:
         return 'Create Export Invoice';
       case ShellPage.financePaymentsReceived:
-        return 'Payments Received'; // Plural title
+        return 'Payments Received';
       case ShellPage.financeOutstanding:
         return 'Outstanding';
       case ShellPage.financeExpenses:
@@ -419,9 +419,22 @@ class _ZohoShellState extends State<ZohoShell> {
     return false;
   }
 
-  bool get canInquiries => _hasPermission('sales', 'inquiries');
+  // 🔥 NEW: Adjusted canInquiries to cleanly block dashboard widgets for export_import
+  bool get canInquiries {
+    if (_resolvedIndustry == 'export_import') return false;
+    return _hasPermission('sales', 'inquiries');
+  }
 
   bool _canViewPage(ShellPage page) {
+    // 🔥 NEW: HARD BLOCK for export_import industry modules
+    if (_resolvedIndustry == 'export_import') {
+      if (page == ShellPage.salesInquiries ||
+          page == ShellPage.salesQuotations ||
+          page == ShellPage.reportsInquiry) {
+        return false; // Blocks even admins and direct routing
+      }
+    }
+
     if (isAdminOrManager) return true;
 
     switch (page) {
@@ -526,17 +539,9 @@ class _ZohoShellState extends State<ZohoShell> {
   }
 
   List<SidebarGroup> get _allSidebarGroups {
+    // 🔥 NEW: Cleaned up export_import group list. Sales completely removed, Inquiry Report removed.
     if (_resolvedIndustry == 'export_import') {
       return const [
-        SidebarGroup(
-          key: 'sales',
-          title: 'Sales',
-          icon: Icons.trending_up_outlined,
-          children: [
-            ShellPage.salesInquiries,
-            ShellPage.salesQuotations,
-          ],
-        ),
         SidebarGroup(
           key: 'crm',
           title: 'CRM',
@@ -562,7 +567,6 @@ class _ZohoShellState extends State<ZohoShell> {
           icon: Icons.assessment_outlined,
           children: [
             ShellPage.reportsSales,
-            ShellPage.reportsInquiry,
             ShellPage.reportsCustomer,
             ShellPage.reportsPayment,
           ],
@@ -733,8 +737,8 @@ class _ZohoShellState extends State<ZohoShell> {
       case ShellPage.financeTaxInvoice:
       case ShellPage.financeTaxInvoiceCreate:
       case ShellPage.financeExportInvoiceCreate:
-      case ShellPage.financePaymentsReceived: // 🔥 SET TO TRUE
-      case ShellPage.financeOutstanding:      // 🔥 SET TO TRUE
+      case ShellPage.financePaymentsReceived:
+      case ShellPage.financeOutstanding:
         return true;
       default:
         return false;
@@ -1388,7 +1392,6 @@ class _ZohoShellState extends State<ZohoShell> {
           ),
         );
 
-    // 🔥 CONNECTED NEW ROUTING
       case ShellPage.financePaymentsReceived:
         return Padding(
           padding: const EdgeInsets.all(14),

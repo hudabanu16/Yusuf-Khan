@@ -115,9 +115,10 @@ class _ScreenCreateInviteState extends State<ScreenCreateInvite> {
 
   late Map<String, dynamic> permissions;
 
+  // 🔥 CHANGED: 'sales' is completely removed from the export_import array
   List<String> get activeModules {
     return isExportImport
-        ? ['dashboard', 'sales', 'crm', 'finance', 'reports']
+        ? ['dashboard', 'crm', 'finance', 'reports']
         : permissionModuleOrder;
   }
 
@@ -153,6 +154,7 @@ class _ScreenCreateInviteState extends State<ScreenCreateInvite> {
     return email.trim().toLowerCase();
   }
 
+  // 🔥 CHANGED: Sales module and inquiryReport completely removed from defaults
   Map<String, dynamic> _getIndustryDefaultPermissions({
     required String role,
     required bool isExportImport,
@@ -161,7 +163,6 @@ class _ScreenCreateInviteState extends State<ScreenCreateInvite> {
       if (role.toLowerCase() == 'admin') {
         return {
           'dashboard': {'dashboard': true},
-          'sales': {'inquiries': true, 'quotations': true},
           'crm': {'customers': true},
           'finance': {
             'taxInvoice': true,
@@ -171,7 +172,6 @@ class _ScreenCreateInviteState extends State<ScreenCreateInvite> {
           },
           'reports': {
             'salesReport': true,
-            'inquiryReport': true,
             'customerReport': true,
             'paymentReport': true
           },
@@ -179,7 +179,6 @@ class _ScreenCreateInviteState extends State<ScreenCreateInvite> {
       } else {
         return {
           'dashboard': {'dashboard': true},
-          'sales': {'inquiries': true, 'quotations': true},
           'crm': {'customers': true},
         };
       }
@@ -653,11 +652,9 @@ class _ScreenCreateInviteState extends State<ScreenCreateInvite> {
           ]
               : (permissionSubmoduleMap[moduleKey] ?? const <String>[])
               .where((submoduleKey) {
+            // 🔥 CHANGED: Deep strict filtering for export_import
             if (isExportImport) {
-              if (moduleKey == 'sales') {
-                return submoduleKey == 'inquiries' ||
-                    submoduleKey == 'quotations';
-              }
+              if (moduleKey == 'sales') return false; // Strictly blocked
               if (moduleKey == 'crm') return submoduleKey == 'customers';
               if (moduleKey == 'finance') {
                 return [
@@ -670,8 +667,7 @@ class _ScreenCreateInviteState extends State<ScreenCreateInvite> {
               if (moduleKey == 'reports') {
                 return [
                   'salesReport',
-                  'inquiryReport',
-                  'customerReport',
+                  'customerReport', // inquiryReport explicitly blocked
                   'paymentReport'
                 ].contains(submoduleKey);
               }
@@ -690,7 +686,7 @@ class _ScreenCreateInviteState extends State<ScreenCreateInvite> {
                 border: Border.all(color: const Color(0xFFE2E8F0)),
               ),
               child: _buildActionGroup(
-                title: formatSubmoduleLabel(submoduleKey), // Inherits natively from user_management_constants.dart!
+                title: formatSubmoduleLabel(submoduleKey),
                 actions: submodulePermissions,
                 onChanged: (action, value) => onActionChanged(
                   moduleKey,

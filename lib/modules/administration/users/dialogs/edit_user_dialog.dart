@@ -137,7 +137,7 @@ Future<void> showEditUserDialog({
   );
 
   final List<String> activeModules = isExportImport
-      ? ['dashboard', 'sales', 'crm', 'finance', 'reports']
+      ? ['dashboard', 'crm', 'finance', 'reports']
       : permissionModuleOrder;
 
   await showDialog<void>(
@@ -670,15 +670,13 @@ Map<String, dynamic> _getIndustryDefaultPermissions({
     if (role.toLowerCase() == 'admin') {
       return {
         'dashboard': {'dashboard': true},
-        'sales': {'inquiries': true, 'quotations': true},
         'crm': {'customers': true},
         'finance': {'taxInvoice': true, 'paymentReceived': true, 'outstanding': true, 'expenseEntries': true},
-        'reports': {'salesReport': true, 'inquiryReport': true, 'customerReport': true, 'paymentReport': true},
+        'reports': {'salesReport': true, 'customerReport': true, 'paymentReport': true},
       };
     } else {
       return {
         'dashboard': {'dashboard': true},
-        'sales': {'inquiries': true, 'quotations': true},
         'crm': {'customers': true},
       };
     }
@@ -1071,10 +1069,10 @@ Widget _buildPermissionModuleCard({
             : (permissionSubmoduleMap[moduleKey] ?? const <String>[])
             .where((submoduleKey) {
           if (isExportImport) {
-            if (moduleKey == 'sales') return submoduleKey == 'inquiries' || submoduleKey == 'quotations';
+            if (moduleKey == 'sales') return false;
             if (moduleKey == 'crm') return submoduleKey == 'customers';
             if (moduleKey == 'finance') return ['taxInvoice', 'paymentReceived', 'outstanding', 'expenseEntries'].contains(submoduleKey);
-            if (moduleKey == 'reports') return ['salesReport', 'inquiryReport', 'customerReport', 'paymentReport'].contains(submoduleKey);
+            if (moduleKey == 'reports') return ['salesReport', 'customerReport', 'paymentReport'].contains(submoduleKey);
             return false;
           }
           return true;
@@ -1091,7 +1089,7 @@ Widget _buildPermissionModuleCard({
               border: Border.all(color: const Color(0xFFE2E8F0)),
             ),
             child: _buildActionGroup(
-              title: formatSubmoduleLabel(submoduleKey), // Correctly inherits "Invoice" from constants!
+              title: formatSubmoduleLabel(submoduleKey),
               actions: submodulePermissions,
               onChanged: (action, value) => onActionChanged(
                 moduleKey,
