@@ -4,7 +4,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:QUIK/shell/zoho_shell.dart';
-import 'package:QUIK/core/theme/app_theme.dart';
+import 'package:QUIK/core/modules/providers/module_access_provider.dart';
 import 'package:QUIK/auth/login/login_screen.dart';
 import 'package:QUIK/modules/administration/company/screen_join_company.dart';
 
@@ -273,14 +273,17 @@ class _UserProfileGateState extends State<_UserProfileGate> {
       );
     }
 
-    return ZohoShell(
-      userEmail: widget.firebaseUser.email ?? 'user@workspace.com',
-      userUid: widget.firebaseUser.uid,
-      companyId: companyId,
-      companyName: companyName,
-      role: role,
-      permissions: permissions,
-      userDisplayName: userDisplayName,
+    return ModuleAccessProvider(
+      tenantId: companyId,
+      child: ZohoShell(
+        userEmail: widget.firebaseUser.email ?? 'user@workspace.com',
+        userUid: widget.firebaseUser.uid,
+        companyId: companyId,
+        companyName: companyName,
+        role: role,
+        permissions: permissions,
+        userDisplayName: userDisplayName,
+      ),
     );
   }
 }
