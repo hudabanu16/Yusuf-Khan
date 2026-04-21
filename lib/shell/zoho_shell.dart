@@ -1,3 +1,5 @@
+// FILE PATH: lib/modules/shell/zoho_shell.dart
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
@@ -17,9 +19,16 @@ import 'package:QUIK/modules/finance/invoice/screens/invoice_list_screen.dart';
 import 'package:QUIK/modules/finance/invoice/screens/export_invoice_screen.dart';
 import 'package:QUIK/modules/finance/invoice/screens/tax_invoice_screen.dart';
 
-// 🔥 NEW: Real Payments & Outstanding Sub-Modules
+// Real Payments & Outstanding Sub-Modules
 import 'package:QUIK/modules/finance/payments_received/screens/payments_list_screen.dart';
 import 'package:QUIK/modules/finance/outstanding/screens/outstanding_screen.dart';
+
+// Reports
+import 'package:QUIK/modules/reports/sales_report/sales_report_screen.dart';
+
+// 🔥 GLOBAL DENSITY CONSTANT
+// Scalable density factor (0.9 = 10% tighter). Applied to paddings, margins, sizes.
+const double density = 0.9;
 
 enum ShellPage {
   dashboard,
@@ -147,7 +156,7 @@ extension ShellPageX on ShellPage {
       case ShellPage.financeExportInvoiceCreate:
         return 'Create Export Invoice';
       case ShellPage.financePaymentsReceived:
-        return 'Payments Received'; // Plural title
+        return 'Payments Received';
       case ShellPage.financeOutstanding:
         return 'Outstanding';
       case ShellPage.financeExpenses:
@@ -288,297 +297,31 @@ class SidebarGroup {
   });
 }
 
-class ZohoShell extends StatefulWidget {
-  final String userEmail;
-  final String userUid;
-  final String companyId;
-  final String companyName;
-  final String role;
-  final Map<String, dynamic> permissions;
-  final String? userDisplayName;
-  final String? industry;
-
-  const ZohoShell({
-    super.key,
-    required this.userEmail,
-    required this.userUid,
-    required this.companyId,
-    required this.companyName,
-    required this.role,
-    required this.permissions,
-    this.userDisplayName,
-    this.industry,
-  });
-
-  @override
-  State<ZohoShell> createState() => _ZohoShellState();
-}
-
-class _ZohoShellState extends State<ZohoShell> {
-  ShellPage activePage = ShellPage.dashboard;
-
-  final Set<String> expandedGroups = {
-    'sales',
-    'service',
-    'crm',
-    'inventory',
-    'finance',
-    'reports',
-    'admin'
+// 🔥 NEW: Centralized Workspace Configuration Architecture
+class WorkspaceConfig {
+  // 🚀 BONUS: Future Plan-based Feature Flags & Limits
+  // Can be combined later as: if (planConfig[plan]['allowFinance']) ...
+  static const Map<String, Map<String, dynamic>> planConfig = {
+    'basic': {
+      'maxUsers': 3,
+      'allowFinance': false,
+      'advancedReports': false,
+    },
+    'pro': {
+      'maxUsers': 10,
+      'allowFinance': true,
+      'advancedReports': true,
+    },
+    'enterprise': {
+      'maxUsers': 999,
+      'allowFinance': true,
+      'advancedReports': true,
+    },
   };
 
-  String? _resolvedIndustry;
-  bool _isLoadingIndustry = true;
-
-  // Live State tracked securely via Firestore streams
-  String _currentRole = 'viewer';
-  Map<String, dynamic> _currentPermissions = {};
-  List<SidebarGroup> _currentSidebarGroups = [];
-
-  @override
-  void initState() {
-    super.initState();
-    _resolvedIndustry = widget.industry;
-
-    if (_resolvedIndustry == null || _resolvedIndustry!.isEmpty) {
-      _fetchIndustry();
-    } else {
-      _isLoadingIndustry = false;
-    }
-  }
-
-  Future<void> _fetchIndustry() async {
-    try {
-      final doc = await FirebaseFirestore.instance
-          .collection('companies')
-          .doc(widget.companyId)
-          .get();
-
-      if (doc.exists && doc.data() != null) {
-        final data = doc.data()!;
-        final raw = (data['industryType'] ??
-            data['businessCategory'] ??
-            data['industry'] ??
-            '')
-            .toString()
-            .toLowerCase();
-
-        if (raw.contains('export') && raw.contains('import')) {
-          _resolvedIndustry = 'export_import';
-        } else {
-          _resolvedIndustry = raw;
-        }
-      } else {
-        _resolvedIndustry = 'unknown';
-      }
-    } catch (e) {
-      _resolvedIndustry = 'unknown';
-    }
-
-    if (mounted) {
-      setState(() {
-        _isLoadingIndustry = false;
-      });
-    }
-  }
-
-  bool get isAdminOrManager {
-    final r = _currentRole;
-    return r == 'owner' ||
-        r == 'founder' ||
-        r == 'ceo' ||
-        r == 'superadmin' ||
-        r == 'admin' ||
-        r == 'manager';
-  }
-
-  bool _hasPermission(String module, String submodule, {String action = 'view'}) {
-    if (isAdminOrManager) return true;
-
-    final moduleData = _currentPermissions[module];
-    if (moduleData is Map && moduleData.containsKey(submodule)) {
-      final subData = moduleData[submodule];
-      if (subData is Map) {
-        return subData[action] == true;
-      }
-      return subData == true;
-    }
-
-    if (_currentPermissions.containsKey(submodule)) {
-      final legacySubData = _currentPermissions[submodule];
-      if (legacySubData is Map) {
-        return legacySubData[action] == true;
-      }
-      return legacySubData == true && action == 'view';
-    }
-
-    if (_currentPermissions.containsKey('$module.$submodule')) {
-      return _currentPermissions['$module.$submodule'] == true && action == 'view';
-    }
-
-    return false;
-  }
-
-  bool get canInquiries => _hasPermission('sales', 'inquiries');
-
-  bool _canViewPage(ShellPage page) {
-    if (isAdminOrManager) return true;
-
-    switch (page) {
-      case ShellPage.dashboard:
-        return true;
-      case ShellPage.settingsGeneral:
-        return true;
-    // Sales
-      case ShellPage.salesInquiries:
-        return _hasPermission('sales', 'inquiries');
-      case ShellPage.salesQuotations:
-        return _hasPermission('sales', 'quotations');
-      case ShellPage.salesOrders:
-        return _hasPermission('sales', 'salesOrder');
-      case ShellPage.salesFollowUps:
-        return _hasPermission('sales', 'followUps');
-      case ShellPage.salesTasks:
-        return _hasPermission('sales', 'tasks');
-      case ShellPage.salesMeetings:
-        return _hasPermission('sales', 'meetings');
-    // Service
-      case ShellPage.service:
-        return true;
-    // CRM
-      case ShellPage.crmCustomers:
-        return _hasPermission('crm', 'customers');
-      case ShellPage.crmContacts:
-        return _hasPermission('crm', 'contacts');
-      case ShellPage.crmVisits:
-        return _hasPermission('crm', 'customerVisits');
-      case ShellPage.crmCommunication:
-        return _hasPermission('crm', 'communicationHistory');
-    // Purchase
-      case ShellPage.purchaseVendors:
-        return _hasPermission('purchase', 'vendors');
-      case ShellPage.purchaseOrders:
-        return _hasPermission('purchase', 'purchaseOrders');
-      case ShellPage.purchaseGrn:
-        return _hasPermission('purchase', 'grnMaterialReceipt');
-      case ShellPage.purchaseLedger:
-        return _hasPermission('purchase', 'vendorLedger');
-    // Inventory
-      case ShellPage.inventoryProducts:
-        return _hasPermission('inventory', 'products');
-      case ShellPage.inventoryStockSummary:
-        return _hasPermission('inventory', 'stockSummary');
-      case ShellPage.inventoryStockIn:
-        return _hasPermission('inventory', 'stockIn');
-      case ShellPage.inventoryStockOut:
-        return _hasPermission('inventory', 'stockOut');
-      case ShellPage.inventoryWarehouse:
-        return _hasPermission('inventory', 'warehouse');
-      case ShellPage.inventoryLowStock:
-        return _hasPermission('inventory', 'lowStockAlerts');
-    // Dispatch
-      case ShellPage.dispatchReady:
-        return _hasPermission('dispatch', 'readyForDispatch');
-      case ShellPage.dispatchChallans:
-        return _hasPermission('dispatch', 'dispatchChallans');
-      case ShellPage.dispatchShipmentTracking:
-        return _hasPermission('dispatch', 'shipmentTracking');
-      case ShellPage.dispatchDelivered:
-        return _hasPermission('dispatch', 'deliveredOrders');
-    // Finance
-      case ShellPage.financeProforma:
-        return _hasPermission('finance', 'proformaInvoice');
-      case ShellPage.financeTaxInvoice:
-      case ShellPage.financeTaxInvoiceCreate:
-      case ShellPage.financeExportInvoiceCreate:
-        return _hasPermission('finance', 'taxInvoice');
-      case ShellPage.financePaymentsReceived:
-        return _hasPermission('finance', 'paymentReceived');
-      case ShellPage.financeOutstanding:
-        return _hasPermission('finance', 'outstanding');
-      case ShellPage.financeExpenses:
-        return _hasPermission('finance', 'expenseEntries');
-    // Reports
-      case ShellPage.reportsSales:
-        return _hasPermission('reports', 'salesReport');
-      case ShellPage.reportsInquiry:
-        return _hasPermission('reports', 'inquiryReport');
-      case ShellPage.reportsCustomer:
-        return _hasPermission('reports', 'customerReport');
-      case ShellPage.reportsProduct:
-        return _hasPermission('reports', 'productReport');
-      case ShellPage.reportsPayment:
-        return _hasPermission('reports', 'paymentReport');
-    // Administration
-      case ShellPage.adminUsers:
-        return _hasPermission('administration', 'users');
-      case ShellPage.adminRoles:
-        return _hasPermission('administration', 'rolesPermissions');
-      case ShellPage.adminCompanyProfile:
-        return _hasPermission('administration', 'companyProfile');
-      case ShellPage.adminBranches:
-        return _hasPermission('administration', 'branches');
-      case ShellPage.adminAuditLogs:
-        return _hasPermission('administration', 'auditLogs');
-      default:
-        return false;
-    }
-  }
-
-  List<SidebarGroup> get _allSidebarGroups {
-    if (_resolvedIndustry == 'export_import') {
-      return const [
-        SidebarGroup(
-          key: 'sales',
-          title: 'Sales',
-          icon: Icons.trending_up_outlined,
-          children: [
-            ShellPage.salesInquiries,
-            ShellPage.salesQuotations,
-          ],
-        ),
-        SidebarGroup(
-          key: 'crm',
-          title: 'CRM',
-          icon: Icons.people_alt_outlined,
-          children: [
-            ShellPage.crmCustomers,
-          ],
-        ),
-        SidebarGroup(
-          key: 'finance',
-          title: 'Finance',
-          icon: Icons.account_balance_wallet_outlined,
-          children: [
-            ShellPage.financeTaxInvoice,
-            ShellPage.financePaymentsReceived,
-            ShellPage.financeOutstanding,
-            ShellPage.financeExpenses,
-          ],
-        ),
-        SidebarGroup(
-          key: 'reports',
-          title: 'Reports',
-          icon: Icons.assessment_outlined,
-          children: [
-            ShellPage.reportsSales,
-            ShellPage.reportsInquiry,
-            ShellPage.reportsCustomer,
-            ShellPage.reportsPayment,
-          ],
-        ),
-        SidebarGroup(
-          key: 'admin',
-          title: 'Administration',
-          icon: Icons.admin_panel_settings_outlined,
-          children: [
-            ShellPage.adminUsers,
-          ],
-        ),
-      ];
-    }
-
-    return const [
+  // 🌍 INDUSTRY-BASED SIDEBAR CONFIGURATIONS
+  static const Map<String, List<SidebarGroup>> industrySidebarConfig = {
+    'default': [
       SidebarGroup(
         key: 'sales',
         title: 'Sales',
@@ -680,7 +423,283 @@ class _ZohoShellState extends State<ZohoShell> {
           ShellPage.adminAuditLogs,
         ],
       ),
-    ];
+    ],
+
+    'export_import': [
+      // 🛑 Sales group omitted entirely per requirements
+      SidebarGroup(
+        key: 'crm',
+        title: 'CRM',
+        icon: Icons.people_alt_outlined,
+        children: [
+          ShellPage.crmCustomers,
+        ],
+      ),
+      SidebarGroup(
+        key: 'finance',
+        title: 'Finance',
+        icon: Icons.account_balance_wallet_outlined,
+        children: [
+          ShellPage.financeTaxInvoice,
+          ShellPage.financePaymentsReceived,
+          ShellPage.financeOutstanding,
+          ShellPage.financeExpenses,
+        ],
+      ),
+      SidebarGroup(
+        key: 'reports',
+        title: 'Reports',
+        icon: Icons.assessment_outlined,
+        children: [
+          ShellPage.reportsSales,
+          // 🛑 reportsInquiry omitted per requirements
+          ShellPage.reportsCustomer,
+          ShellPage.reportsPayment,
+        ],
+      ),
+      SidebarGroup(
+        key: 'admin',
+        title: 'Administration',
+        icon: Icons.admin_panel_settings_outlined,
+        children: [
+          ShellPage.adminUsers,
+        ],
+      ),
+    ],
+  };
+}
+
+class ZohoShell extends StatefulWidget {
+  final String userEmail;
+  final String userUid;
+  final String companyId;
+  final String companyName;
+  final String role;
+  final Map<String, dynamic> permissions;
+  final String? userDisplayName;
+  final String? industry;
+
+  const ZohoShell({
+    super.key,
+    required this.userEmail,
+    required this.userUid,
+    required this.companyId,
+    required this.companyName,
+    required this.role,
+    required this.permissions,
+    this.userDisplayName,
+    this.industry,
+  });
+
+  @override
+  State<ZohoShell> createState() => _ZohoShellState();
+}
+
+class _ZohoShellState extends State<ZohoShell> {
+  ShellPage activePage = ShellPage.dashboard;
+
+  final Set<String> expandedGroups = {
+    'sales',
+    'service',
+    'crm',
+    'inventory',
+    'finance',
+    'reports',
+    'admin'
+  };
+
+  String? _resolvedIndustry;
+  bool _isLoadingIndustry = true;
+
+  String _currentRole = 'viewer';
+  Map<String, dynamic> _currentPermissions = {};
+  List<SidebarGroup> _currentSidebarGroups = [];
+
+  @override
+  void initState() {
+    super.initState();
+    _resolvedIndustry = widget.industry;
+
+    if (_resolvedIndustry == null || _resolvedIndustry!.isEmpty) {
+      _fetchIndustry();
+    } else {
+      _isLoadingIndustry = false;
+    }
+  }
+
+  Future<void> _fetchIndustry() async {
+    try {
+      final doc = await FirebaseFirestore.instance
+          .collection('companies')
+          .doc(widget.companyId)
+          .get();
+
+      if (doc.exists && doc.data() != null) {
+        final data = doc.data()!;
+        final raw = (data['industryType'] ??
+            data['businessCategory'] ??
+            data['industry'] ??
+            '')
+            .toString()
+            .toLowerCase();
+
+        if (raw.contains('export') && raw.contains('import')) {
+          _resolvedIndustry = 'export_import';
+        } else {
+          _resolvedIndustry = raw;
+        }
+      } else {
+        _resolvedIndustry = 'unknown';
+      }
+    } catch (e) {
+      _resolvedIndustry = 'unknown';
+    }
+
+    if (mounted) {
+      setState(() {
+        _isLoadingIndustry = false;
+      });
+    }
+  }
+
+  bool get isAdminOrManager {
+    final r = _currentRole;
+    return r == 'owner' ||
+        r == 'founder' ||
+        r == 'ceo' ||
+        r == 'superadmin' ||
+        r == 'admin' ||
+        r == 'manager';
+  }
+
+  bool _hasPermission(String module, String submodule, {String action = 'view'}) {
+    if (isAdminOrManager) return true;
+
+    final moduleData = _currentPermissions[module];
+    if (moduleData is Map && moduleData.containsKey(submodule)) {
+      final subData = moduleData[submodule];
+      if (subData is Map) {
+        return subData[action] == true;
+      }
+      return subData == true;
+    }
+
+    if (_currentPermissions.containsKey(submodule)) {
+      final legacySubData = _currentPermissions[submodule];
+      if (legacySubData is Map) {
+        return legacySubData[action] == true;
+      }
+      return legacySubData == true && action == 'view';
+    }
+
+    if (_currentPermissions.containsKey('$module.$submodule')) {
+      return _currentPermissions['$module.$submodule'] == true && action == 'view';
+    }
+
+    return false;
+  }
+
+  bool get canInquiries => _hasPermission('sales', 'inquiries');
+
+  bool _canViewPage(ShellPage page) {
+    if (isAdminOrManager) return true;
+
+    switch (page) {
+      case ShellPage.dashboard:
+        return true;
+      case ShellPage.settingsGeneral:
+        return true;
+      case ShellPage.salesInquiries:
+        return _hasPermission('sales', 'inquiries');
+      case ShellPage.salesQuotations:
+        return _hasPermission('sales', 'quotations');
+      case ShellPage.salesOrders:
+        return _hasPermission('sales', 'salesOrder');
+      case ShellPage.salesFollowUps:
+        return _hasPermission('sales', 'followUps');
+      case ShellPage.salesTasks:
+        return _hasPermission('sales', 'tasks');
+      case ShellPage.salesMeetings:
+        return _hasPermission('sales', 'meetings');
+      case ShellPage.service:
+        return true;
+      case ShellPage.crmCustomers:
+        return _hasPermission('crm', 'customers');
+      case ShellPage.crmContacts:
+        return _hasPermission('crm', 'contacts');
+      case ShellPage.crmVisits:
+        return _hasPermission('crm', 'customerVisits');
+      case ShellPage.crmCommunication:
+        return _hasPermission('crm', 'communicationHistory');
+      case ShellPage.purchaseVendors:
+        return _hasPermission('purchase', 'vendors');
+      case ShellPage.purchaseOrders:
+        return _hasPermission('purchase', 'purchaseOrders');
+      case ShellPage.purchaseGrn:
+        return _hasPermission('purchase', 'grnMaterialReceipt');
+      case ShellPage.purchaseLedger:
+        return _hasPermission('purchase', 'vendorLedger');
+      case ShellPage.inventoryProducts:
+        return _hasPermission('inventory', 'products');
+      case ShellPage.inventoryStockSummary:
+        return _hasPermission('inventory', 'stockSummary');
+      case ShellPage.inventoryStockIn:
+        return _hasPermission('inventory', 'stockIn');
+      case ShellPage.inventoryStockOut:
+        return _hasPermission('inventory', 'stockOut');
+      case ShellPage.inventoryWarehouse:
+        return _hasPermission('inventory', 'warehouse');
+      case ShellPage.inventoryLowStock:
+        return _hasPermission('inventory', 'lowStockAlerts');
+      case ShellPage.dispatchReady:
+        return _hasPermission('dispatch', 'readyForDispatch');
+      case ShellPage.dispatchChallans:
+        return _hasPermission('dispatch', 'dispatchChallans');
+      case ShellPage.dispatchShipmentTracking:
+        return _hasPermission('dispatch', 'shipmentTracking');
+      case ShellPage.dispatchDelivered:
+        return _hasPermission('dispatch', 'deliveredOrders');
+      case ShellPage.financeProforma:
+        return _hasPermission('finance', 'proformaInvoice');
+      case ShellPage.financeTaxInvoice:
+      case ShellPage.financeTaxInvoiceCreate:
+      case ShellPage.financeExportInvoiceCreate:
+        return _hasPermission('finance', 'taxInvoice');
+      case ShellPage.financePaymentsReceived:
+        return _hasPermission('finance', 'paymentReceived');
+      case ShellPage.financeOutstanding:
+        return _hasPermission('finance', 'outstanding');
+      case ShellPage.financeExpenses:
+        return _hasPermission('finance', 'expenseEntries');
+      case ShellPage.reportsSales:
+        return _hasPermission('reports', 'salesReport');
+      case ShellPage.reportsInquiry:
+        return _hasPermission('reports', 'inquiryReport');
+      case ShellPage.reportsCustomer:
+        return _hasPermission('reports', 'customerReport');
+      case ShellPage.reportsProduct:
+        return _hasPermission('reports', 'productReport');
+      case ShellPage.reportsPayment:
+        return _hasPermission('reports', 'paymentReport');
+      case ShellPage.adminUsers:
+        return _hasPermission('administration', 'users');
+      case ShellPage.adminRoles:
+        return _hasPermission('administration', 'rolesPermissions');
+      case ShellPage.adminCompanyProfile:
+        return _hasPermission('administration', 'companyProfile');
+      case ShellPage.adminBranches:
+        return _hasPermission('administration', 'branches');
+      case ShellPage.adminAuditLogs:
+        return _hasPermission('administration', 'auditLogs');
+      default:
+        return false;
+    }
+  }
+
+  // 🔥 NEW: Dynamic Getter mapping directly to our scalable configuration
+  List<SidebarGroup> get _allSidebarGroups {
+    return WorkspaceConfig.industrySidebarConfig[_resolvedIndustry] ??
+        WorkspaceConfig.industrySidebarConfig['default']!;
   }
 
   List<SidebarGroup> _computeSidebarGroups() {
@@ -717,7 +736,6 @@ class _ZohoShellState extends State<ZohoShell> {
       _noAccess();
       return;
     }
-
     setState(() => activePage = page);
   }
 
@@ -733,8 +751,9 @@ class _ZohoShellState extends State<ZohoShell> {
       case ShellPage.financeTaxInvoice:
       case ShellPage.financeTaxInvoiceCreate:
       case ShellPage.financeExportInvoiceCreate:
-      case ShellPage.financePaymentsReceived: // 🔥 SET TO TRUE
-      case ShellPage.financeOutstanding:      // 🔥 SET TO TRUE
+      case ShellPage.financePaymentsReceived:
+      case ShellPage.financeOutstanding:
+      case ShellPage.reportsSales:
         return true;
       default:
         return false;
@@ -786,8 +805,11 @@ class _ZohoShellState extends State<ZohoShell> {
 
   Widget _buildTopHeader() {
     return Container(
-      constraints: const BoxConstraints(minHeight: 66),
-      padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
+      constraints: const BoxConstraints(minHeight: 52 * density),
+      padding: const EdgeInsets.symmetric(
+        horizontal: 16 * density,
+        vertical: 8 * density,
+      ),
       decoration: const BoxDecoration(
         color: Colors.white,
         border: Border(bottom: BorderSide(color: zBorder)),
@@ -800,7 +822,7 @@ class _ZohoShellState extends State<ZohoShell> {
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               style: const TextStyle(
-                fontSize: 18,
+                fontSize: 15,
                 fontWeight: FontWeight.w900,
                 color: zText,
               ),
@@ -818,12 +840,12 @@ class _ZohoShellState extends State<ZohoShell> {
         child: Center(
           child: Container(
             constraints: const BoxConstraints(maxWidth: 520),
-            margin: const EdgeInsets.all(24),
-            padding: const EdgeInsets.all(24),
+            margin: const EdgeInsets.all(24 * density),
+            padding: const EdgeInsets.all(24 * density),
             decoration: BoxDecoration(
               color: Colors.white,
               border: Border.all(color: zBorder),
-              borderRadius: BorderRadius.circular(18),
+              borderRadius: BorderRadius.circular(12 * density),
             ),
             child: Column(
               mainAxisSize: MainAxisSize.min,
@@ -833,27 +855,27 @@ class _ZohoShellState extends State<ZohoShell> {
                   size: 42,
                   color: zMuted,
                 ),
-                const SizedBox(height: 12),
+                const SizedBox(height: 12 * density),
                 const Text(
                   'Workspace access unavailable',
                   style: TextStyle(
-                    fontSize: 20,
+                    fontSize: 18,
                     fontWeight: FontWeight.w900,
                     color: zText,
                   ),
                 ),
-                const SizedBox(height: 10),
+                const SizedBox(height: 10 * density),
                 const Text(
                   'Your company workspace access is inactive, archived, or deleted. Please contact your administrator.',
                   textAlign: TextAlign.center,
                   style: TextStyle(
                     color: zMuted,
-                    fontSize: 14,
+                    fontSize: 13,
                     height: 1.5,
                     fontWeight: FontWeight.w600,
                   ),
                 ),
-                const SizedBox(height: 18),
+                const SizedBox(height: 18 * density),
                 OutlinedButton.icon(
                   onPressed: _logout,
                   icon: const Icon(Icons.logout),
@@ -928,14 +950,19 @@ class _ZohoShellState extends State<ZohoShell> {
           body: Row(
             children: [
               Container(
-                width: 292,
+                width: 250 * density,
                 color: zIconRail,
                 child: SafeArea(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
                       Padding(
-                        padding: const EdgeInsets.fromLTRB(18, 16, 18, 14),
+                        padding: const EdgeInsets.fromLTRB(
+                            14 * density,
+                            14 * density,
+                            14 * density,
+                            12 * density
+                        ),
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
@@ -944,20 +971,20 @@ class _ZohoShellState extends State<ZohoShell> {
                               style: TextStyle(
                                 color: Colors.white,
                                 fontWeight: FontWeight.w900,
-                                fontSize: 18,
+                                fontSize: 15,
                                 letterSpacing: 0.2,
                               ),
                             ),
-                            const SizedBox(height: 8),
+                            const SizedBox(height: 6 * density),
                             Text(
                               widget.companyName,
                               maxLines: 2,
                               overflow: TextOverflow.ellipsis,
                               style: const TextStyle(
                                 color: Colors.white70,
-                                fontSize: 12.5,
+                                fontSize: 11.5,
                                 fontWeight: FontWeight.w600,
-                                height: 1.4,
+                                height: 1.3,
                               ),
                             ),
                           ],
@@ -966,30 +993,40 @@ class _ZohoShellState extends State<ZohoShell> {
                       const Divider(color: Color(0xFF243041), height: 1),
                       Expanded(
                         child: ListView(
-                          padding: const EdgeInsets.fromLTRB(10, 12, 10, 10),
+                          padding: const EdgeInsets.fromLTRB(
+                              8 * density,
+                              10 * density,
+                              8 * density,
+                              8 * density
+                          ),
                           children: [
                             _dashboardNavItem(),
-                            const SizedBox(height: 8),
+                            const SizedBox(height: 6 * density),
                             ..._currentSidebarGroups.map(_groupWidget),
-                            const SizedBox(height: 8),
+                            const SizedBox(height: 6 * density),
                             const Divider(color: Color(0xFF243041)),
                             _settingsNavItem(),
                           ],
                         ),
                       ),
                       Padding(
-                        padding: const EdgeInsets.fromLTRB(10, 8, 10, 12),
+                        padding: const EdgeInsets.fromLTRB(
+                            8 * density,
+                            8 * density,
+                            8 * density,
+                            10 * density
+                        ),
                         child: InkWell(
-                          borderRadius: BorderRadius.circular(14),
+                          borderRadius: BorderRadius.circular(10 * density),
                           onTap: _logout,
                           child: Container(
                             padding: const EdgeInsets.symmetric(
-                              horizontal: 12,
-                              vertical: 12,
+                              horizontal: 10 * density,
+                              vertical: 10 * density,
                             ),
                             decoration: BoxDecoration(
                               color: Colors.white.withOpacity(0.06),
-                              borderRadius: BorderRadius.circular(14),
+                              borderRadius: BorderRadius.circular(10 * density),
                               border: Border.all(
                                 color: Colors.white.withOpacity(0.10),
                               ),
@@ -999,14 +1036,15 @@ class _ZohoShellState extends State<ZohoShell> {
                                 const Icon(
                                   Icons.logout,
                                   color: Colors.white70,
-                                  size: 20,
+                                  size: 16,
                                 ),
-                                const SizedBox(width: 10),
+                                const SizedBox(width: 8 * density),
                                 const Expanded(
                                   child: Text(
                                     'Logout',
                                     style: TextStyle(
                                       color: Colors.white,
+                                      fontSize: 12,
                                       fontWeight: FontWeight.w800,
                                     ),
                                   ),
@@ -1015,7 +1053,7 @@ class _ZohoShellState extends State<ZohoShell> {
                                   _currentRole.toUpperCase(),
                                   style: const TextStyle(
                                     color: Colors.white54,
-                                    fontSize: 11,
+                                    fontSize: 9.5,
                                     fontWeight: FontWeight.w700,
                                   ),
                                 ),
@@ -1049,14 +1087,17 @@ class _ZohoShellState extends State<ZohoShell> {
     final selected = activePage == ShellPage.dashboard;
 
     return Padding(
-      padding: const EdgeInsets.only(bottom: 4),
+      padding: const EdgeInsets.only(bottom: 4 * density),
       child: InkWell(
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(10 * density),
         onTap: () => _selectPage(ShellPage.dashboard),
         child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 13),
+          padding: const EdgeInsets.symmetric(
+              horizontal: 10 * density,
+              vertical: 10 * density
+          ),
           decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(14),
+            borderRadius: BorderRadius.circular(10 * density),
             color: selected
                 ? Colors.white.withOpacity(0.10)
                 : Colors.transparent,
@@ -1070,14 +1111,15 @@ class _ZohoShellState extends State<ZohoShell> {
             children: [
               Icon(
                 Icons.dashboard_outlined,
-                size: 20,
+                size: 16,
                 color: selected ? Colors.white : Colors.white70,
               ),
-              const SizedBox(width: 10),
+              const SizedBox(width: 8 * density),
               Expanded(
                 child: Text(
                   'Dashboard',
                   style: TextStyle(
+                    fontSize: 12.5,
                     color: selected ? Colors.white : Colors.white70,
                     fontWeight: selected ? FontWeight.w900 : FontWeight.w700,
                   ),
@@ -1094,14 +1136,17 @@ class _ZohoShellState extends State<ZohoShell> {
     final selected = activePage == ShellPage.settingsGeneral;
 
     return Padding(
-      padding: const EdgeInsets.only(top: 4),
+      padding: const EdgeInsets.only(top: 4 * density),
       child: InkWell(
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(10 * density),
         onTap: () => _selectPage(ShellPage.settingsGeneral),
         child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 13),
+          padding: const EdgeInsets.symmetric(
+              horizontal: 10 * density,
+              vertical: 10 * density
+          ),
           decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(14),
+            borderRadius: BorderRadius.circular(10 * density),
             color: selected
                 ? Colors.white.withOpacity(0.10)
                 : Colors.transparent,
@@ -1115,14 +1160,15 @@ class _ZohoShellState extends State<ZohoShell> {
             children: [
               Icon(
                 Icons.settings_outlined,
-                size: 20,
+                size: 16,
                 color: selected ? Colors.white : Colors.white70,
               ),
-              const SizedBox(width: 10),
+              const SizedBox(width: 8 * density),
               Expanded(
                 child: Text(
                   'Settings',
                   style: TextStyle(
+                    fontSize: 12.5,
                     color: selected ? Colors.white : Colors.white70,
                     fontWeight: selected ? FontWeight.w900 : FontWeight.w700,
                   ),
@@ -1140,10 +1186,10 @@ class _ZohoShellState extends State<ZohoShell> {
     final bool hasActiveChild = _groupContainsActive(group);
 
     return Padding(
-      padding: const EdgeInsets.only(bottom: 6),
+      padding: const EdgeInsets.only(bottom: 4 * density),
       child: Container(
         decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(14),
+          borderRadius: BorderRadius.circular(10 * density),
           color: hasActiveChild
               ? Colors.white.withOpacity(0.05)
               : Colors.transparent,
@@ -1156,7 +1202,7 @@ class _ZohoShellState extends State<ZohoShell> {
         child: Column(
           children: [
             InkWell(
-              borderRadius: BorderRadius.circular(14),
+              borderRadius: BorderRadius.circular(10 * density),
               onTap: () {
                 setState(() {
                   if (expanded) {
@@ -1168,21 +1214,22 @@ class _ZohoShellState extends State<ZohoShell> {
               },
               child: Padding(
                 padding: const EdgeInsets.symmetric(
-                  horizontal: 12,
-                  vertical: 13,
+                  horizontal: 10 * density,
+                  vertical: 10 * density,
                 ),
                 child: Row(
                   children: [
                     Icon(
                       group.icon,
-                      size: 20,
+                      size: 16,
                       color: hasActiveChild ? Colors.white : Colors.white70,
                     ),
-                    const SizedBox(width: 10),
+                    const SizedBox(width: 8 * density),
                     Expanded(
                       child: Text(
                         group.title,
                         style: TextStyle(
+                          fontSize: 12.5,
                           color: hasActiveChild ? Colors.white : Colors.white70,
                           fontWeight: hasActiveChild
                               ? FontWeight.w900
@@ -1194,6 +1241,7 @@ class _ZohoShellState extends State<ZohoShell> {
                       expanded
                           ? Icons.keyboard_arrow_down
                           : Icons.keyboard_arrow_right,
+                      size: 16,
                       color: Colors.white60,
                     ),
                   ],
@@ -1206,7 +1254,12 @@ class _ZohoShellState extends State<ZohoShell> {
                   ? CrossFadeState.showFirst
                   : CrossFadeState.showSecond,
               firstChild: Padding(
-                padding: const EdgeInsets.fromLTRB(8, 0, 8, 8),
+                padding: const EdgeInsets.fromLTRB(
+                    6 * density,
+                    0,
+                    6 * density,
+                    6 * density
+                ),
                 child: Column(
                   children: group.children
                       .map((page) => _subNavItem(page))
@@ -1228,15 +1281,18 @@ class _ZohoShellState extends State<ZohoShell> {
                 activePage == ShellPage.financeTaxInvoiceCreate));
 
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 2),
+      padding: const EdgeInsets.symmetric(vertical: 2 * density),
       child: InkWell(
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(8 * density),
         onTap: () => _selectPage(page),
         child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
+          padding: const EdgeInsets.symmetric(
+              horizontal: 10 * density,
+              vertical: 8 * density
+          ),
           decoration: BoxDecoration(
             color: selected ? Colors.white : Colors.white.withOpacity(0.03),
-            borderRadius: BorderRadius.circular(12),
+            borderRadius: BorderRadius.circular(8 * density),
             border: Border.all(
               color: selected ? Colors.white : Colors.white.withOpacity(0.05),
             ),
@@ -1245,17 +1301,17 @@ class _ZohoShellState extends State<ZohoShell> {
             children: [
               Icon(
                 page.icon,
-                size: 18,
+                size: 15,
                 color: selected ? zBlue : Colors.white70,
               ),
-              const SizedBox(width: 10),
+              const SizedBox(width: 8 * density),
               Expanded(
                 child: Text(
                   page.label,
                   style: TextStyle(
                     color: selected ? zText : Colors.white70,
                     fontWeight: selected ? FontWeight.w800 : FontWeight.w600,
-                    fontSize: 13.2,
+                    fontSize: 12,
                   ),
                 ),
               ),
@@ -1279,7 +1335,10 @@ class _ZohoShellState extends State<ZohoShell> {
       builder: (context, snap) {
         final count = snap.data?.docs.length ?? 0;
         return Container(
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+          padding: const EdgeInsets.symmetric(
+              horizontal: 6 * density,
+              vertical: 2 * density
+          ),
           decoration: BoxDecoration(
             color: selected ? zBlueSoft : Colors.white.withOpacity(0.12),
             borderRadius: BorderRadius.circular(999),
@@ -1290,7 +1349,7 @@ class _ZohoShellState extends State<ZohoShell> {
           child: Text(
             '$count',
             style: TextStyle(
-              fontSize: 11.5,
+              fontSize: 10,
               fontWeight: FontWeight.w900,
               color: selected ? zBlue : Colors.white,
             ),
@@ -1304,37 +1363,37 @@ class _ZohoShellState extends State<ZohoShell> {
     switch (activePage) {
       case ShellPage.dashboard:
         return Padding(
-          padding: const EdgeInsets.all(14),
+          padding: const EdgeInsets.all(10 * density),
           child: _homeDashboardLive(),
         );
 
       case ShellPage.salesInquiries:
         return const Padding(
-          padding: EdgeInsets.all(14),
+          padding: EdgeInsets.all(10 * density),
           child: ScreensInquiryList(),
         );
 
       case ShellPage.service:
         return Padding(
-          padding: const EdgeInsets.all(14),
+          padding: const EdgeInsets.all(10 * density),
           child: ServiceHomeScreen(),
         );
 
       case ShellPage.crmCustomers:
         return const Padding(
-          padding: EdgeInsets.all(14),
+          padding: EdgeInsets.all(10 * density),
           child: ScreensCustomerList(),
         );
 
       case ShellPage.inventoryProducts:
         return const Padding(
-          padding: EdgeInsets.all(14),
+          padding: EdgeInsets.all(10 * density),
           child: ScreensProductList(),
         );
 
       case ShellPage.salesQuotations:
         return Padding(
-          padding: const EdgeInsets.all(14),
+          padding: const EdgeInsets.all(10 * density),
           child: ScreensQuotationList(
             userId: (widget.userUid.hashCode).abs() % 1000000,
           ),
@@ -1342,13 +1401,13 @@ class _ZohoShellState extends State<ZohoShell> {
 
       case ShellPage.salesOrders:
         return const Padding(
-          padding: EdgeInsets.all(14),
+          padding: EdgeInsets.all(10 * density),
           child: SalesOrderListScreen(),
         );
 
       case ShellPage.adminUsers:
         return Padding(
-          padding: const EdgeInsets.all(14),
+          padding: const EdgeInsets.all(10 * density),
           child: ScreenUserManagement(
             companyId: widget.companyId,
             currentUid: widget.userUid,
@@ -1357,7 +1416,7 @@ class _ZohoShellState extends State<ZohoShell> {
 
       case ShellPage.financeTaxInvoice:
         return Padding(
-          padding: const EdgeInsets.all(14),
+          padding: const EdgeInsets.all(10 * density),
           child: InvoiceListScreen(
             companyId: widget.companyId,
             userUid: widget.userUid,
@@ -1388,10 +1447,9 @@ class _ZohoShellState extends State<ZohoShell> {
           ),
         );
 
-    // 🔥 CONNECTED NEW ROUTING
       case ShellPage.financePaymentsReceived:
         return Padding(
-          padding: const EdgeInsets.all(14),
+          padding: const EdgeInsets.all(10 * density),
           child: PaymentsListScreen(
             companyId: widget.companyId,
             userUid: widget.userUid,
@@ -1400,16 +1458,24 @@ class _ZohoShellState extends State<ZohoShell> {
 
       case ShellPage.financeOutstanding:
         return Padding(
-          padding: const EdgeInsets.all(14),
+          padding: const EdgeInsets.all(10 * density),
           child: OutstandingScreen(
             companyId: widget.companyId,
             userUid: widget.userUid,
           ),
         );
 
+      case ShellPage.reportsSales:
+        return Padding(
+          padding: const EdgeInsets.all(10 * density),
+          child: SalesReportScreen(
+            companyId: widget.companyId,
+          ),
+        );
+
       case ShellPage.settingsGeneral:
         return Padding(
-          padding: const EdgeInsets.all(14),
+          padding: const EdgeInsets.all(10 * density),
           child: ScreenSettingsHome(
             companyId: widget.companyId,
             companyName: widget.companyName,
@@ -1427,7 +1493,7 @@ class _ZohoShellState extends State<ZohoShell> {
 
       default:
         return Padding(
-          padding: const EdgeInsets.all(14),
+          padding: const EdgeInsets.all(10 * density),
           child: _moduleLandingPage(activePage),
         );
     }
@@ -1451,21 +1517,21 @@ class _ZohoShellState extends State<ZohoShell> {
         Text(
           page.label,
           style: const TextStyle(
-            fontSize: 22,
+            fontSize: 18,
             fontWeight: FontWeight.w900,
             color: zText,
           ),
         ),
-        const SizedBox(height: 6),
+        const SizedBox(height: 4),
         Text(
           '$sectionName module inside ${widget.companyName}',
           style: const TextStyle(
             color: zMuted,
-            fontSize: 13.5,
+            fontSize: 12,
             fontWeight: FontWeight.w600,
           ),
         ),
-        const SizedBox(height: 16),
+        const SizedBox(height: 12 * density),
         Row(
           children: [
             Expanded(
@@ -1487,7 +1553,7 @@ class _ZohoShellState extends State<ZohoShell> {
                     : Colors.redAccent,
               ),
             ),
-            const SizedBox(width: 12),
+            const SizedBox(width: 8 * density),
             Expanded(
               child: _overviewCard(
                 title: 'Action',
@@ -1499,7 +1565,7 @@ class _ZohoShellState extends State<ZohoShell> {
                 iconColor: zOrange,
               ),
             ),
-            const SizedBox(width: 12),
+            const SizedBox(width: 8 * density),
             Expanded(
               child: _overviewCard(
                 title: 'Department',
@@ -1511,18 +1577,18 @@ class _ZohoShellState extends State<ZohoShell> {
             ),
           ],
         ),
-        const SizedBox(height: 14),
+        const SizedBox(height: 10 * density),
         Expanded(
           child: Row(
             children: [
               Expanded(
                 flex: 3,
                 child: Container(
-                  padding: const EdgeInsets.all(18),
+                  padding: const EdgeInsets.all(14 * density),
                   decoration: BoxDecoration(
                     color: Colors.white,
                     border: Border.all(color: zBorder),
-                    borderRadius: BorderRadius.circular(18),
+                    borderRadius: BorderRadius.circular(10 * density),
                   ),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -1530,25 +1596,25 @@ class _ZohoShellState extends State<ZohoShell> {
                       const Text(
                         'Module Overview',
                         style: TextStyle(
-                          fontSize: 16,
+                          fontSize: 14,
                           fontWeight: FontWeight.w900,
                           color: zText,
                         ),
                       ),
-                      const SizedBox(height: 12),
+                      const SizedBox(height: 10 * density),
                       Text(
                         _moduleDescription(page),
                         style: const TextStyle(
                           color: zMuted,
-                          height: 1.55,
-                          fontSize: 13.5,
+                          height: 1.5,
+                          fontSize: 12,
                           fontWeight: FontWeight.w500,
                         ),
                       ),
-                      const SizedBox(height: 18),
+                      const SizedBox(height: 14 * density),
                       Wrap(
-                        spacing: 10,
-                        runSpacing: 10,
+                        spacing: 8 * density,
+                        runSpacing: 8 * density,
                         children: _moduleTags(
                           page,
                         ).map((e) => _moduleTag(e)).toList(),
@@ -1558,7 +1624,7 @@ class _ZohoShellState extends State<ZohoShell> {
                   ),
                 ),
               ),
-              const SizedBox(width: 12),
+              const SizedBox(width: 8 * density),
               Expanded(
                 flex: 2,
                 child: Column(
@@ -1570,13 +1636,13 @@ class _ZohoShellState extends State<ZohoShell> {
                         icon: Icons.auto_awesome_outlined,
                       ),
                     ),
-                    const SizedBox(height: 12),
+                    const SizedBox(height: 8 * density),
                     Expanded(
                       child: _quickPanel(
                         title: 'Implementation Note',
                         lines: [
                           implemented
-                              ? 'This module is already connected to an existing screen.'
+                              ? 'This module is connected to an existing screen.'
                               : 'This is a safe placeholder module.',
                           'You can connect Firestore collections later.',
                           'No current feature is removed from your app.',
@@ -1688,7 +1754,10 @@ class _ZohoShellState extends State<ZohoShell> {
 
   Widget _moduleTag(String text) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      padding: const EdgeInsets.symmetric(
+          horizontal: 10 * density,
+          vertical: 6 * density
+      ),
       decoration: BoxDecoration(
         color: const Color(0xFFF8FAFC),
         borderRadius: BorderRadius.circular(999),
@@ -1698,7 +1767,7 @@ class _ZohoShellState extends State<ZohoShell> {
         text,
         style: const TextStyle(
           color: zText,
-          fontSize: 12.5,
+          fontSize: 11,
           fontWeight: FontWeight.w700,
         ),
       ),
@@ -1713,12 +1782,12 @@ class _ZohoShellState extends State<ZohoShell> {
     required Color iconColor,
   }) {
     return Container(
-      height: 102,
-      padding: const EdgeInsets.all(14),
+      height: 76 * density,
+      padding: const EdgeInsets.all(10 * density),
       decoration: BoxDecoration(
         color: Colors.white,
         border: Border.all(color: zBorder),
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(10 * density),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1726,20 +1795,21 @@ class _ZohoShellState extends State<ZohoShell> {
           Row(
             children: [
               Container(
-                width: 34,
-                height: 34,
+                width: 24,
+                height: 24,
                 decoration: BoxDecoration(
                   color: tint,
-                  borderRadius: BorderRadius.circular(10),
+                  borderRadius: BorderRadius.circular(6 * density),
                 ),
-                child: Icon(icon, size: 18, color: iconColor),
+                child: Icon(icon, size: 14, color: iconColor),
               ),
-              const SizedBox(width: 10),
+              const SizedBox(width: 8 * density),
               Expanded(
                 child: Text(
                   title,
                   style: const TextStyle(
                     color: zMuted,
+                    fontSize: 11.5,
                     fontWeight: FontWeight.w700,
                   ),
                 ),
@@ -1750,7 +1820,7 @@ class _ZohoShellState extends State<ZohoShell> {
           Text(
             value,
             style: const TextStyle(
-              fontSize: 18,
+              fontSize: 15,
               fontWeight: FontWeight.w900,
               color: zText,
             ),
@@ -1767,52 +1837,52 @@ class _ZohoShellState extends State<ZohoShell> {
   }) {
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(12 * density),
       decoration: BoxDecoration(
         color: Colors.white,
         border: Border.all(color: zBorder),
-        borderRadius: BorderRadius.circular(18),
+        borderRadius: BorderRadius.circular(10 * density),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
-              Icon(icon, color: zBlue, size: 18),
-              const SizedBox(width: 8),
+              Icon(icon, color: zBlue, size: 15),
+              const SizedBox(width: 6 * density),
               Text(
                 title,
                 style: const TextStyle(
                   color: zText,
                   fontWeight: FontWeight.w900,
-                  fontSize: 15,
+                  fontSize: 13,
                 ),
               ),
             ],
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: 10 * density),
           Expanded(
             child: ListView(
               padding: EdgeInsets.zero,
               children: lines
                   .map(
                     (e) => Padding(
-                  padding: const EdgeInsets.only(bottom: 10),
+                  padding: const EdgeInsets.only(bottom: 8 * density),
                   child: Row(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       const Padding(
                         padding: EdgeInsets.only(top: 5),
-                        child: Icon(Icons.circle, size: 6, color: zBlue),
+                        child: Icon(Icons.circle, size: 5, color: zBlue),
                       ),
-                      const SizedBox(width: 8),
+                      const SizedBox(width: 6 * density),
                       Expanded(
                         child: Text(
                           e,
                           style: const TextStyle(
                             color: zMuted,
-                            fontSize: 13.2,
-                            height: 1.45,
+                            fontSize: 11.5,
+                            height: 1.4,
                             fontWeight: FontWeight.w600,
                           ),
                         ),
@@ -1852,12 +1922,12 @@ class _ZohoShellState extends State<ZohoShell> {
           Text(
             welcomeText,
             style: const TextStyle(
-              fontSize: 18,
+              fontSize: 15,
               fontWeight: FontWeight.w900,
               color: zText,
             ),
           ),
-          const SizedBox(height: 20),
+          const SizedBox(height: 14 * density),
           Row(
             children: const [
               Expanded(
@@ -1867,7 +1937,7 @@ class _ZohoShellState extends State<ZohoShell> {
                   icon: Icons.trending_up_outlined,
                 ),
               ),
-              SizedBox(width: 12),
+              SizedBox(width: 8 * density),
               Expanded(
                 child: _KpiBox(
                   title: 'CRM Modules',
@@ -1875,7 +1945,7 @@ class _ZohoShellState extends State<ZohoShell> {
                   icon: Icons.people_outline,
                 ),
               ),
-              SizedBox(width: 12),
+              SizedBox(width: 8 * density),
               Expanded(
                 child: _KpiBox(
                   title: 'Inventory Modules',
@@ -1883,7 +1953,7 @@ class _ZohoShellState extends State<ZohoShell> {
                   icon: Icons.inventory_2_outlined,
                 ),
               ),
-              SizedBox(width: 12),
+              SizedBox(width: 8 * density),
               Expanded(
                 child: _KpiBox(
                   title: 'Reports',
@@ -1893,7 +1963,7 @@ class _ZohoShellState extends State<ZohoShell> {
               ),
             ],
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: 8 * density),
           Expanded(
             child: Row(
               children: const [
@@ -1904,12 +1974,11 @@ class _ZohoShellState extends State<ZohoShell> {
                     emptyIcon: Icons.dashboard_customize_outlined,
                   ),
                 ),
-                SizedBox(width: 12),
+                SizedBox(width: 8 * density),
                 Expanded(
                   child: _Panel(
                     title: 'Next Build Suggestion',
-                    emptyText:
-                    'Start with Follow-ups, Stock Summary and Vendors',
+                    emptyText: 'Start with Follow-ups, Stock Summary and Vendors',
                     emptyIcon: Icons.rocket_launch_outlined,
                   ),
                 ),
@@ -1966,12 +2035,12 @@ class _ZohoShellState extends State<ZohoShell> {
             Text(
               welcomeText,
               style: const TextStyle(
-                fontSize: 18,
+                fontSize: 15,
                 fontWeight: FontWeight.w900,
                 color: zText,
               ),
             ),
-            const SizedBox(height: 14),
+            const SizedBox(height: 10 * density),
             Row(
               children: [
                 Expanded(
@@ -1981,7 +2050,7 @@ class _ZohoShellState extends State<ZohoShell> {
                     icon: Icons.folder_open_outlined,
                   ),
                 ),
-                const SizedBox(width: 12),
+                const SizedBox(width: 8 * density),
                 Expanded(
                   child: _KpiBox(
                     title: 'Untouched',
@@ -1989,7 +2058,7 @@ class _ZohoShellState extends State<ZohoShell> {
                     icon: Icons.mark_email_unread_outlined,
                   ),
                 ),
-                const SizedBox(width: 12),
+                const SizedBox(width: 8 * density),
                 Expanded(
                   child: _KpiBox(
                     title: 'Follow-ups Today',
@@ -1997,7 +2066,7 @@ class _ZohoShellState extends State<ZohoShell> {
                     icon: Icons.event_repeat_outlined,
                   ),
                 ),
-                const SizedBox(width: 12),
+                const SizedBox(width: 8 * density),
                 Expanded(
                   child: _KpiBox(
                     title: 'My Inquiries',
@@ -2007,7 +2076,7 @@ class _ZohoShellState extends State<ZohoShell> {
                 ),
               ],
             ),
-            const SizedBox(height: 12),
+            const SizedBox(height: 8 * density),
             Expanded(
               child: Row(
                 children: const [
@@ -2018,7 +2087,7 @@ class _ZohoShellState extends State<ZohoShell> {
                       emptyIcon: Icons.task_alt,
                     ),
                   ),
-                  SizedBox(width: 12),
+                  SizedBox(width: 8 * density),
                   Expanded(
                     child: _Panel(
                       title: 'My Meetings',
@@ -2046,25 +2115,26 @@ class _KpiBox extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      height: 92,
-      padding: const EdgeInsets.all(14),
+      height: 72 * density,
+      padding: const EdgeInsets.all(10 * density),
       decoration: BoxDecoration(
         color: Colors.white,
         border: Border.all(color: zBorder),
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(10 * density),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
-              Icon(icon, size: 18, color: zMuted),
-              const SizedBox(width: 8),
+              Icon(icon, size: 15, color: zMuted),
+              const SizedBox(width: 6 * density),
               Expanded(
                 child: Text(
                   title,
                   style: const TextStyle(
                     color: zMuted,
+                    fontSize: 11.5,
                     fontWeight: FontWeight.w700,
                   ),
                 ),
@@ -2075,7 +2145,7 @@ class _KpiBox extends StatelessWidget {
           Text(
             value,
             style: const TextStyle(
-              fontSize: 22,
+              fontSize: 16,
               fontWeight: FontWeight.w900,
               color: zText,
             ),
@@ -2103,12 +2173,15 @@ class _Panel extends StatelessWidget {
       decoration: BoxDecoration(
         color: Colors.white,
         border: Border.all(color: zBorder),
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(10 * density),
       ),
       child: Column(
         children: [
           Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+            padding: const EdgeInsets.symmetric(
+                horizontal: 10 * density,
+                vertical: 8 * density
+            ),
             decoration: const BoxDecoration(
               border: Border(bottom: BorderSide(color: zBorder)),
             ),
@@ -2117,6 +2190,7 @@ class _Panel extends StatelessWidget {
                 Text(
                   title,
                   style: const TextStyle(
+                    fontSize: 12.5,
                     fontWeight: FontWeight.w900,
                     color: zText,
                   ),
@@ -2127,16 +2201,17 @@ class _Panel extends StatelessWidget {
           Expanded(
             child: Center(
               child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 20),
+                padding: const EdgeInsets.symmetric(horizontal: 16 * density),
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Icon(emptyIcon, color: zMuted, size: 30),
-                    const SizedBox(height: 8),
+                    Icon(emptyIcon, color: zMuted, size: 20),
+                    const SizedBox(height: 6 * density),
                     Text(
                       emptyText,
                       textAlign: TextAlign.center,
                       style: const TextStyle(
+                        fontSize: 11.5,
                         color: zMuted,
                         fontWeight: FontWeight.w600,
                       ),
