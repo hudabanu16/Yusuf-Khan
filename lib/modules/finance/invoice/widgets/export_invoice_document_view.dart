@@ -20,6 +20,9 @@ class ExportInvoiceDocumentView extends StatelessWidget {
   // Cache to prevent redundant network calls and endless retries on failed URLs
   static final Map<String, pw.ImageProvider?> _logoCache = {};
 
+  // Cache to prevent redundant Firestore document reads for company data
+  static final Map<String, Map<String, dynamic>?> _companyCache = {};
+
   // Shared formatter to prevent continuous reallocation during layout rendering
   static final NumberFormat _numFormatter = NumberFormat('#,##0.00', 'en_US');
 
@@ -108,14 +111,34 @@ class ExportInvoiceDocumentView extends StatelessWidget {
 
   // ================= DATA FETCHERS =================
 
+  Future<Map<String, dynamic>?> _fetchCompanyData() async {
+    if (_companyCache.containsKey(invoice.companyId)) {
+      return _companyCache[invoice.companyId];
+    }
+
+    try {
+      final doc = await FirebaseFirestore.instance
+          .collection('companies')
+          .doc(invoice.companyId)
+          .get();
+
+      final data = doc.data();
+      _companyCache[invoice.companyId] = data;
+      return data;
+    } catch (e) {
+      debugPrint('Company fetch error: $e');
+      _companyCache[invoice.companyId] = null; // Cache failure to prevent endless loops
+      return null;
+    }
+  }
+
   Future<pw.ImageProvider?> _fetchAndCacheLogo() async {
     if (_logoCache.containsKey(invoice.companyId)) {
       return _logoCache[invoice.companyId];
     }
 
     try {
-      final docSnap = await FirebaseFirestore.instance.collection('companies').doc(invoice.companyId).get();
-      final data = docSnap.data();
+      final data = await _fetchCompanyData(); // Reusing the centralized fetcher
       if (data != null) {
         final logoUrl = data['logoUrl'] ?? data['logo'];
         if (logoUrl != null && logoUrl.toString().trim().isNotEmpty) {
@@ -124,10 +147,10 @@ class ExportInvoiceDocumentView extends StatelessWidget {
           return provider;
         }
       }
-      _logoCache[invoice.companyId] = null; // Explicitly cache missing state to prevent retries
+      _logoCache[invoice.companyId] = null; // Explicitly cache missing state
     } catch (e) {
       debugPrint('Export Invoice PDF: Logo fetch safely ignored - $e');
-      _logoCache[invoice.companyId] = null; // Cache failure to prevent endless network loops
+      _logoCache[invoice.companyId] = null;
     }
     return null;
   }
@@ -197,8 +220,24 @@ class ExportInvoiceDocumentView extends StatelessWidget {
 
   // ================= COMPACT PDF SECTIONS =================
 
-  pw.Widget _buildHeader(pw.ImageProvider? logoProvider) {
+  pw.Widget _buildHeader(pw.ImageProvider? logoProvider, Map<String, dynamic>? companyData) {
     final isLUT = invoice.exportDetails.exportType == 'WITH_LUT';
+
+    // Safely resolve company details with fallbacks to the invoice supplier
+    final String gstin = companyData?['gstin']?.toString().isNotEmpty == true
+        ? companyData!['gstin']
+        : invoice.supplier.gstin;
+
+    final String rawPan = companyData?['pan']?.toString().isNotEmpty == true
+        ? companyData!['pan']
+        : invoice.supplier.pan;
+    final String pan = rawPan.isNotEmpty ? rawPan : 'Not Available';
+
+    final String iec = companyData?['iec']?.toString().isNotEmpty == true
+        ? companyData!['iec']
+        : (companyData?['iecCode']?.toString().isNotEmpty == true
+        ? companyData!['iecCode']
+        : invoice.supplier.iec);
 
     return pw.Row(
       crossAxisAlignment: pw.CrossAxisAlignment.start,
@@ -222,9 +261,9 @@ class ExportInvoiceDocumentView extends StatelessWidget {
               pw.Text(invoice.supplier.address, style: const pw.TextStyle(fontSize: 8, lineSpacing: 1.1, color: _textDark)),
               pw.Text('${invoice.supplier.state} ${invoice.supplier.country}', style: const pw.TextStyle(fontSize: 8, color: _textDark)),
               pw.SizedBox(height: 4),
-              _metaRow('GSTIN:', invoice.supplier.gstin),
-              _metaRow('PAN:', invoice.supplier.pan.isNotEmpty ? invoice.supplier.pan : 'Not Available'),
-              _metaRow('IEC:', invoice.supplier.iec),
+              _metaRow('GSTIN:', gstin),
+              _metaRow('PAN:', pan),
+              _metaRow('IEC:', iec),
               _metaRow('AD Code:', invoice.exportDetails.adCode),
             ],
           ),
@@ -724,6 +763,8 @@ class ExportInvoiceDocumentView extends StatelessWidget {
   // ================= MAIN PDF GENERATOR =================
 
   Future<Uint8List> _buildPdf(PdfPageFormat format) async {
+    // Both are fetched and cached at the top level
+    final companyData = await _fetchCompanyData();
     final logoProvider = await _fetchAndCacheLogo();
 
     final doc = pw.Document(
@@ -748,7 +789,7 @@ class ExportInvoiceDocumentView extends StatelessWidget {
                 crossAxisAlignment: pw.CrossAxisAlignment.stretch,
                 mainAxisSize: pw.MainAxisSize.min,
                 children: [
-                  _buildHeader(logoProvider),
+                  _buildHeader(logoProvider, companyData),
                   pw.Divider(color: _borderColor, thickness: 0.5, height: 12),
                   _buildParties(),
                   _buildShippingDetails(),

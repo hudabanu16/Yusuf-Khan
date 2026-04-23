@@ -34,13 +34,22 @@ class InvoiceListScreen extends StatefulWidget {
 class _InvoiceListScreenState extends State<InvoiceListScreen> {
   final TextEditingController _searchController = TextEditingController();
   String _searchQuery = '';
-  String _statusFilter = 'all';
+  String _statusFilter = 'All';
   String _sortOption = 'date_desc';
 
   @override
   void dispose() {
     _searchController.dispose();
     super.dispose();
+  }
+
+  bool get _hasActiveFilters => _statusFilter != 'All' || _sortOption != 'date_desc';
+
+  void _resetFilters() {
+    setState(() {
+      _statusFilter = 'All';
+      _sortOption = 'date_desc';
+    });
   }
 
   void _showCreateOptions(BuildContext context) {
@@ -94,6 +103,118 @@ class _InvoiceListScreenState extends State<InvoiceListScreen> {
               const SizedBox(height: 12),
             ],
           ),
+        );
+      },
+    );
+  }
+
+  Future<void> _openFilterSheet() async {
+    String tempStatus = _statusFilter;
+    String tempSort = _sortOption;
+
+    const statuses = ['All', 'Draft', 'Submitted', 'Cancelled'];
+
+    await showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      backgroundColor: Colors.white,
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (ctx, setModalState) {
+            return Padding(
+              padding: EdgeInsets.fromLTRB(
+                16,
+                6,
+                16,
+                MediaQuery.of(context).viewInsets.bottom + 16,
+              ),
+              child: SingleChildScrollView(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'Filters & Sort',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    const SizedBox(height: 14),
+                    DropdownButtonFormField<String>(
+                      value: tempStatus,
+                      decoration: const InputDecoration(
+                        labelText: 'Status',
+                        isDense: true,
+                        border: OutlineInputBorder(),
+                      ),
+                      items: statuses
+                          .map((e) => DropdownMenuItem(value: e, child: Text(e)))
+                          .toList(),
+                      onChanged: (value) {
+                        setModalState(() {
+                          tempStatus = value ?? 'All';
+                        });
+                      },
+                    ),
+                    const SizedBox(height: 14),
+                    DropdownButtonFormField<String>(
+                      value: tempSort,
+                      decoration: const InputDecoration(
+                        labelText: 'Sort By',
+                        isDense: true,
+                        border: OutlineInputBorder(),
+                      ),
+                      items: const [
+                        DropdownMenuItem(value: 'date_desc', child: Text('Latest First')),
+                        DropdownMenuItem(value: 'amount_desc', child: Text('Amount (High to Low)')),
+                        DropdownMenuItem(value: 'customer_asc', child: Text('Customer (A-Z)')),
+                      ],
+                      onChanged: (value) {
+                        setModalState(() {
+                          tempSort = value ?? 'date_desc';
+                        });
+                      },
+                    ),
+                    const SizedBox(height: 14),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: TextButton(
+                            onPressed: () {
+                              setState(() {
+                                _statusFilter = 'All';
+                                _sortOption = 'date_desc';
+                              });
+                              Navigator.pop(context);
+                            },
+                            child: const Text('Reset'),
+                          ),
+                        ),
+                        Expanded(
+                          child: ElevatedButton(
+                            onPressed: () {
+                              setState(() {
+                                _statusFilter = tempStatus;
+                                _sortOption = tempSort;
+                              });
+                              Navigator.pop(context);
+                            },
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: zBlue,
+                              foregroundColor: Colors.white,
+                              elevation: 0,
+                            ),
+                            child: const Text('Apply'),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            );
+          },
         );
       },
     );
@@ -259,14 +380,12 @@ class _InvoiceListScreenState extends State<InvoiceListScreen> {
                                   throw FirebaseAuthException(code: 'user-not-found', message: 'No active user found.');
                                 }
 
-                                // 🔥 RE-AUTHENTICATE USER
                                 final credential = EmailAuthProvider.credential(
                                   email: user.email!,
                                   password: pwd,
                                 );
                                 await user.reauthenticateWithCredential(credential);
 
-                                // If success, close dialog and cancel invoice
                                 if (context.mounted) {
                                   Navigator.pop(ctx);
                                   _cancelInvoice(docId);
@@ -309,18 +428,15 @@ class _InvoiceListScreenState extends State<InvoiceListScreen> {
       final db = FirebaseFirestore.instance;
       final batch = db.batch();
 
-      // 1. UPDATE: Change invoice status to CANCELLED (Keeps document for compliance)
       final invoiceRef = db.collection('companies').doc(widget.companyId).collection('export_invoices').doc(docId);
       batch.update(invoiceRef, {
         'status': 'CANCELLED',
         'updatedAt': FieldValue.serverTimestamp(),
       });
 
-      // 2. HARD DELETE: Remove the associated outstanding ledger document to clear accounts
       final outstandingRef = db.collection('companies').doc(widget.companyId).collection('outstanding').doc(docId);
       batch.delete(outstandingRef);
 
-      // 3. ACTIVITY LOG: Create an immutable audit log entry
       final logRef = db.collection('companies').doc(widget.companyId).collection('invoice_activity_logs').doc();
       batch.set(logRef, {
         'invoiceId': docId,
@@ -329,7 +445,6 @@ class _InvoiceListScreenState extends State<InvoiceListScreen> {
         'uid': widget.userUid,
       });
 
-      // 4. COMMIT ATOMIC TRANSACTION
       await batch.commit();
 
       if (mounted) {
@@ -354,20 +469,21 @@ class _InvoiceListScreenState extends State<InvoiceListScreen> {
         .collection('export_invoices');
 
     return Scaffold(
-      backgroundColor: zCanvasBg,
+      backgroundColor: Colors.white,
       appBar: AppBar(
         elevation: 0,
         toolbarHeight: 6,
-        backgroundColor: zCanvasBg,
+        backgroundColor: Colors.white,
+        surfaceTintColor: Colors.transparent,
         automaticallyImplyLeading: false,
       ),
-      floatingActionButton: FloatingActionButton.extended(
+      floatingActionButton: FloatingActionButton(
+        tooltip: 'Add Invoice',
         backgroundColor: zBlue,
         foregroundColor: Colors.white,
-        elevation: 4,
-        icon: const Icon(Icons.add),
-        label: const Text('New Invoice', style: TextStyle(fontWeight: FontWeight.w800)),
+        elevation: 2,
         onPressed: () => _showCreateOptions(context),
+        child: const Icon(Icons.add),
       ),
       body: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
         stream: exportInvoicesRef
@@ -383,11 +499,7 @@ class _InvoiceListScreenState extends State<InvoiceListScreen> {
             return const _SkeletonListLoader();
           }
 
-          if (!snapshot.hasData || snapshot.data == null) {
-            return const _EmptyInvoiceState(hasSearch: false);
-          }
-
-          final allDocs = snapshot.data!.docs;
+          final allDocs = snapshot.data?.docs ?? [];
           final query = _searchQuery.trim().toLowerCase();
 
           // Parse to Models
@@ -396,7 +508,6 @@ class _InvoiceListScreenState extends State<InvoiceListScreen> {
             try {
               final data = doc.data();
               if (data.isEmpty) continue;
-
               invoices.add(ExportInvoiceModel.fromMap(data, doc.id));
             } catch (e) {
               debugPrint('Parse error: $e');
@@ -410,7 +521,7 @@ class _InvoiceListScreenState extends State<InvoiceListScreen> {
             final docStatus = (inv.status ?? '').toLowerCase();
 
             final matchesSearch = query.isEmpty || invNum.contains(query) || buyerName.contains(query);
-            final matchesStatus = _statusFilter == 'all' || docStatus == _statusFilter.toLowerCase();
+            final matchesStatus = _statusFilter == 'All' || docStatus == _statusFilter.toLowerCase();
 
             return matchesSearch && matchesStatus;
           }).toList();
@@ -427,26 +538,28 @@ class _InvoiceListScreenState extends State<InvoiceListScreen> {
           // Quick Stats
           final totalCount = filteredInvoices.length;
           final draftCount = filteredInvoices.where((inv) => (inv.status ?? '').toLowerCase() == 'draft').length;
-          final finalCount = filteredInvoices.where((inv) => (inv.status ?? '').toLowerCase() == 'submitted').length;
+          final submittedCount = filteredInvoices.where((inv) => (inv.status ?? '').toLowerCase() == 'submitted').length;
+          final cancelledCount = filteredInvoices.where((inv) => (inv.status ?? '').toLowerCase() == 'cancelled').length;
 
           return Column(
             children: [
-              // HEADER & FILTERS
+              // TOP CONTROL BAR
               Padding(
                 padding: const EdgeInsets.fromLTRB(16, 6, 16, 8),
                 child: Row(
                   children: [
-                    Expanded(
-                      flex: 4,
+                    ConstrainedBox(
+                      constraints: const BoxConstraints(maxWidth: 320),
                       child: SizedBox(
                         height: 38,
                         child: TextField(
                           controller: _searchController,
                           onChanged: (value) => setState(() => _searchQuery = value),
                           decoration: InputDecoration(
-                            hintText: 'Search by Invoice No or Customer',
+                            hintText: 'Search by Invoice No or Customer...',
                             prefixIcon: const Icon(Icons.search, size: 18, color: zMuted),
                             suffixIcon: _searchQuery.isEmpty ? null : IconButton(
+                              tooltip: 'Clear',
                               icon: const Icon(Icons.close, size: 17),
                               onPressed: () {
                                 _searchController.clear();
@@ -455,106 +568,113 @@ class _InvoiceListScreenState extends State<InvoiceListScreen> {
                             ),
                             isDense: true,
                             filled: true,
-                            fillColor: Colors.white,
+                            fillColor: Colors.grey.shade100,
                             contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
                             border: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(8),
-                                borderSide: BorderSide(color: Colors.grey.shade300)
+                                borderRadius: BorderRadius.circular(10),
+                                borderSide: BorderSide.none
                             ),
                             enabledBorder: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(8),
-                                borderSide: BorderSide(color: Colors.grey.shade300)
+                                borderRadius: BorderRadius.circular(10),
+                                borderSide: BorderSide.none
                             ),
                             focusedBorder: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(8),
-                                borderSide: const BorderSide(color: zBlue, width: 1.5)
+                                borderRadius: BorderRadius.circular(10),
+                                borderSide: BorderSide.none
                             ),
                           ),
                         ),
                       ),
                     ),
                     const SizedBox(width: 8),
-                    _FilterDropdown(
-                      value: _statusFilter,
-                      onChanged: (val) => setState(() => _statusFilter = val!),
-                    ),
-                    const SizedBox(width: 8),
-                    Container(
+                    SizedBox(
                       height: 38,
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        border: Border.all(color: Colors.grey.shade300),
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: PopupMenuButton<String>(
-                        icon: const Icon(Icons.sort, size: 18, color: zText),
-                        tooltip: 'Sort Invoices',
-                        offset: const Offset(0, 40),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                        onSelected: (val) => setState(() => _sortOption = val),
-                        itemBuilder: (_) => [
-                          PopupMenuItem(value: 'date_desc', child: Text('Date (Latest First)', style: TextStyle(fontSize: 13, fontWeight: _sortOption == 'date_desc' ? FontWeight.bold : FontWeight.normal))),
-                          PopupMenuItem(value: 'amount_desc', child: Text('Amount (High to Low)', style: TextStyle(fontSize: 13, fontWeight: _sortOption == 'amount_desc' ? FontWeight.bold : FontWeight.normal))),
-                          PopupMenuItem(value: 'customer_asc', child: Text('Customer (A-Z)', style: TextStyle(fontSize: 13, fontWeight: _sortOption == 'customer_asc' ? FontWeight.bold : FontWeight.normal))),
-                        ],
+                      width: 38,
+                      child: Material(
+                        color: Colors.grey.shade100,
+                        borderRadius: BorderRadius.circular(10),
+                        child: InkWell(
+                          borderRadius: BorderRadius.circular(10),
+                          onTap: _openFilterSheet,
+                          child: Stack(
+                            alignment: Alignment.center,
+                            children: [
+                              Icon(Icons.tune_rounded, size: 18, color: Colors.grey.shade800),
+                              if (_hasActiveFilters)
+                                Positioned(
+                                  right: 8,
+                                  top: 8,
+                                  child: Container(
+                                    width: 7, height: 7,
+                                    decoration: BoxDecoration(
+                                      color: Colors.blue.shade700,
+                                      shape: BoxShape.circle,
+                                    ),
+                                  ),
+                                ),
+                            ],
+                          ),
+                        ),
                       ),
                     ),
+                    const Spacer(),
+                    _MiniStatText(label: 'Total', value: totalCount.toString()),
+                    const SizedBox(width: 10),
+                    _MiniStatText(label: 'Draft', value: draftCount.toString()),
+                    const SizedBox(width: 10),
+                    _MiniStatText(label: 'Submitted', value: submittedCount.toString()),
+                    const SizedBox(width: 10),
+                    _MiniStatText(label: 'Cancelled', value: cancelledCount.toString()),
                   ],
                 ),
               ),
 
-              // QUICK STATS
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-                child: Row(
-                  children: [
-                    _MiniStatText(label: 'Total', value: totalCount.toString()),
-                    const SizedBox(width: 12),
-                    _MiniStatText(label: 'Drafts', value: draftCount.toString(), color: zOrange),
-                    const SizedBox(width: 12),
-                    _MiniStatText(label: 'Finalized', value: finalCount.toString(), color: Colors.green.shade700),
-                  ],
+              if (_hasActiveFilters)
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 4),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          'Filters applied',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: Colors.grey.shade700,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ),
+                      TextButton(
+                        onPressed: _resetFilters,
+                        child: const Text('Clear'),
+                      ),
+                    ],
+                  ),
                 ),
-              ),
 
               // LIST VIEW
               Expanded(
                 child: filteredInvoices.isEmpty
-                    ? _EmptyInvoiceState(hasSearch: _searchQuery.isNotEmpty || _statusFilter != 'all')
-                    : ListView.builder(
-                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 90),
+                    ? _EmptyInvoiceState(
+                  hasSearch: _searchQuery.isNotEmpty || _hasActiveFilters,
+                  onReset: () {
+                    _searchController.clear();
+                    setState(() => _searchQuery = '');
+                    _resetFilters();
+                  },
+                )
+                    : ListView.separated(
+                  padding: const EdgeInsets.fromLTRB(16, 4, 16, 90),
                   itemCount: filteredInvoices.length,
+                  separatorBuilder: (_, __) => const SizedBox(height: 8),
                   itemBuilder: (context, index) {
                     final invoice = filteredInvoices[index];
-                    return TweenAnimationBuilder<double>(
-                      duration: Duration(milliseconds: 300 + (index * 50).clamp(0, 400)),
-                      tween: Tween(begin: 0.0, end: 1.0),
-                      curve: Curves.easeOutCubic,
-                      builder: (context, value, child) {
-                        return Transform.translate(
-                          offset: Offset(0, 20 * (1 - value)),
-                          child: Opacity(opacity: value, child: child),
-                        );
-                      },
-                      child: _InvoiceCard(
-                        invoice: invoice,
-                        onView: () {
-                          if (!mounted) return;
-                          _handleInvoiceAction('view', invoice);
-                        },
-                        onEdit: () {
-                          if (!mounted) return;
-                          _handleInvoiceAction('edit', invoice);
-                        },
-                        onRecordPayment: () {
-                          if (!mounted) return;
-                          _handleInvoiceAction('payment', invoice);
-                        },
-                        onCancel: () {
-                          if (!mounted) return;
-                          _confirmCancel(invoice.id);
-                        },
-                      ),
+                    return _InvoiceCard(
+                      invoice: invoice,
+                      onView: () => _handleInvoiceAction('view', invoice),
+                      onEdit: () => _handleInvoiceAction('edit', invoice),
+                      onRecordPayment: () => _handleInvoiceAction('payment', invoice),
+                      onCancel: () => _handleInvoiceAction('cancel', invoice),
                     );
                   },
                 ),
@@ -562,6 +682,89 @@ class _InvoiceListScreenState extends State<InvoiceListScreen> {
             ],
           );
         },
+      ),
+    );
+  }
+}
+
+// ---------------------------------------------------------
+// REUSABLE UI COMPONENTS FOR PARITY
+// ---------------------------------------------------------
+
+class _MiniStatText extends StatelessWidget {
+  final String label;
+  final String value;
+  final Color? color;
+
+  const _MiniStatText({required this.label, required this.value, this.color});
+
+  @override
+  Widget build(BuildContext context) {
+    return Text(
+      '$label: $value',
+      style: TextStyle(
+        fontSize: 12,
+        color: color ?? Colors.grey.shade700,
+        fontWeight: FontWeight.w600,
+      ),
+    );
+  }
+}
+
+class _InlineInfo extends StatelessWidget {
+  final IconData icon;
+  final String text;
+
+  const _InlineInfo({required this.icon, required this.text});
+
+  @override
+  Widget build(BuildContext context) {
+    return ConstrainedBox(
+      constraints: const BoxConstraints(maxWidth: 300),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 15, color: Colors.grey.shade700),
+          const SizedBox(width: 5),
+          Flexible(
+            child: Text(
+              text,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                fontSize: 12.6,
+                color: Colors.grey.shade800,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _InfoChip extends StatelessWidget {
+  final String label;
+  final Color backgroundColor;
+  final Color textColor;
+
+  const _InfoChip({required this.label, required this.backgroundColor, required this.textColor});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: backgroundColor,
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Text(
+        label,
+        style: TextStyle(
+          fontSize: 11.8,
+          fontWeight: FontWeight.w700,
+          color: textColor,
+        ),
       ),
     );
   }
@@ -598,14 +801,11 @@ class _InvoiceCardState extends State<_InvoiceCard> {
     final invoice = widget.invoice;
     final isDraft = (invoice.status ?? '').toLowerCase() == 'draft';
     final isCancelled = (invoice.status ?? '').toLowerCase() == 'cancelled';
+    final isSubmitted = (invoice.status ?? '').toLowerCase() == 'submitted';
 
-    final displayStatus = isCancelled
-        ? 'CANCELLED'
-        : isDraft
-        ? 'DRAFT'
-        : ((invoice.paymentStatus ?? '').isEmpty
+    final paymentStatus = (invoice.paymentStatus ?? '').isEmpty
         ? 'UNPAID'
-        : invoice.paymentStatus.toUpperCase());
+        : invoice.paymentStatus!.toUpperCase();
 
     double safeOutstanding = invoice.amountOutstanding;
     if (safeOutstanding < 0) safeOutstanding = 0;
@@ -615,269 +815,221 @@ class _InvoiceCardState extends State<_InvoiceCard> {
       paidPct = (invoice.amountReceived / invoice.totals.grandTotal).clamp(0.0, 1.0);
     }
 
-    Color chipBg;
-    Color chipText;
-    Color chipBorder;
-    if (displayStatus == 'PAID') {
-      chipBg = Colors.green.shade50;
-      chipText = Colors.green.shade800;
-      chipBorder = Colors.green.shade200;
-    } else if (displayStatus == 'PARTIALLY PAID') {
-      chipBg = Colors.orange.shade50;
-      chipText = Colors.orange.shade900;
-      chipBorder = Colors.orange.shade200;
-    } else if (displayStatus == 'DRAFT') {
-      chipBg = Colors.grey.shade100;
-      chipText = Colors.grey.shade800;
-      chipBorder = Colors.grey.shade300;
-    } else if (displayStatus == 'CANCELLED') {
-      chipBg = Colors.red.shade50;
-      chipText = Colors.red.shade800;
-      chipBorder = Colors.red.shade200;
-    } else { // UNPAID
-      chipBg = Colors.amber.shade50;
-      chipText = Colors.amber.shade900;
-      chipBorder = Colors.amber.shade300;
-    }
+    final dateStr = DateFormat('dd MMM yyyy').format(invoice.invoiceDate);
+    final dueDateStr = DateFormat('dd MMM yyyy').format(invoice.dueDate);
+    final customerName = (invoice.buyer.name ?? '').isEmpty ? 'Unknown Customer' : invoice.buyer.name!;
+    final invoiceNum = (invoice.invoiceNumber ?? '').isEmpty ? 'Pending Number' : invoice.invoiceNumber!;
 
-    final dateStr = '${DateFormat('dd MMM yyyy').format(invoice.invoiceDate)} • Due ${DateFormat('dd MMM yyyy').format(invoice.dueDate)}';
+    // Status Styling
+    Color docBg = Colors.grey.shade100;
+    Color docFg = Colors.grey.shade800;
+    if (isSubmitted) { docBg = Colors.blue.shade50; docFg = Colors.blue.shade800; }
+    else if (isCancelled) { docBg = Colors.red.shade50; docFg = Colors.red.shade800; }
+
+    Color payBg = Colors.amber.shade50;
+    Color payFg = Colors.amber.shade900;
+    if (paymentStatus == 'PAID') { payBg = Colors.green.shade50; payFg = Colors.green.shade800; }
+    else if (paymentStatus == 'PARTIALLY PAID') { payBg = Colors.orange.shade50; payFg = Colors.orange.shade900; }
+    else if (paymentStatus == 'CANCELLED' || isCancelled) { payBg = Colors.red.shade50; payFg = Colors.red.shade800; }
 
     return MouseRegion(
       cursor: SystemMouseCursors.click,
       onEnter: (_) => setState(() => _isHovered = true),
       onExit: (_) => setState(() => _isHovered = false),
-      child: AnimatedScale(
-        scale: _isHovered ? 1.01 : 1.0,
+      child: AnimatedContainer(
         duration: const Duration(milliseconds: 200),
-        curve: Curves.easeOutCubic,
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 200),
-          margin: const EdgeInsets.only(bottom: 16),
-          decoration: BoxDecoration(
-            color: isCancelled ? const Color(0xFFF9FAFB) : Colors.white,
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: _isHovered ? zBlue.withOpacity(0.4) : Colors.grey.shade200, width: 1),
-            boxShadow: [
-              BoxShadow(
-                  color: Colors.black.withOpacity(_isHovered ? 0.06 : 0.02),
-                  blurRadius: _isHovered ? 16 : 8,
-                  offset: const Offset(0, 4)
-              ),
-            ],
+        decoration: BoxDecoration(
+          color: isCancelled ? const Color(0xFFFAFAFA) : Colors.white,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(
+            color: _isHovered ? Colors.blue.shade200 : Colors.grey.shade200,
+            width: _isHovered ? 1.2 : 0.8,
           ),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.all(12),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Top Section: Info & Amounts
-              Padding(
-                padding: const EdgeInsets.fromLTRB(20, 20, 20, 16),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Row(
-                            children: [
-                              Text(
-                                (invoice.invoiceNumber ?? '').isEmpty ? 'Pending Number' : invoice.invoiceNumber,
-                                style: TextStyle(
-                                    fontSize: 14,
-                                    fontWeight: FontWeight.w700,
-                                    color: zMuted,
-                                    decoration: isCancelled ? TextDecoration.lineThrough : null
-                                ),
-                              ),
-                              const SizedBox(width: 12),
-                              _InfoChip(label: displayStatus, bgColor: chipBg, textColor: chipText, borderColor: chipBorder),
-                            ],
+              // TOP ROW
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  CircleAvatar(
+                    radius: 20,
+                    backgroundColor: Colors.blue.shade50,
+                    child: Text(
+                      customerName[0].toUpperCase(),
+                      style: TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w700,
+                        color: Colors.blue.shade800,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          invoiceNum,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontSize: 15,
+                            fontWeight: FontWeight.w700,
+                            decoration: isCancelled ? TextDecoration.lineThrough : null,
+                            color: isCancelled ? Colors.grey.shade600 : Colors.black87,
                           ),
-                          const SizedBox(height: 8),
+                        ),
+                        const SizedBox(height: 3),
+                        Text(
+                          customerName,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontSize: 12.5,
+                            color: Colors.grey.shade700,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  PopupMenuButton<String>(
+                    tooltip: 'Actions',
+                    onSelected: (value) {
+                      if (value == 'view') widget.onView();
+                      if (value == 'edit') widget.onEdit();
+                      if (value == 'payment') widget.onRecordPayment();
+                      if (value == 'cancel') widget.onCancel();
+                    },
+                    itemBuilder: (context) => [
+                      const PopupMenuItem(
+                        value: 'view',
+                        child: Text('View Details'),
+                      ),
+                      if (paymentStatus != 'PAID' && !isCancelled)
+                        const PopupMenuItem(
+                          value: 'edit',
+                          child: Text('Edit Invoice'),
+                        ),
+                      if (!isDraft && !isCancelled && paymentStatus != 'PAID')
+                        const PopupMenuItem(
+                          value: 'payment',
+                          child: Text('Record Payment'),
+                        ),
+                      if (!isCancelled)
+                        const PopupMenuItem(
+                          value: 'cancel',
+                          child: Text('Cancel Invoice', style: TextStyle(color: Colors.red)),
+                        ),
+                    ],
+                  ),
+                ],
+              ),
+              const SizedBox(height: 10),
+
+              // CHIPS ROW
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  _InfoChip(
+                    label: isCancelled ? 'CANCELLED' : (isDraft ? 'DRAFT' : 'SUBMITTED'),
+                    backgroundColor: docBg,
+                    textColor: docFg,
+                  ),
+                  if (!isDraft)
+                    _InfoChip(
+                      label: isCancelled ? 'CANCELLED' : paymentStatus,
+                      backgroundColor: payBg,
+                      textColor: payFg,
+                    ),
+                  _InfoChip(
+                    label: 'Export',
+                    backgroundColor: Colors.grey.shade100,
+                    textColor: Colors.grey.shade800,
+                  ),
+                ],
+              ),
+              const SizedBox(height: 10),
+
+              // INFO ROW
+              Wrap(
+                spacing: 14,
+                runSpacing: 8,
+                children: [
+                  _InlineInfo(
+                    icon: Icons.calendar_today_outlined,
+                    text: dateStr,
+                  ),
+                  _InlineInfo(
+                    icon: Icons.event_outlined,
+                    text: 'Due $dueDateStr',
+                  ),
+                  _InlineInfo(
+                    icon: Icons.currency_rupee_outlined,
+                    text: '${invoice.currency} ${_formatCurrency(invoice.totals.grandTotal)}',
+                  ),
+                ],
+              ),
+
+              // PROGRESS BAR (Only if submitted and not cancelled)
+              if (!isDraft && !isCancelled) ...[
+                const SizedBox(height: 12),
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: Colors.grey.shade50,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: Colors.grey.shade200),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
                           Text(
-                            (invoice.buyer.name ?? '').isEmpty ? 'Unknown Customer' : invoice.buyer.name,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
+                            'Balance: ${_formatCurrency(safeOutstanding)}',
                             style: TextStyle(
-                                fontSize: 17,
-                                color: isCancelled ? zMuted : zText,
-                                fontWeight: FontWeight.w800,
-                                letterSpacing: 0.2
+                              fontSize: 12.8,
+                              fontWeight: FontWeight.w700,
+                              color: safeOutstanding > 0 ? Colors.red.shade700 : Colors.grey.shade800,
                             ),
                           ),
-                          const SizedBox(height: 6),
-                          Row(
-                            children: [
-                              Icon(Icons.calendar_today_rounded, size: 13, color: zMuted.withOpacity(0.7)),
-                              const SizedBox(width: 6),
-                              Text(dateStr, style: const TextStyle(fontSize: 13, color: zMuted, fontWeight: FontWeight.w500)),
-                            ],
+                          Text(
+                            '${(paidPct * 100).toInt()}% Paid',
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                              color: Colors.grey.shade700,
+                            ),
                           ),
                         ],
                       ),
-                    ),
-                    const SizedBox(width: 24),
-                    // Fixed width container for strict vertical alignment
-                    SizedBox(
-                      width: 160,
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.end,
-                        children: [
-                          Text(
-                            '${invoice.currency} ${_formatCurrency(invoice.totals.grandTotal)}',
-                            style: TextStyle(
-                                fontSize: 20,
-                                fontWeight: FontWeight.w900,
-                                color: isCancelled ? zMuted : zText,
-                                letterSpacing: -0.5,
-                                decoration: isCancelled ? TextDecoration.lineThrough : null
+                      const SizedBox(height: 8),
+                      SizedBox(
+                        width: double.infinity,
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.circular(8),
+                          child: LinearProgressIndicator(
+                            value: paidPct,
+                            minHeight: 6,
+                            backgroundColor: Colors.grey.shade200,
+                            valueColor: AlwaysStoppedAnimation<Color>(
+                                paidPct == 1.0 ? Colors.green.shade500 : Colors.blue.shade600
                             ),
                           ),
-                          const SizedBox(height: 8),
-                          if (!isDraft && !isCancelled) ...[
-                            Row(
-                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                              children: [
-                                Text(
-                                  'Balance:',
-                                  style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: zMuted.withOpacity(0.8)),
-                                ),
-                                Text(
-                                  _formatCurrency(safeOutstanding),
-                                  style: TextStyle(
-                                      fontSize: 13,
-                                      fontWeight: FontWeight.w800,
-                                      color: safeOutstanding > 0 ? Colors.red.shade600 : zMuted
-                                  ),
-                                ),
-                              ],
-                            ),
-                            const SizedBox(height: 6),
-                            TweenAnimationBuilder<double>(
-                                duration: const Duration(milliseconds: 800),
-                                curve: Curves.easeOutCubic,
-                                tween: Tween(begin: 0.0, end: paidPct),
-                                builder: (context, value, child) {
-                                  return Column(
-                                    crossAxisAlignment: CrossAxisAlignment.end,
-                                    children: [
-                                      SizedBox(
-                                        width: double.infinity,
-                                        child: ClipRRect(
-                                          borderRadius: BorderRadius.circular(8),
-                                          child: LinearProgressIndicator(
-                                            value: value,
-                                            minHeight: 5,
-                                            backgroundColor: Colors.grey.shade100,
-                                            valueColor: AlwaysStoppedAnimation<Color>(
-                                                value == 1.0 ? Colors.green.shade500 : zBlue.withOpacity(0.8)
-                                            ),
-                                          ),
-                                        ),
-                                      ),
-                                      const SizedBox(height: 4),
-                                      Text(
-                                        '${(value * 100).toInt()}% Paid',
-                                        style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: zMuted.withOpacity(0.8)),
-                                      ),
-                                    ],
-                                  );
-                                }
-                            ),
-                          ]
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-
-              const Divider(height: 1, color: Color(0xFFF3F4F6)),
-
-              // Bottom Section: Actions
-              Container(
-                decoration: const BoxDecoration(
-                  color: Color(0xFFFAFAFA),
-                  borderRadius: BorderRadius.vertical(bottom: Radius.circular(12)),
-                ),
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                child: Row(
-                  children: [
-                    TextButton.icon(
-                      onPressed: widget.onView,
-                      icon: const Icon(Icons.remove_red_eye_outlined, size: 16),
-                      label: const Text('View', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
-                      style: TextButton.styleFrom(
-                        foregroundColor: zText,
-                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 0),
-                        minimumSize: const Size(0, 36),
-                      ),
-                    ),
-                    const Spacer(),
-                    if (!isDraft && !isCancelled && (invoice.paymentStatus ?? '').toUpperCase() != 'PAID')
-                      FilledButton.icon(
-                        onPressed: widget.onRecordPayment,
-                        icon: const Icon(Icons.payment, size: 16),
-                        label: const Text('Record Payment', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
-                        style: FilledButton.styleFrom(
-                          backgroundColor: zBlue,
-                          foregroundColor: Colors.white,
-                          elevation: 0,
-                          minimumSize: const Size(0, 36),
-                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 0),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
                         ),
                       ),
-
-                    // Only show dropdown if it's not cancelled
-                    if (!isCancelled) ...[
-                      const SizedBox(width: 8),
-                      Theme(
-                        data: Theme.of(context).copyWith(
-                          splashColor: Colors.transparent,
-                          highlightColor: Colors.transparent,
-                        ),
-                        child: PopupMenuButton<String>(
-                          icon: const Icon(Icons.more_horiz, color: zMuted, size: 20),
-                          tooltip: 'Options',
-                          offset: const Offset(0, 40),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                          elevation: 4,
-                          onSelected: (val) {
-                            if (val == 'edit') widget.onEdit();
-                            if (val == 'cancel') widget.onCancel();
-                          },
-                          itemBuilder: (ctx) => [
-                            if ((invoice.paymentStatus ?? '').toUpperCase() != 'PAID')
-                              PopupMenuItem(
-                                  value: 'edit',
-                                  height: 40,
-                                  child: Row(
-                                    children: [
-                                      Icon(Icons.edit_outlined, size: 18, color: zText.withOpacity(0.8)),
-                                      const SizedBox(width: 10),
-                                      const Text('Edit Invoice', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
-                                    ],
-                                  )
-                              ),
-                            PopupMenuItem(
-                                value: 'cancel',
-                                height: 40,
-                                child: Row(
-                                  children: [
-                                    Icon(Icons.cancel_outlined, size: 18, color: Colors.red.shade600),
-                                    const SizedBox(width: 10),
-                                    Text('Cancel Invoice', style: TextStyle(color: Colors.red.shade700, fontWeight: FontWeight.w600, fontSize: 13)),
-                                  ],
-                                )
-                            ),
-                          ],
-                        ),
-                      ),
-                    ]
-                  ],
+                    ],
+                  ),
                 ),
-              ),
+              ],
             ],
           ),
         ),
@@ -886,9 +1038,74 @@ class _InvoiceCardState extends State<_InvoiceCard> {
   }
 }
 
-// ---------------------------------------------------------
-// SUPPORTING WIDGETS
-// ---------------------------------------------------------
+class _EmptyInvoiceState extends StatelessWidget {
+  final bool hasSearch;
+  final VoidCallback? onReset;
+
+  const _EmptyInvoiceState({required this.hasSearch, this.onReset});
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        return SingleChildScrollView(
+          padding: const EdgeInsets.all(28),
+          child: ConstrainedBox(
+            constraints: BoxConstraints(
+              minHeight: constraints.maxHeight - 40,
+            ),
+            child: IntrinsicHeight(
+              child: Center(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    CircleAvatar(
+                      radius: 34,
+                      backgroundColor: Colors.blue.shade50,
+                      child: Icon(
+                        hasSearch ? Icons.search_off : Icons.receipt_long_outlined,
+                        size: 34,
+                        color: Colors.blue.shade700,
+                      ),
+                    ),
+                    const SizedBox(height: 18),
+                    Text(
+                      hasSearch
+                          ? 'No matching invoices found'
+                          : 'No invoices found',
+                      style: const TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w700,
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      hasSearch
+                          ? 'Try changing the search text or filters.'
+                          : 'Create your first invoice to see it here.',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        color: Colors.grey.shade700,
+                        fontSize: 14,
+                      ),
+                    ),
+                    const SizedBox(height: 18),
+                    if (hasSearch && onReset != null)
+                      OutlinedButton(
+                        onPressed: onReset,
+                        child: const Text('Reset Filters'),
+                      ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
 
 class _CreateOptionCard extends StatelessWidget {
   final String title;
@@ -938,167 +1155,6 @@ class _CreateOptionCard extends StatelessWidget {
               ),
             ),
             const Icon(Icons.arrow_forward_ios, size: 16, color: zMuted),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _FilterDropdown extends StatelessWidget {
-  final String value;
-  final ValueChanged<String?> onChanged;
-
-  const _FilterDropdown({required this.value, required this.onChanged});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      height: 38,
-      padding: const EdgeInsets.symmetric(horizontal: 12),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        border: Border.all(color: Colors.grey.shade300),
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          const Text('Status: ', style: TextStyle(fontSize: 13, color: zMuted, fontWeight: FontWeight.w600)),
-          DropdownButtonHideUnderline(
-            child: DropdownButton<String>(
-              value: value,
-              icon: const Padding(
-                padding: EdgeInsets.only(left: 4.0),
-                child: Icon(Icons.keyboard_arrow_down, size: 16, color: zText),
-              ),
-              style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: zText),
-              onChanged: onChanged,
-              items: const [
-                DropdownMenuItem(value: 'all', child: Text('All')),
-                DropdownMenuItem(value: 'draft', child: Text('Drafts')),
-                DropdownMenuItem(value: 'submitted', child: Text('Submitted')),
-                DropdownMenuItem(value: 'cancelled', child: Text('Cancelled')),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _MiniStatText extends StatelessWidget {
-  final String label;
-  final String value;
-  final Color? color;
-
-  const _MiniStatText({required this.label, required this.value, this.color});
-
-  @override
-  Widget build(BuildContext context) {
-    return Text.rich(
-      TextSpan(
-        children: [
-          TextSpan(text: '$label: ', style: const TextStyle(fontSize: 12, color: zMuted, fontWeight: FontWeight.w600)),
-          TextSpan(text: value, style: TextStyle(fontSize: 13, color: color ?? zText, fontWeight: FontWeight.w800)),
-        ],
-      ),
-    );
-  }
-}
-
-class _InfoChip extends StatelessWidget {
-  final String label;
-  final Color bgColor;
-  final Color textColor;
-  final Color borderColor;
-
-  const _InfoChip({required this.label, required this.bgColor, required this.textColor, required this.borderColor});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-      decoration: BoxDecoration(
-          color: bgColor,
-          border: Border.all(color: borderColor, width: 0.5),
-          borderRadius: BorderRadius.circular(6)
-      ),
-      child: Text(label, style: TextStyle(fontSize: 10, fontWeight: FontWeight.w800, color: textColor, letterSpacing: 0.5)),
-    );
-  }
-}
-
-class _InlineInfo extends StatelessWidget {
-  final IconData icon;
-  final String text;
-
-  const _InlineInfo({required this.icon, required this.text});
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Icon(icon, size: 14, color: zMuted),
-        const SizedBox(width: 4),
-        Text(text, style: const TextStyle(fontSize: 12, color: zMuted, fontWeight: FontWeight.w600)),
-      ],
-    );
-  }
-}
-
-class _EmptyInvoiceState extends StatelessWidget {
-  final bool hasSearch;
-
-  const _EmptyInvoiceState({required this.hasSearch});
-
-  @override
-  Widget build(BuildContext context) {
-    return TweenAnimationBuilder<double>(
-      duration: const Duration(milliseconds: 500),
-      tween: Tween(begin: 0.0, end: 1.0),
-      curve: Curves.easeOut,
-      builder: (context, value, child) {
-        return Opacity(
-          opacity: value,
-          child: Transform.translate(
-            offset: Offset(0, 10 * (1 - value)),
-            child: child,
-          ),
-        );
-      },
-      child: Center(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(
-              padding: const EdgeInsets.all(24),
-              decoration: BoxDecoration(
-                  color: Colors.white,
-                  shape: BoxShape.circle,
-                  boxShadow: [
-                    BoxShadow(color: Colors.black.withOpacity(0.03), blurRadius: 20, offset: const Offset(0, 10))
-                  ]
-              ),
-              child: Icon(
-                  hasSearch ? Icons.search_off_rounded : Icons.receipt_long_rounded,
-                  size: 48,
-                  color: zMuted.withOpacity(0.5)
-              ),
-            ),
-            const SizedBox(height: 24),
-            Text(
-                hasSearch ? 'No invoices match your search' : 'No invoices yet',
-                textAlign: TextAlign.center,
-                style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: zText)
-            ),
-            const SizedBox(height: 8),
-            Text(
-              hasSearch ? 'Try adjusting your filters.' : 'Click "New Invoice" to get started',
-              style: const TextStyle(color: zMuted, fontSize: 14, fontWeight: FontWeight.w500),
-            ),
           ],
         ),
       ),

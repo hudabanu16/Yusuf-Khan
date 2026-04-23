@@ -519,10 +519,9 @@ List<String> _extractEnabledPermissions(Map<String, dynamic> permissions, bool i
 bool _isModuleAllowed(String module, String submodule, bool isExportImport) {
   if (!isExportImport) return true;
   if (module == 'dashboard') return true;
-  if (module == 'sales' && (submodule == 'inquiries' || submodule == 'quotations')) return true;
   if (module == 'crm' && submodule == 'customers') return true;
-  if (module == 'finance' && ['taxInvoice', 'paymentReceived', 'outstanding', 'expenseEntries'].contains(submodule)) return true;
-  if (module == 'reports' && ['salesReport', 'inquiryReport', 'customerReport', 'paymentReport'].contains(submodule)) return true;
+  if (module == 'finance' && ['taxInvoice', 'paymentReceived', 'outstanding'].contains(submodule)) return true;
+  if (module == 'reports' && submodule == 'salesReport') return true;
   return false;
 }
 

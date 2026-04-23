@@ -1,3 +1,5 @@
+// FILE PATH: lib/auth/register/register_widgets.dart
+
 import 'package:flutter/material.dart';
 
 import 'register_constants.dart';
@@ -335,6 +337,7 @@ class RegisterWidgets {
     required VoidCallback onToggle,
     required TextEditingController gstinController,
     required TextEditingController panController,
+    required TextEditingController iecController,
     required Widget Function({
     required TextEditingController controller,
     required String label,
@@ -392,7 +395,7 @@ class RegisterWidgets {
                         ),
                         SizedBox(height: 2),
                         Text(
-                          'Optional fields for GST and PAN details',
+                          'Optional fields for GST, PAN, and IEC details',
                           style: TextStyle(
                             fontSize: 12.8,
                             color: regMuted,
@@ -428,6 +431,14 @@ class RegisterWidgets {
                     label: 'PAN Number',
                     icon: Icons.credit_card_outlined,
                     hint: 'AAAAA0000A',
+                  ),
+                  const SizedBox(height: 10),
+                  buildTextField(
+                    controller: iecController,
+                    label: 'IEC Code',
+                    icon: Icons.public_outlined,
+                    hint: 'Import Export Code',
+                    required: false,
                   ),
                 ],
               ),

@@ -454,6 +454,7 @@ class _RegisterScreenLocalState extends State<RegisterScreenLocal> {
                           onToggle: controller.toggleShowTaxInfo,
                           gstinController: controller.gstinController,
                           panController: controller.panController,
+                          iecController: controller.iecController, // ADDED
                           buildTextField: RegisterWidgets.buildTextField,
                         ),
                         if (!controller.isEditMode) ...[

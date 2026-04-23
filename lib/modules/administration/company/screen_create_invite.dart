@@ -117,7 +117,7 @@ class _ScreenCreateInviteState extends State<ScreenCreateInvite> {
 
   List<String> get activeModules {
     return isExportImport
-        ? ['dashboard', 'sales', 'crm', 'finance', 'reports']
+        ? ['dashboard', 'crm', 'finance', 'reports']
         : permissionModuleOrder;
   }
 
@@ -161,25 +161,19 @@ class _ScreenCreateInviteState extends State<ScreenCreateInvite> {
       if (role.toLowerCase() == 'admin') {
         return {
           'dashboard': {'dashboard': true},
-          'sales': {'inquiries': true, 'quotations': true},
           'crm': {'customers': true},
           'finance': {
             'taxInvoice': true,
             'paymentReceived': true,
-            'outstanding': true,
-            'expenseEntries': true
+            'outstanding': true
           },
           'reports': {
-            'salesReport': true,
-            'inquiryReport': true,
-            'customerReport': true,
-            'paymentReport': true
+            'salesReport': true
           },
         };
       } else {
         return {
           'dashboard': {'dashboard': true},
-          'sales': {'inquiries': true, 'quotations': true},
           'crm': {'customers': true},
         };
       }
@@ -655,24 +649,19 @@ class _ScreenCreateInviteState extends State<ScreenCreateInvite> {
               .where((submoduleKey) {
             if (isExportImport) {
               if (moduleKey == 'sales') {
-                return submoduleKey == 'inquiries' ||
-                    submoduleKey == 'quotations';
+                return false;
               }
               if (moduleKey == 'crm') return submoduleKey == 'customers';
               if (moduleKey == 'finance') {
                 return [
                   'taxInvoice',
                   'paymentReceived',
-                  'outstanding',
-                  'expenseEntries'
+                  'outstanding'
                 ].contains(submoduleKey);
               }
               if (moduleKey == 'reports') {
                 return [
-                  'salesReport',
-                  'inquiryReport',
-                  'customerReport',
-                  'paymentReport'
+                  'salesReport'
                 ].contains(submoduleKey);
               }
               return false;

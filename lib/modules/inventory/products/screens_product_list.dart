@@ -21,7 +21,7 @@ class _ScreensProductListState extends State<ScreensProductList> {
   String _stockFilter = 'all';
   String _categoryFilter = 'all';
   String _subcategoryFilter = 'all';
-  bool _showTableView = true;
+  bool _showTableView = false;
 
   // Cached Futures & Streams to prevent rebuilds
   Future<Map<String, dynamic>?>? _userProfileFuture;
@@ -66,11 +66,11 @@ class _ScreensProductListState extends State<ScreensProductList> {
         height: size,
         decoration: BoxDecoration(
           color: Colors.white,
-          borderRadius: BorderRadius.circular(8),
-          border: Border.all(color: const Color(0xFFE4E7EC)),
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(color: Colors.grey.shade200),
         ),
         child: ClipRRect(
-          borderRadius: BorderRadius.circular(7),
+          borderRadius: BorderRadius.circular(9),
           child: Image.network(
             imageUrl,
             fit: BoxFit.cover,
@@ -98,14 +98,20 @@ class _ScreensProductListState extends State<ScreensProductList> {
   }
 
   Widget _buildInitialsFallback(String name, double size) {
-    return CircleAvatar(
-      radius: size / 2,
-      backgroundColor: const Color(0xFFEAF2FF),
+    return Container(
+      width: size,
+      height: size,
+      decoration: BoxDecoration(
+        color: Colors.blue.shade50,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: Colors.blue.shade100),
+      ),
+      alignment: Alignment.center,
       child: Text(
         name.isNotEmpty ? name[0].toUpperCase() : '?',
         style: TextStyle(
           fontWeight: FontWeight.w700,
-          color: const Color(0xFF3167E3),
+          color: Colors.blue.shade800,
           fontSize: size * 0.4,
         ),
       ),
@@ -326,19 +332,6 @@ class _ScreensProductListState extends State<ScreensProductList> {
     return 'In Stock';
   }
 
-  Color _stockStatusColor(String status) {
-    switch (status) {
-      case 'In Stock':
-        return Colors.green;
-      case 'Low Stock':
-        return Colors.orange;
-      case 'Out of Stock':
-        return Colors.red;
-      default:
-        return Colors.blue;
-    }
-  }
-
   CollectionReference<Map<String, dynamic>> _categoriesRef(String companyId) {
     return FirebaseFirestore.instance
         .collection('companies')
@@ -545,6 +538,18 @@ class _ScreensProductListState extends State<ScreensProductList> {
     }
   }
 
+  bool get _hasActiveFilters =>
+      _statusFilter != 'all' || _stockFilter != 'all' || _categoryFilter != 'all' || _subcategoryFilter != 'all';
+
+  void _resetFilters() {
+    setState(() {
+      _statusFilter = 'all';
+      _stockFilter = 'all';
+      _categoryFilter = 'all';
+      _subcategoryFilter = 'all';
+    });
+  }
+
   void _showFilterSheet({
     required List<String> categoryOptions,
     required List<String> subcategoryOptions,
@@ -557,171 +562,138 @@ class _ScreensProductListState extends State<ScreensProductList> {
 
     showModalBottomSheet(
       context: context,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(18)),
-      ),
+      isScrollControlled: true,
+      showDragHandle: true,
+      backgroundColor: Colors.white,
       builder: (context) {
         return StatefulBuilder(
-          builder: (context, modalSetState) {
+          builder: (ctx, setModalState) {
             final availableSubs = tempCategory == 'all'
                 ? subcategoryOptions
                 : (subcategoryMap[tempCategory] ?? []);
 
-            return SafeArea(
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(18, 18, 18, 22),
-                child: SingleChildScrollView(
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      DropdownButtonFormField<String>(
-                        value: tempStatus,
-                        decoration: InputDecoration(
-                          labelText: 'Status',
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(12),
+            return Padding(
+              padding: EdgeInsets.fromLTRB(
+                16,
+                6,
+                16,
+                MediaQuery.of(context).viewInsets.bottom + 16,
+              ),
+              child: SingleChildScrollView(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'Filters',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    const SizedBox(height: 14),
+                    DropdownButtonFormField<String>(
+                      value: tempStatus,
+                      decoration: const InputDecoration(
+                        labelText: 'Status',
+                        isDense: true,
+                        border: OutlineInputBorder(),
+                      ),
+                      items: const [
+                        DropdownMenuItem(value: 'all', child: Text('All Status')),
+                        DropdownMenuItem(value: 'active', child: Text('Active')),
+                        DropdownMenuItem(value: 'inactive', child: Text('Inactive')),
+                      ],
+                      onChanged: (value) {
+                        setModalState(() => tempStatus = value ?? 'all');
+                      },
+                    ),
+                    const SizedBox(height: 10),
+                    DropdownButtonFormField<String>(
+                      value: tempStock,
+                      decoration: const InputDecoration(
+                        labelText: 'Stock',
+                        isDense: true,
+                        border: OutlineInputBorder(),
+                      ),
+                      items: const [
+                        DropdownMenuItem(value: 'all', child: Text('All Stock')),
+                        DropdownMenuItem(value: 'in_stock', child: Text('In Stock')),
+                        DropdownMenuItem(value: 'low_stock', child: Text('Low Stock')),
+                        DropdownMenuItem(value: 'out_of_stock', child: Text('Out of Stock')),
+                      ],
+                      onChanged: (value) {
+                        setModalState(() => tempStock = value ?? 'all');
+                      },
+                    ),
+                    const SizedBox(height: 10),
+                    DropdownButtonFormField<String>(
+                      value: tempCategory,
+                      decoration: const InputDecoration(
+                        labelText: 'Category',
+                        isDense: true,
+                        border: OutlineInputBorder(),
+                      ),
+                      items: [
+                        const DropdownMenuItem(value: 'all', child: Text('All Categories')),
+                        ...categoryOptions.map((e) => DropdownMenuItem(value: e, child: Text(e))),
+                      ],
+                      onChanged: (value) {
+                        setModalState(() {
+                          tempCategory = value ?? 'all';
+                          tempSubcategory = 'all';
+                        });
+                      },
+                    ),
+                    const SizedBox(height: 10),
+                    DropdownButtonFormField<String>(
+                      value: tempSubcategory,
+                      decoration: const InputDecoration(
+                        labelText: 'Subcategory',
+                        isDense: true,
+                        border: OutlineInputBorder(),
+                      ),
+                      items: [
+                        const DropdownMenuItem(value: 'all', child: Text('All Subcategories')),
+                        ...availableSubs.map((e) => DropdownMenuItem(value: e, child: Text(e))),
+                      ],
+                      onChanged: (value) {
+                        setModalState(() => tempSubcategory = value ?? 'all');
+                      },
+                    ),
+                    const SizedBox(height: 14),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: TextButton(
+                            onPressed: () {
+                              setState(() {
+                                _statusFilter = 'all';
+                                _stockFilter = 'all';
+                                _categoryFilter = 'all';
+                                _subcategoryFilter = 'all';
+                              });
+                              Navigator.pop(context);
+                            },
+                            child: const Text('Reset'),
                           ),
                         ),
-                        items: const [
-                          DropdownMenuItem(
-                            value: 'all',
-                            child: Text('All Status'),
-                          ),
-                          DropdownMenuItem(
-                            value: 'active',
-                            child: Text('Active'),
-                          ),
-                          DropdownMenuItem(
-                            value: 'inactive',
-                            child: Text('Inactive'),
-                          ),
-                        ],
-                        onChanged: (value) {
-                          modalSetState(() => tempStatus = value ?? 'all');
-                        },
-                      ),
-                      const SizedBox(height: 12),
-                      DropdownButtonFormField<String>(
-                        value: tempStock,
-                        decoration: InputDecoration(
-                          labelText: 'Stock',
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(12),
+                        Expanded(
+                          child: ElevatedButton(
+                            onPressed: () {
+                              setState(() {
+                                _statusFilter = tempStatus;
+                                _stockFilter = tempStock;
+                                _categoryFilter = tempCategory;
+                                _subcategoryFilter = tempSubcategory;
+                              });
+                              Navigator.pop(context);
+                            },
+                            child: const Text('Apply'),
                           ),
                         ),
-                        items: const [
-                          DropdownMenuItem(
-                            value: 'all',
-                            child: Text('All Stock'),
-                          ),
-                          DropdownMenuItem(
-                            value: 'in_stock',
-                            child: Text('In Stock'),
-                          ),
-                          DropdownMenuItem(
-                            value: 'low_stock',
-                            child: Text('Low Stock'),
-                          ),
-                          DropdownMenuItem(
-                            value: 'out_of_stock',
-                            child: Text('Out of Stock'),
-                          ),
-                        ],
-                        onChanged: (value) {
-                          modalSetState(() => tempStock = value ?? 'all');
-                        },
-                      ),
-                      const SizedBox(height: 12),
-                      DropdownButtonFormField<String>(
-                        value: tempCategory,
-                        decoration: InputDecoration(
-                          labelText: 'Category',
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                        ),
-                        items: [
-                          const DropdownMenuItem(
-                            value: 'all',
-                            child: Text('All Categories'),
-                          ),
-                          ...categoryOptions.map(
-                                (e) => DropdownMenuItem(
-                              value: e,
-                              child: Text(e),
-                            ),
-                          ),
-                        ],
-                        onChanged: (value) {
-                          modalSetState(() {
-                            tempCategory = value ?? 'all';
-                            tempSubcategory = 'all';
-                          });
-                        },
-                      ),
-                      const SizedBox(height: 12),
-                      DropdownButtonFormField<String>(
-                        value: tempSubcategory,
-                        decoration: InputDecoration(
-                          labelText: 'Subcategory',
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                        ),
-                        items: [
-                          const DropdownMenuItem(
-                            value: 'all',
-                            child: Text('All Subcategories'),
-                          ),
-                          ...availableSubs.map(
-                                (e) => DropdownMenuItem(
-                              value: e,
-                              child: Text(e),
-                            ),
-                          ),
-                        ],
-                        onChanged: (value) {
-                          modalSetState(
-                                () => tempSubcategory = value ?? 'all',
-                          );
-                        },
-                      ),
-                      const SizedBox(height: 14),
-                      Row(
-                        children: [
-                          Expanded(
-                            child: OutlinedButton(
-                              onPressed: () {
-                                setState(() {
-                                  _statusFilter = 'all';
-                                  _stockFilter = 'all';
-                                  _categoryFilter = 'all';
-                                  _subcategoryFilter = 'all';
-                                });
-                                Navigator.pop(context);
-                              },
-                              child: const Text('Reset'),
-                            ),
-                          ),
-                          const SizedBox(width: 10),
-                          Expanded(
-                            child: FilledButton(
-                              onPressed: () {
-                                setState(() {
-                                  _statusFilter = tempStatus;
-                                  _stockFilter = tempStock;
-                                  _categoryFilter = tempCategory;
-                                  _subcategoryFilter = tempSubcategory;
-                                });
-                                Navigator.pop(context);
-                              },
-                              child: const Text('Apply'),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ],
-                  ),
+                      ],
+                    ),
+                  ],
                 ),
               ),
             );
@@ -1055,7 +1027,6 @@ class _ScreensProductListState extends State<ScreensProductList> {
         .doc(companyId)
         .collection('products');
 
-    // Filtering isDeleted locally prevents silent crashes caused by missing composite indexes
     final byId = await productsRef.where('categoryId', isEqualTo: categoryId).get();
     if (byId.docs.any((d) => d.data()['isDeleted'] != true)) return true;
 
@@ -1559,209 +1530,6 @@ class _ScreensProductListState extends State<ScreensProductList> {
     );
   }
 
-  Widget _iconBoxButton({
-    required IconData icon,
-    required VoidCallback onTap,
-  }) {
-    return OutlinedButton(
-      onPressed: onTap,
-      style: OutlinedButton.styleFrom(
-        elevation: 0,
-        backgroundColor: Colors.white,
-        foregroundColor: const Color(0xFF111827),
-        side: const BorderSide(color: Color(0xFFE4E7EC)),
-        padding: EdgeInsets.zero,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(12),
-        ),
-      ),
-      child: Icon(icon, size: 20),
-    );
-  }
-
-  Widget _buildHeaderRow({
-    required String companyId,
-    required String currentUserUid,
-    required bool isWide,
-    required bool canCreate,
-    required List<String> categoryOptions,
-    required List<String> subcategoryOptions,
-    required Map<String, List<String>> subcategoryMap,
-    required int totalProducts,
-    required int activeProducts,
-    required int lowStockProducts,
-    required int outOfStockProducts,
-    required int totalCategories,
-    required int totalSubcategories,
-  }) {
-    const double rowHeight = 42;
-
-    final categoryButton = canCreate
-        ? SizedBox(
-      height: rowHeight,
-      child: OutlinedButton.icon(
-        onPressed: () => _showCategoryManager(
-          companyId: companyId,
-          currentUserUid: currentUserUid,
-        ),
-        icon: const Icon(Icons.create_new_folder_outlined, size: 16),
-        label: const Text('Category Manager'),
-        style: OutlinedButton.styleFrom(
-          elevation: 0,
-          backgroundColor: Colors.white,
-          foregroundColor: const Color(0xFF111827),
-          side: const BorderSide(color: Color(0xFFE4E7EC)),
-          padding: const EdgeInsets.symmetric(horizontal: 12),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(12),
-          ),
-        ),
-      ),
-    )
-        : const SizedBox.shrink();
-
-    final statsText = Text.rich(
-      TextSpan(
-        style: const TextStyle(
-          color: Color(0xFF475467),
-          fontSize: 13,
-          fontWeight: FontWeight.w600,
-        ),
-        children: [
-          const TextSpan(text: 'Products: '),
-          TextSpan(
-            text: '$totalProducts',
-            style: const TextStyle(color: Color(0xFF111827), fontWeight: FontWeight.bold),
-          ),
-          const TextSpan(text: '   Active: '),
-          TextSpan(
-            text: '$activeProducts',
-            style: const TextStyle(color: Colors.green, fontWeight: FontWeight.bold),
-          ),
-          const TextSpan(text: '   Low Stock: '),
-          TextSpan(
-            text: '$lowStockProducts',
-            style: TextStyle(color: Colors.orange, fontWeight: FontWeight.bold),
-          ),
-          const TextSpan(text: '   Out of Stock: '),
-          TextSpan(
-            text: '$outOfStockProducts',
-            style: const TextStyle(color: Colors.red, fontWeight: FontWeight.bold),
-          ),
-          const TextSpan(text: '   Categories: '),
-          TextSpan(
-            text: '$totalCategories',
-            style: const TextStyle(color: Color(0xFF111827), fontWeight: FontWeight.bold),
-          ),
-          const TextSpan(text: '   Subcategories: '),
-          TextSpan(
-            text: '$totalSubcategories',
-            style: const TextStyle(color: Color(0xFF111827), fontWeight: FontWeight.bold),
-          ),
-        ],
-      ),
-      maxLines: 1,
-      overflow: TextOverflow.ellipsis,
-    );
-
-    final innerContent = Row(
-      children: [
-        SizedBox(
-          width: 260,
-          height: rowHeight,
-          child: _searchField(),
-        ),
-        const SizedBox(width: 8),
-        SizedBox(
-          width: 42,
-          height: rowHeight,
-          child: _iconBoxButton(
-            icon: Icons.filter_alt_outlined,
-            onTap: () => _showFilterSheet(
-              categoryOptions: categoryOptions,
-              subcategoryOptions: subcategoryOptions,
-              subcategoryMap: subcategoryMap,
-            ),
-          ),
-        ),
-        const SizedBox(width: 8),
-        if (canCreate) ...[
-          categoryButton,
-          const SizedBox(width: 8),
-        ],
-        SizedBox(
-          width: 42,
-          height: rowHeight,
-          child: _iconBoxButton(
-            icon: _showTableView
-                ? Icons.grid_view_outlined
-                : Icons.table_rows_outlined,
-            onTap: () {
-              setState(() => _showTableView = !_showTableView);
-            },
-          ),
-        ),
-        if (isWide) const Spacer() else const SizedBox(width: 16),
-        statsText,
-      ],
-    );
-
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(10),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: const Color(0xFFE6EAF0)),
-      ),
-      child: isWide
-          ? innerContent
-          : SingleChildScrollView(
-        scrollDirection: Axis.horizontal,
-        child: innerContent,
-      ),
-    );
-  }
-
-  Widget _searchField() {
-    return TextField(
-      controller: _searchController,
-      focusNode: _searchFocusNode,
-      decoration: InputDecoration(
-        hintText: 'Search product...',
-        prefixIcon: const Icon(Icons.search, size: 18),
-        suffixIcon: _searchText.isEmpty
-            ? null
-            : IconButton(
-          icon: const Icon(Icons.close, size: 18),
-          onPressed: () {
-            _searchController.clear();
-            setState(() {
-              _searchText = '';
-            });
-          },
-        ),
-        isDense: true,
-        filled: true,
-        fillColor: Colors.white,
-        contentPadding:
-        const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: const BorderSide(color: Color(0xFFE4E7EC)),
-        ),
-        enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: const BorderSide(color: Color(0xFFE4E7EC)),
-        ),
-        focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: const BorderSide(color: Color(0xFF2563EB)),
-        ),
-      ),
-    );
-  }
-
   Widget _buildActiveFiltersBar() {
     final chips = <Widget>[];
 
@@ -1791,15 +1559,23 @@ class _ScreensProductListState extends State<ScreensProductList> {
 
     if (chips.isEmpty) return const SizedBox.shrink();
 
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(10),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: const Color(0xFFE6EAF0)),
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 0, 16, 4),
+      child: Row(
+        children: [
+          Expanded(
+            child: Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: chips,
+            ),
+          ),
+          TextButton(
+            onPressed: _resetFilters,
+            child: const Text('Clear Filters'),
+          ),
+        ],
       ),
-      child: Wrap(spacing: 8, runSpacing: 8, children: chips),
     );
   }
 
@@ -1807,425 +1583,27 @@ class _ScreensProductListState extends State<ScreensProductList> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
       decoration: BoxDecoration(
-        color: const Color(0xFFEFF4FF),
+        color: Colors.blue.shade50,
         borderRadius: BorderRadius.circular(30),
-        border: Border.all(color: const Color(0xFFD6E4FF)),
+        border: Border.all(color: Colors.blue.shade100),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
           Text(
             text,
-            style: const TextStyle(
+            style: TextStyle(
               fontSize: 12,
               fontWeight: FontWeight.w600,
-              color: Color(0xFF1D4ED8),
+              color: Colors.blue.shade800,
             ),
           ),
           const SizedBox(width: 6),
           InkWell(
             onTap: onDeleted,
-            child: const Icon(Icons.close, size: 14, color: Color(0xFF1D4ED8)),
+            child: Icon(Icons.close, size: 14, color: Colors.blue.shade800),
           ),
         ],
-      ),
-    );
-  }
-
-  Widget _buildContentCard({
-    required List<QueryDocumentSnapshot<Map<String, dynamic>>> docs,
-    required bool canEdit,
-    required bool canDelete,
-    required String companyId,
-    required String firebaseUserUid,
-    required String role,
-    required bool showTable,
-  }) {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: const Color(0xFFE6EAF0)),
-      ),
-      child: docs.isEmpty
-          ? const Padding(
-        padding: EdgeInsets.symmetric(vertical: 50),
-        child: Center(child: Text('No products found')),
-      )
-          : showTable
-          ? _buildTableView(
-        docs: docs,
-        canEdit: canEdit,
-        canDelete: canDelete,
-        companyId: companyId,
-        firebaseUserUid: firebaseUserUid,
-        role: role,
-      )
-          : _buildCardView(
-        docs: docs,
-        canEdit: canEdit,
-        canDelete: canDelete,
-        companyId: companyId,
-        firebaseUserUid: firebaseUserUid,
-        role: role,
-      ),
-    );
-  }
-
-  Widget _buildTableView({
-    required List<QueryDocumentSnapshot<Map<String, dynamic>>> docs,
-    required bool canEdit,
-    required bool canDelete,
-    required String companyId,
-    required String firebaseUserUid,
-    required String role,
-  }) {
-    return SingleChildScrollView(
-      scrollDirection: Axis.horizontal,
-      child: DataTable(
-        horizontalMargin: 10,
-        columnSpacing: 18,
-        headingRowColor: MaterialStateProperty.all(const Color(0xFFF8FAFC)),
-        columns: const [
-          DataColumn(label: Text('Product')),
-          DataColumn(label: Text('Category')),
-          DataColumn(label: Text('Type')),
-          DataColumn(label: Text('Code')),
-          DataColumn(label: Text('Price')),
-          DataColumn(label: Text('Stock')),
-          DataColumn(label: Text('Status')),
-          DataColumn(label: Text('')),
-        ],
-        rows: docs.map((doc) {
-          final data = doc.data();
-          final name = (data['name'] ?? '').toString();
-          final description = (data['description'] ?? '').toString();
-          final category = _categoryName(data);
-          final subcategory = _subcategoryName(data);
-          final itemCode = (data['itemCode'] ?? '').toString();
-          final price = data['unitPrice'];
-          final isActive = _isProductActive(data);
-          final stock = _stockOnHand(data);
-          final productType = _productTypeName(data);
-          final imageUrl = data['imageUrl']?.toString();
-
-          return DataRow(
-            cells: [
-              DataCell(
-                SizedBox(
-                  width: 250,
-                  child: Row(
-                    children: [
-                      _buildProductAvatar(imageUrl, name, 36),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              name.isEmpty ? '(No name)' : name,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                            if (description.isNotEmpty)
-                              Text(
-                                description,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: const TextStyle(
-                                  fontSize: 12,
-                                  color: Color(0xFF667085),
-                                ),
-                              ),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-              DataCell(
-                Text(
-                  category.isEmpty
-                      ? '—'
-                      : subcategory.isEmpty
-                      ? category
-                      : '$category / $subcategory',
-                ),
-              ),
-              DataCell(Text(productType)),
-              DataCell(Text(itemCode.isEmpty ? '—' : itemCode)),
-              DataCell(Text(_formatCurrency(price))),
-              DataCell(Text(_formatNumber(stock))),
-              DataCell(_buildStatusChip(isActive ? 'Active' : 'Inactive')),
-              DataCell(
-                (canEdit || canDelete)
-                    ? PopupMenuButton<String>(
-                  tooltip: 'Actions',
-                  onSelected: (value) async {
-                    if (value == 'edit' && canEdit) {
-                      _openEditProduct(
-                        productId: doc.id,
-                        initialData: data,
-                        companyId: companyId,
-                        currentUserUid: firebaseUserUid,
-                        currentUserRole: role,
-                      );
-                    } else if (value == 'delete' && canDelete) {
-                      await _deleteProduct(
-                        companyId: companyId,
-                        productId: doc.id,
-                        productName: name.isEmpty ? 'Product' : name,
-                        currentUserUid: firebaseUserUid,
-                      );
-                    }
-                  },
-                  itemBuilder: (context) => [
-                    if (canEdit)
-                      const PopupMenuItem(
-                        value: 'edit',
-                        child: ListTile(
-                          dense: true,
-                          contentPadding: EdgeInsets.zero,
-                          leading: Icon(Icons.edit_outlined),
-                          title: Text('Edit'),
-                        ),
-                      ),
-                    if (canDelete) const PopupMenuDivider(),
-                    if (canDelete)
-                      const PopupMenuItem(
-                        value: 'delete',
-                        child: ListTile(
-                          dense: true,
-                          contentPadding: EdgeInsets.zero,
-                          leading: Icon(
-                            Icons.delete_outline,
-                            color: Colors.red,
-                          ),
-                          title: Text(
-                            'Delete',
-                            style: TextStyle(color: Colors.red),
-                          ),
-                        ),
-                      ),
-                  ],
-                )
-                    : const SizedBox.shrink(),
-              ),
-            ],
-          );
-        }).toList(),
-      ),
-    );
-  }
-
-  Widget _buildCardView({
-    required List<QueryDocumentSnapshot<Map<String, dynamic>>> docs,
-    required bool canEdit,
-    required bool canDelete,
-    required String companyId,
-    required String firebaseUserUid,
-    required String role,
-  }) {
-    return Column(
-      children: docs.map((doc) {
-        final data = doc.data();
-        final name = (data['name'] ?? '').toString();
-        final description = (data['description'] ?? '').toString();
-        final category = _categoryName(data);
-        final subcategory = _subcategoryName(data);
-        final itemCode = (data['itemCode'] ?? '').toString();
-        final price = data['unitPrice'];
-        final isActive = _isProductActive(data);
-        final stock = _stockOnHand(data);
-        final stockStatus = _stockStatus(data);
-        final productType = _productTypeName(data);
-        final imageUrl = data['imageUrl']?.toString();
-
-        return Container(
-          margin: const EdgeInsets.only(bottom: 10),
-          decoration: BoxDecoration(
-            color: const Color(0xFFFBFCFE),
-            borderRadius: BorderRadius.circular(14),
-            border: Border.all(color: const Color(0xFFE6EAF0)),
-          ),
-          child: ListTile(
-            contentPadding: const EdgeInsets.all(14),
-            leading: _buildProductAvatar(imageUrl, name, 44),
-            title: Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    name.isEmpty ? '(No name)' : name,
-                    style: const TextStyle(fontWeight: FontWeight.w700),
-                  ),
-                ),
-                _buildStatusChip(isActive ? 'Active' : 'Inactive'),
-              ],
-            ),
-            subtitle: Padding(
-              padding: const EdgeInsets.only(top: 8),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  if (description.isNotEmpty)
-                    Text(
-                      description,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(color: Color(0xFF667085)),
-                    ),
-                  const SizedBox(height: 8),
-                  Wrap(
-                    spacing: 8,
-                    runSpacing: 8,
-                    children: [
-                      _pill('Type', productType),
-                      _pill('Category', category.isEmpty ? '—' : category),
-                      _pill(
-                        'Subcategory',
-                        subcategory.isEmpty ? '—' : subcategory,
-                      ),
-                      _pill('Code', itemCode.isEmpty ? '—' : itemCode),
-                      _pill('Price', _formatCurrency(price)),
-                      _pill('Stock', _formatNumber(stock)),
-                    ],
-                  ),
-                  const SizedBox(height: 8),
-                  _buildStockChip(stockStatus),
-                ],
-              ),
-            ),
-            trailing: (canEdit || canDelete)
-                ? PopupMenuButton<String>(
-              tooltip: 'Actions',
-              onSelected: (value) async {
-                if (value == 'edit' && canEdit) {
-                  _openEditProduct(
-                    productId: doc.id,
-                    initialData: data,
-                    companyId: companyId,
-                    currentUserUid: firebaseUserUid,
-                    currentUserRole: role,
-                  );
-                } else if (value == 'delete' && canDelete) {
-                  await _deleteProduct(
-                    companyId: companyId,
-                    productId: doc.id,
-                    productName: name.isEmpty ? 'Product' : name,
-                    currentUserUid: firebaseUserUid,
-                  );
-                }
-              },
-              itemBuilder: (context) => [
-                if (canEdit)
-                  const PopupMenuItem(
-                    value: 'edit',
-                    child: ListTile(
-                      dense: true,
-                      contentPadding: EdgeInsets.zero,
-                      leading: Icon(Icons.edit_outlined),
-                      title: Text('Edit'),
-                    ),
-                  ),
-                if (canDelete) const PopupMenuDivider(),
-                if (canDelete)
-                  const PopupMenuItem(
-                    value: 'delete',
-                    child: ListTile(
-                      dense: true,
-                      contentPadding: EdgeInsets.zero,
-                      leading: Icon(
-                        Icons.delete_outline,
-                        color: Colors.red,
-                      ),
-                      title: Text(
-                        'Delete',
-                        style: TextStyle(color: Colors.red),
-                      ),
-                    ),
-                  ),
-              ],
-            )
-                : null,
-            onTap: () {
-              if (!canEdit) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('You do not have permission to edit this product.')),
-                );
-                return;
-              }
-              _openEditProduct(
-                productId: doc.id,
-                initialData: data,
-                companyId: companyId,
-                currentUserUid: firebaseUserUid,
-                currentUserRole: role,
-              );
-            },
-          ),
-        );
-      }).toList(),
-    );
-  }
-
-  Widget _buildStatusChip(String label) {
-    final isActive = label == 'Active';
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-      decoration: BoxDecoration(
-        color: isActive
-            ? Colors.green.withOpacity(0.10)
-            : Colors.grey.withOpacity(0.12),
-        borderRadius: BorderRadius.circular(30),
-      ),
-      child: Text(
-        label,
-        style: TextStyle(
-          color: isActive ? Colors.green[800] : Colors.grey[700],
-          fontWeight: FontWeight.w600,
-          fontSize: 12,
-        ),
-      ),
-    );
-  }
-
-  Widget _buildStockChip(String label) {
-    final color = _stockStatusColor(label);
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-      decoration: BoxDecoration(
-        color: color.withOpacity(0.10),
-        borderRadius: BorderRadius.circular(30),
-      ),
-      child: Text(
-        label,
-        style: TextStyle(
-          color: color,
-          fontWeight: FontWeight.w600,
-          fontSize: 12,
-        ),
-      ),
-    );
-  }
-
-  Widget _pill(String label, String value) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: const Color(0xFFE4E7EC)),
-      ),
-      child: Text(
-        '$label: $value',
-        style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w500),
       ),
     );
   }
@@ -2236,7 +1614,7 @@ class _ScreensProductListState extends State<ScreensProductList> {
 
     if (firebaseUser == null) {
       return const Scaffold(
-        body: Center(child: Text('Please log in again. No user found.')),
+        body: Center(child: Text('User not logged in')),
       );
     }
 
@@ -2251,38 +1629,19 @@ class _ScreensProductListState extends State<ScreensProductList> {
           );
         }
 
-        if (userSnap.hasError) {
-          return Scaffold(
-            body: Center(
-              child: Text(
-                'Error loading user profile: ${userSnap.error}',
-                style: const TextStyle(color: Colors.red),
-              ),
-            ),
-          );
-        }
-
-        final userData = userSnap.data;
-        if (userData == null) {
+        if (userSnap.hasError || userSnap.data == null) {
           return const Scaffold(
-            body: Center(child: Text('User profile not found')),
+            body: Center(child: Text('Error loading user profile')),
           );
         }
 
+        final userData = userSnap.data!;
         final companyId = (userData['companyId'] ?? '').toString();
         final role = (userData['role'] ?? 'sales').toString();
 
-        if (companyId.isEmpty) {
+        if (companyId.isEmpty || !_hasProductPermission(userData, action: 'view')) {
           return const Scaffold(
-            body: Center(child: Text('No company linked to this user')),
-          );
-        }
-
-        if (!_hasProductPermission(userData, action: 'view')) {
-          return const Scaffold(
-            body: Center(
-              child: Text('You do not have permission to view products'),
-            ),
+            body: Center(child: Text('No permission or company linked.')),
           );
         }
 
@@ -2301,11 +1660,20 @@ class _ScreensProductListState extends State<ScreensProductList> {
         final bool canDelete = _hasProductPermission(userData, action: 'delete');
 
         return Scaffold(
-          backgroundColor: const Color(0xFFF6F8FB),
-
+          backgroundColor: Colors.white,
+          appBar: AppBar(
+            elevation: 0,
+            toolbarHeight: 6,
+            automaticallyImplyLeading: false,
+            backgroundColor: Colors.white,
+            surfaceTintColor: Colors.transparent,
+          ),
           floatingActionButton: canCreate
               ? FloatingActionButton(
             key: _fabKey,
+            tooltip: 'Add / Import Product',
+            backgroundColor: const Color(0xFF2563EB),
+            foregroundColor: Colors.white,
             onPressed: () {
               _showFabMenu(
                 companyId: companyId,
@@ -2316,7 +1684,6 @@ class _ScreensProductListState extends State<ScreensProductList> {
             child: const Icon(Icons.add),
           )
               : null,
-
           body: FutureBuilder<List<_CategoryMaster>>(
             future: _categoryMasterFuture,
             builder: (context, masterSnap) {
@@ -2326,70 +1693,43 @@ class _ScreensProductListState extends State<ScreensProductList> {
 
               if (masterSnap.hasError) {
                 return Center(
-                  child: Text(
-                    'Error loading categories: ${masterSnap.error}',
-                    style: const TextStyle(color: Colors.red),
-                  ),
+                  child: Text('Error loading categories: ${masterSnap.error}', style: const TextStyle(color: Colors.red)),
                 );
               }
 
               final categoryMasters = masterSnap.data ?? [];
 
-              final categoryOptions = categoryMasters
+              final List<String> categoryOptions = categoryMasters
                   .where((e) => e.name.trim().isNotEmpty)
                   .map((e) => e.name)
-                  .toList()
-                ..sort();
+                  .toList()..sort();
 
               final Map<String, List<String>> subcategoryMap = {
                 for (final cat in categoryMasters)
-                  cat.name: (cat.subcategories
-                    ..sort(
-                          (a, b) => a.name.toLowerCase().compareTo(
-                        b.name.toLowerCase(),
-                      ),
-                    ))
+                  cat.name: (cat.subcategories..sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase())))
                       .where((s) => s.name.trim().isNotEmpty)
                       .map((s) => s.name)
                       .toList(),
               };
 
-              final subcategoryOptions = categoryMasters
+              final List<String> subcategoryOptions = categoryMasters
                   .expand((e) => e.subcategories)
                   .map((e) => e.name)
                   .where((e) => e.trim().isNotEmpty)
                   .toSet()
-                  .toList()
-                ..sort();
+                  .toList()..sort();
 
-              final totalCategories = categoryMasters.length;
-              final totalSubcategories = categoryMasters.fold<int>(
-                0,
-                    (sum, e) => sum + e.subcategories.length,
-              );
-
-              if (_categoryFilter != 'all' &&
-                  !categoryOptions.contains(_categoryFilter)) {
+              if (_categoryFilter != 'all' && !categoryOptions.contains(_categoryFilter)) {
                 WidgetsBinding.instance.addPostFrameCallback((_) {
-                  if (!mounted) return;
-                  setState(() {
-                    _categoryFilter = 'all';
-                    _subcategoryFilter = 'all';
-                  });
+                  if (mounted) setState(() { _categoryFilter = 'all'; _subcategoryFilter = 'all'; });
                 });
               }
 
-              final validSubOptions = _categoryFilter == 'all'
-                  ? subcategoryOptions
-                  : (subcategoryMap[_categoryFilter] ?? []);
+              final validSubOptions = _categoryFilter == 'all' ? subcategoryOptions : (subcategoryMap[_categoryFilter] ?? []);
 
-              if (_subcategoryFilter != 'all' &&
-                  !validSubOptions.contains(_subcategoryFilter)) {
+              if (_subcategoryFilter != 'all' && !validSubOptions.contains(_subcategoryFilter)) {
                 WidgetsBinding.instance.addPostFrameCallback((_) {
-                  if (!mounted) return;
-                  setState(() {
-                    _subcategoryFilter = 'all';
-                  });
+                  if (mounted) setState(() { _subcategoryFilter = 'all'; });
                 });
               }
 
@@ -2398,10 +1738,7 @@ class _ScreensProductListState extends State<ScreensProductList> {
                 builder: (context, productSnap) {
                   if (productSnap.hasError) {
                     return Center(
-                      child: Text(
-                        'Error loading products: ${productSnap.error}',
-                        style: const TextStyle(color: Colors.red),
-                      ),
+                      child: Text('Error loading products: ${productSnap.error}', style: const TextStyle(color: Colors.red)),
                     );
                   }
 
@@ -2410,17 +1747,14 @@ class _ScreensProductListState extends State<ScreensProductList> {
                   }
 
                   final allDocs = productSnap.data?.docs.where((doc) {
-                    final data = doc.data();
-                    return data['isDeleted'] != true;
-                  }).toList() ?? <QueryDocumentSnapshot<Map<String, dynamic>>>[];
+                    return doc.data()['isDeleted'] != true;
+                  }).toList() ?? [];
 
                   allDocs.sort((a, b) {
                     final aTs = a.data()['createdAt'] as Timestamp?;
                     final bTs = b.data()['createdAt'] as Timestamp?;
-                    final aDate =
-                        aTs?.toDate() ?? DateTime.fromMillisecondsSinceEpoch(0);
-                    final bDate =
-                        bTs?.toDate() ?? DateTime.fromMillisecondsSinceEpoch(0);
+                    final aDate = aTs?.toDate() ?? DateTime.fromMillisecondsSinceEpoch(0);
+                    final bDate = bTs?.toDate() ?? DateTime.fromMillisecondsSinceEpoch(0);
                     return bDate.compareTo(aDate);
                   });
 
@@ -2434,8 +1768,7 @@ class _ScreensProductListState extends State<ScreensProductList> {
                   }).toList();
 
                   final totalProducts = allDocs.length;
-                  final activeProducts =
-                      allDocs.where((e) => _isProductActive(e.data())).length;
+                  final activeProducts = allDocs.where((e) => _isProductActive(e.data())).length;
 
                   final lowStockProducts = allDocs.where((e) {
                     final data = e.data();
@@ -2444,57 +1777,612 @@ class _ScreensProductListState extends State<ScreensProductList> {
                     return stock > 0 && threshold > 0 && stock <= threshold;
                   }).length;
 
-                  final outOfStockProducts =
-                      allDocs.where((e) => _stockOnHand(e.data()) <= 0).length;
+                  final outOfStockProducts = allDocs.where((e) => _stockOnHand(e.data()) <= 0).length;
 
-                  return LayoutBuilder(
-                    builder: (context, constraints) {
-                      final isWide = constraints.maxWidth >= 1280;
-                      final activeFiltersBar = _buildActiveFiltersBar();
-                      final hasFilters = activeFiltersBar is! SizedBox;
-
-                      return SingleChildScrollView(
-                        padding: const EdgeInsets.all(16),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
+                  return Column(
+                    children: [
+                      // TOP CONTROL BAR
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(16, 6, 16, 8),
+                        child: Row(
                           children: [
-                            _buildHeaderRow(
-                              companyId: companyId,
-                              currentUserUid: firebaseUser.uid,
-                              isWide: isWide,
-                              canCreate: canCreate,
-                              categoryOptions: categoryOptions,
-                              subcategoryOptions: subcategoryOptions,
-                              subcategoryMap: subcategoryMap,
-                              totalProducts: totalProducts,
-                              activeProducts: activeProducts,
-                              lowStockProducts: lowStockProducts,
-                              outOfStockProducts: outOfStockProducts,
-                              totalCategories: totalCategories,
-                              totalSubcategories: totalSubcategories,
+                            ConstrainedBox(
+                              constraints: const BoxConstraints(maxWidth: 280),
+                              child: SizedBox(
+                                height: 38,
+                                child: TextField(
+                                  controller: _searchController,
+                                  focusNode: _searchFocusNode,
+                                  decoration: InputDecoration(
+                                    hintText: 'Search products...',
+                                    prefixIcon: const Icon(Icons.search, size: 18),
+                                    suffixIcon: _searchText.isEmpty
+                                        ? null
+                                        : IconButton(
+                                      tooltip: 'Clear',
+                                      icon: const Icon(Icons.close, size: 17),
+                                      onPressed: () {
+                                        _searchController.clear();
+                                        setState(() { _searchText = ''; });
+                                      },
+                                    ),
+                                    isDense: true,
+                                    filled: true,
+                                    fillColor: Colors.grey.shade100,
+                                    contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide.none),
+                                    enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide.none),
+                                    focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide.none),
+                                  ),
+                                ),
+                              ),
                             ),
-                            if (hasFilters) ...[
-                              const SizedBox(height: 10),
-                              activeFiltersBar,
-                            ],
-                            const SizedBox(height: 10),
-                            _buildContentCard(
-                              docs: filteredDocs,
-                              canEdit: canEdit,
-                              canDelete: canDelete,
-                              companyId: companyId,
-                              firebaseUserUid: firebaseUser.uid,
-                              role: role,
-                              showTable: isWide ? _showTableView : false,
+                            const SizedBox(width: 8),
+                            SizedBox(
+                              height: 38,
+                              width: 38,
+                              child: Material(
+                                color: Colors.grey.shade100,
+                                borderRadius: BorderRadius.circular(10),
+                                child: InkWell(
+                                  borderRadius: BorderRadius.circular(10),
+                                  onTap: () => _showFilterSheet(
+                                    categoryOptions: categoryOptions,
+                                    subcategoryOptions: subcategoryOptions,
+                                    subcategoryMap: subcategoryMap,
+                                  ),
+                                  child: Stack(
+                                    alignment: Alignment.center,
+                                    children: [
+                                      Icon(Icons.tune_rounded, size: 18, color: Colors.grey.shade800),
+                                      if (_hasActiveFilters)
+                                        Positioned(
+                                          right: 8,
+                                          top: 8,
+                                          child: Container(
+                                            width: 7,
+                                            height: 7,
+                                            decoration: BoxDecoration(color: Colors.blue.shade700, shape: BoxShape.circle),
+                                          ),
+                                        ),
+                                    ],
+                                  ),
+                                ),
+                              ),
                             ),
+                            const SizedBox(width: 8),
+                            if (canCreate)
+                              SizedBox(
+                                height: 38,
+                                child: OutlinedButton.icon(
+                                  onPressed: () => _showCategoryManager(
+                                    companyId: companyId,
+                                    currentUserUid: firebaseUser.uid,
+                                  ),
+                                  icon: const Icon(Icons.create_new_folder_outlined, size: 16),
+                                  label: const Text('Categories'),
+                                  style: OutlinedButton.styleFrom(
+                                    backgroundColor: Colors.white,
+                                    foregroundColor: Colors.grey.shade800,
+                                    side: BorderSide(color: Colors.grey.shade300),
+                                    padding: const EdgeInsets.symmetric(horizontal: 12),
+                                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                                  ),
+                                ),
+                              ),
+                            const SizedBox(width: 8),
+                            SizedBox(
+                              height: 38,
+                              width: 38,
+                              child: Material(
+                                color: Colors.white,
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(10),
+                                  side: BorderSide(color: Colors.grey.shade300),
+                                ),
+                                child: InkWell(
+                                  borderRadius: BorderRadius.circular(10),
+                                  onTap: () {
+                                    setState(() => _showTableView = !_showTableView);
+                                  },
+                                  child: Center(
+                                    child: Icon(
+                                      _showTableView ? Icons.grid_view_outlined : Icons.table_rows_outlined,
+                                      size: 18,
+                                      color: Colors.grey.shade800,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                            const Spacer(),
+                            _MiniStatText(label: 'Products', value: totalProducts.toString()),
+                            const SizedBox(width: 10),
+                            _MiniStatText(label: 'Active', value: activeProducts.toString()),
+                            const SizedBox(width: 10),
+                            _MiniStatText(label: 'Low Stock', value: lowStockProducts.toString()),
+                            const SizedBox(width: 10),
+                            _MiniStatText(label: 'Out of Stock', value: outOfStockProducts.toString()),
                           ],
                         ),
-                      );
-                    },
+                      ),
+
+                      if (_hasActiveFilters) _buildActiveFiltersBar(),
+
+                      Expanded(
+                        child: filteredDocs.isEmpty
+                            ? _EmptyProductsState(
+                          hasSearch: _searchText.trim().isNotEmpty || _hasActiveFilters,
+                          onReset: () {
+                            _searchController.clear();
+                            _resetFilters();
+                          },
+                        )
+                            : _showTableView
+                            ? _buildTableViewNew(
+                          docs: filteredDocs,
+                          canEdit: canEdit,
+                          canDelete: canDelete,
+                          companyId: companyId,
+                          firebaseUserUid: firebaseUser.uid,
+                          role: role,
+                        )
+                            : ListView.separated(
+                          padding: const EdgeInsets.fromLTRB(16, 4, 16, 90),
+                          itemCount: filteredDocs.length,
+                          separatorBuilder: (_, __) => const SizedBox(height: 8),
+                          itemBuilder: (context, index) {
+                            final doc = filteredDocs[index];
+                            final data = doc.data();
+
+                            final name = (data['name'] ?? '').toString();
+                            final description = (data['description'] ?? '').toString();
+                            final category = _categoryName(data);
+                            final subcategory = _subcategoryName(data);
+                            final itemCode = (data['itemCode'] ?? '').toString();
+                            final price = data['unitPrice'];
+                            final isActive = _isProductActive(data);
+                            final stock = _stockOnHand(data);
+                            final stockStatus = _stockStatus(data);
+                            final productType = _productTypeName(data);
+                            final imageUrl = data['imageUrl']?.toString();
+
+                            return Container(
+                              decoration: BoxDecoration(
+                                color: Colors.white,
+                                borderRadius: BorderRadius.circular(14),
+                                border: Border.all(
+                                  color: Colors.grey.shade200,
+                                  width: 0.8,
+                                ),
+                              ),
+                              child: Padding(
+                                padding: const EdgeInsets.all(12),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    // TOP ROW
+                                    Row(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        _buildProductAvatar(imageUrl, name, 40),
+                                        const SizedBox(width: 12),
+                                        Expanded(
+                                          child: Column(
+                                            crossAxisAlignment: CrossAxisAlignment.start,
+                                            children: [
+                                              Text(
+                                                name.isEmpty ? '(No name)' : name,
+                                                maxLines: 1,
+                                                overflow: TextOverflow.ellipsis,
+                                                style: const TextStyle(
+                                                  fontSize: 15,
+                                                  fontWeight: FontWeight.w700,
+                                                ),
+                                              ),
+                                              const SizedBox(height: 3),
+                                              Text(
+                                                category.isEmpty ? 'Uncategorized' : (subcategory.isEmpty ? category : '$category / $subcategory'),
+                                                maxLines: 1,
+                                                overflow: TextOverflow.ellipsis,
+                                                style: TextStyle(
+                                                  fontSize: 12.5,
+                                                  color: Colors.grey.shade700,
+                                                  fontWeight: FontWeight.w500,
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                        if (canEdit || canDelete)
+                                          PopupMenuButton<String>(
+                                            tooltip: 'Actions',
+                                            onSelected: (value) async {
+                                              if (value == 'edit') {
+                                                _openEditProduct(
+                                                  productId: doc.id,
+                                                  initialData: data,
+                                                  companyId: companyId,
+                                                  currentUserUid: firebaseUser.uid,
+                                                  currentUserRole: role,
+                                                );
+                                              } else if (value == 'delete') {
+                                                await _deleteProduct(
+                                                  companyId: companyId,
+                                                  productId: doc.id,
+                                                  productName: name.isEmpty ? 'Product' : name,
+                                                  currentUserUid: firebaseUser.uid,
+                                                );
+                                              }
+                                            },
+                                            itemBuilder: (context) => [
+                                              if (canEdit)
+                                                const PopupMenuItem(
+                                                  value: 'edit',
+                                                  child: Text('Edit Product'),
+                                                ),
+                                              if (canDelete)
+                                                const PopupMenuItem(
+                                                  value: 'delete',
+                                                  child: Text('Delete', style: TextStyle(color: Colors.red)),
+                                                ),
+                                            ],
+                                          ),
+                                      ],
+                                    ),
+                                    const SizedBox(height: 10),
+
+                                    // CHIPS ROW
+                                    Wrap(
+                                      spacing: 8,
+                                      runSpacing: 8,
+                                      children: [
+                                        _InfoChip(
+                                          label: isActive ? 'Active' : 'Inactive',
+                                          backgroundColor: isActive ? Colors.blue.shade50 : Colors.grey.shade100,
+                                          textColor: isActive ? Colors.blue.shade800 : Colors.grey.shade800,
+                                        ),
+                                        _InfoChip(
+                                          label: stockStatus,
+                                          backgroundColor: _stockBg(stockStatus),
+                                          textColor: _stockFg(stockStatus),
+                                        ),
+                                        _InfoChip(
+                                          label: productType,
+                                          backgroundColor: Colors.grey.shade100,
+                                          textColor: Colors.grey.shade800,
+                                        ),
+                                      ],
+                                    ),
+                                    const SizedBox(height: 10),
+
+                                    // INFO ROW
+                                    Wrap(
+                                      spacing: 14,
+                                      runSpacing: 8,
+                                      children: [
+                                        _InlineInfo(icon: Icons.currency_rupee_outlined, text: _formatCurrency(price)),
+                                        _InlineInfo(icon: Icons.inventory_2_outlined, text: '${_formatNumber(stock)} in stock'),
+                                        if (itemCode.isNotEmpty)
+                                          _InlineInfo(icon: Icons.tag_outlined, text: itemCode),
+                                      ],
+                                    ),
+
+                                    if (description.isNotEmpty) ...[
+                                      const SizedBox(height: 10),
+                                      Text(
+                                        description,
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: TextStyle(
+                                          fontSize: 12.5,
+                                          color: Colors.grey.shade600,
+                                        ),
+                                      ),
+                                    ]
+                                  ],
+                                ),
+                              ),
+                            );
+                          },
+                        ),
+                      ),
+                    ],
                   );
                 },
               );
             },
+          ),
+        );
+      },
+    );
+  }
+
+  // --- NEW CLEAN TABLE VIEW ---
+  Widget _buildTableViewNew({
+    required List<QueryDocumentSnapshot<Map<String, dynamic>>> docs,
+    required bool canEdit,
+    required bool canDelete,
+    required String companyId,
+    required String firebaseUserUid,
+    required String role,
+  }) {
+    return SingleChildScrollView(
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.symmetric(horizontal: 16),
+        child: Container(
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: Colors.grey.shade200),
+          ),
+          child: DataTable(
+            horizontalMargin: 16,
+            columnSpacing: 24,
+            headingRowColor: MaterialStateProperty.all(Colors.grey.shade50),
+            columns: const [
+              DataColumn(label: Text('Product', style: TextStyle(fontWeight: FontWeight.bold))),
+              DataColumn(label: Text('Category', style: TextStyle(fontWeight: FontWeight.bold))),
+              DataColumn(label: Text('Code', style: TextStyle(fontWeight: FontWeight.bold))),
+              DataColumn(label: Text('Price', style: TextStyle(fontWeight: FontWeight.bold))),
+              DataColumn(label: Text('Stock', style: TextStyle(fontWeight: FontWeight.bold))),
+              DataColumn(label: Text('Status', style: TextStyle(fontWeight: FontWeight.bold))),
+              DataColumn(label: Text('Actions', style: TextStyle(fontWeight: FontWeight.bold))),
+            ],
+            rows: docs.map((doc) {
+              final data = doc.data();
+              final name = (data['name'] ?? '').toString();
+              final category = _categoryName(data);
+              final itemCode = (data['itemCode'] ?? '').toString();
+              final price = data['unitPrice'];
+              final isActive = _isProductActive(data);
+              final stock = _stockOnHand(data);
+              final stockStatus = _stockStatus(data);
+              final imageUrl = data['imageUrl']?.toString();
+
+              return DataRow(
+                cells: [
+                  DataCell(
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        _buildProductAvatar(imageUrl, name, 30),
+                        const SizedBox(width: 8),
+                        Text(name.isEmpty ? '(No name)' : name, style: const TextStyle(fontWeight: FontWeight.w600)),
+                      ],
+                    ),
+                  ),
+                  DataCell(Text(category.isEmpty ? '—' : category)),
+                  DataCell(Text(itemCode.isEmpty ? '—' : itemCode)),
+                  DataCell(Text(_formatCurrency(price))),
+                  DataCell(
+                    Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(_formatNumber(stock), style: const TextStyle(fontWeight: FontWeight.bold)),
+                        Text(stockStatus, style: TextStyle(fontSize: 10, color: _stockFg(stockStatus))),
+                      ],
+                    ),
+                  ),
+                  DataCell(
+                    _InfoChip(
+                      label: isActive ? 'Active' : 'Inactive',
+                      backgroundColor: isActive ? Colors.blue.shade50 : Colors.grey.shade100,
+                      textColor: isActive ? Colors.blue.shade800 : Colors.grey.shade800,
+                    ),
+                  ),
+                  DataCell(
+                    (canEdit || canDelete)
+                        ? Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        if (canEdit)
+                          IconButton(
+                            icon: const Icon(Icons.edit_outlined, size: 18, color: Colors.blueGrey),
+                            onPressed: () => _openEditProduct(
+                              productId: doc.id,
+                              initialData: data,
+                              companyId: companyId,
+                              currentUserUid: firebaseUserUid,
+                              currentUserRole: role,
+                            ),
+                          ),
+                        if (canDelete)
+                          IconButton(
+                            icon: const Icon(Icons.delete_outline, size: 18, color: Colors.red),
+                            onPressed: () => _deleteProduct(
+                              companyId: companyId,
+                              productId: doc.id,
+                              productName: name.isEmpty ? 'Product' : name,
+                              currentUserUid: firebaseUserUid,
+                            ),
+                          ),
+                      ],
+                    )
+                        : const SizedBox.shrink(),
+                  ),
+                ],
+              );
+            }).toList(),
+          ),
+        ),
+      ),
+    );
+  }
+
+  // --- COLOR HELPERS ---
+  Color _stockBg(String status) {
+    if (status == 'In Stock') return Colors.green.shade50;
+    if (status == 'Low Stock') return Colors.orange.shade50;
+    if (status == 'Out of Stock') return Colors.red.shade50;
+    return Colors.grey.shade100;
+  }
+
+  Color _stockFg(String status) {
+    if (status == 'In Stock') return Colors.green.shade800;
+    if (status == 'Low Stock') return Colors.orange.shade800;
+    if (status == 'Out of Stock') return Colors.red.shade800;
+    return Colors.grey.shade800;
+  }
+}
+
+// --- REUSABLE COMPONENTS FOR PARITY ---
+
+class _MiniStatText extends StatelessWidget {
+  final String label;
+  final String value;
+
+  const _MiniStatText({
+    required this.label,
+    required this.value,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Text(
+      '$label: $value',
+      style: TextStyle(
+        fontSize: 12,
+        color: Colors.grey.shade700,
+        fontWeight: FontWeight.w600,
+      ),
+    );
+  }
+}
+
+class _InlineInfo extends StatelessWidget {
+  final IconData icon;
+  final String text;
+
+  const _InlineInfo({
+    required this.icon,
+    required this.text,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return ConstrainedBox(
+      constraints: const BoxConstraints(maxWidth: 300),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 15, color: Colors.grey.shade700),
+          const SizedBox(width: 5),
+          Flexible(
+            child: Text(
+              text,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                fontSize: 12.6,
+                color: Colors.grey.shade800,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _InfoChip extends StatelessWidget {
+  final String label;
+  final Color backgroundColor;
+  final Color textColor;
+
+  const _InfoChip({
+    required this.label,
+    required this.backgroundColor,
+    required this.textColor,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: backgroundColor,
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Text(
+        label,
+        style: TextStyle(
+          fontSize: 11.8,
+          fontWeight: FontWeight.w700,
+          color: textColor,
+        ),
+      ),
+    );
+  }
+}
+
+class _EmptyProductsState extends StatelessWidget {
+  final bool hasSearch;
+  final VoidCallback onReset;
+
+  const _EmptyProductsState({
+    required this.hasSearch,
+    required this.onReset,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        return SingleChildScrollView(
+          padding: const EdgeInsets.all(28),
+          child: ConstrainedBox(
+            constraints: BoxConstraints(
+              minHeight: constraints.maxHeight - 40,
+            ),
+            child: IntrinsicHeight(
+              child: Center(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    CircleAvatar(
+                      radius: 34,
+                      backgroundColor: Colors.blue.shade50,
+                      child: Icon(
+                        hasSearch ? Icons.search_off : Icons.inventory_2_outlined,
+                        size: 34,
+                        color: Colors.blue.shade700,
+                      ),
+                    ),
+                    const SizedBox(height: 18),
+                    Text(
+                      hasSearch
+                          ? 'No matching products found'
+                          : 'No products found',
+                      style: const TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w700,
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      hasSearch
+                          ? 'Try changing the search text or filter.'
+                          : 'Add your first product to manage inventory.',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        color: Colors.grey.shade700,
+                        fontSize: 14,
+                      ),
+                    ),
+                    const SizedBox(height: 18),
+                    if (hasSearch)
+                      OutlinedButton(
+                        onPressed: onReset,
+                        child: const Text('Reset Filters'),
+                      ),
+                  ],
+                ),
+              ),
+            ),
           ),
         );
       },

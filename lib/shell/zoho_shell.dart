@@ -1,10 +1,9 @@
-// FILE PATH: lib/modules/shell/zoho_shell.dart
-
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
 import 'package:QUIK/core/theme/app_theme.dart';
+import 'package:QUIK/modules/dashboard/dashboard_screen.dart';
 import 'package:QUIK/modules/administration/users/screen_user_management.dart';
 import 'package:QUIK/modules/crm/customers/screens_customer_list.dart';
 import 'package:QUIK/modules/inventory/products/screens_product_list.dart';
@@ -443,7 +442,6 @@ class WorkspaceConfig {
           ShellPage.financeTaxInvoice,
           ShellPage.financePaymentsReceived,
           ShellPage.financeOutstanding,
-          ShellPage.financeExpenses,
         ],
       ),
       SidebarGroup(
@@ -453,8 +451,6 @@ class WorkspaceConfig {
         children: [
           ShellPage.reportsSales,
           // 🛑 reportsInquiry omitted per requirements
-          ShellPage.reportsCustomer,
-          ShellPage.reportsPayment,
         ],
       ),
       SidebarGroup(
@@ -794,13 +790,6 @@ class _ZohoShellState extends State<ZohoShell> {
     if (emailPrefix.isNotEmpty) return emailPrefix;
 
     return 'User';
-  }
-
-  String _dashboardWelcomeText() {
-    if (isAdminOrManager) {
-      return 'Welcome ${widget.companyName}';
-    }
-    return 'Welcome ${_resolvedEmployeeName()}';
   }
 
   Widget _buildTopHeader() {
@@ -1362,9 +1351,12 @@ class _ZohoShellState extends State<ZohoShell> {
   Widget _buildActiveBody() {
     switch (activePage) {
       case ShellPage.dashboard:
-        return Padding(
-          padding: const EdgeInsets.all(10 * density),
-          child: _homeDashboardLive(),
+        return DashboardScreen(
+          companyId: widget.companyId,
+          userName: _resolvedEmployeeName(),
+          currentUserId: widget.userUid,
+          permissions: _currentPermissions,
+          role: _currentRole,
         );
 
       case ShellPage.salesInquiries:
@@ -1892,333 +1884,6 @@ class _ZohoShellState extends State<ZohoShell> {
                 ),
               )
                   .toList(),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _homeDashboardLive() {
-    DateTime dateOnly(DateTime d) => DateTime(d.year, d.month, d.day);
-    final today = dateOnly(DateTime.now());
-
-    final canShowInquiryDashboard = canInquiries;
-    final welcomeText = _dashboardWelcomeText();
-
-    final inquiryStream = canShowInquiryDashboard
-        ? FirebaseFirestore.instance
-        .collection('companies')
-        .doc(widget.companyId)
-        .collection('inquiries')
-        .where('assignedToUid', isEqualTo: widget.userUid)
-        .snapshots()
-        : null;
-
-    if (!canShowInquiryDashboard) {
-      return Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            welcomeText,
-            style: const TextStyle(
-              fontSize: 15,
-              fontWeight: FontWeight.w900,
-              color: zText,
-            ),
-          ),
-          const SizedBox(height: 14 * density),
-          Row(
-            children: const [
-              Expanded(
-                child: _KpiBox(
-                  title: 'Sales Modules',
-                  value: '6',
-                  icon: Icons.trending_up_outlined,
-                ),
-              ),
-              SizedBox(width: 8 * density),
-              Expanded(
-                child: _KpiBox(
-                  title: 'CRM Modules',
-                  value: '4',
-                  icon: Icons.people_outline,
-                ),
-              ),
-              SizedBox(width: 8 * density),
-              Expanded(
-                child: _KpiBox(
-                  title: 'Inventory Modules',
-                  value: '6',
-                  icon: Icons.inventory_2_outlined,
-                ),
-              ),
-              SizedBox(width: 8 * density),
-              Expanded(
-                child: _KpiBox(
-                  title: 'Reports',
-                  value: '5',
-                  icon: Icons.assessment_outlined,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 8 * density),
-          Expanded(
-            child: Row(
-              children: const [
-                Expanded(
-                  child: _Panel(
-                    title: 'Workspace Structure',
-                    emptyText: 'Professional SaaS modules are ready in sidebar',
-                    emptyIcon: Icons.dashboard_customize_outlined,
-                  ),
-                ),
-                SizedBox(width: 8 * density),
-                Expanded(
-                  child: _Panel(
-                    title: 'Next Build Suggestion',
-                    emptyText: 'Start with Follow-ups, Stock Summary and Vendors',
-                    emptyIcon: Icons.rocket_launch_outlined,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      );
-    }
-
-    return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-      stream: inquiryStream,
-      builder: (context, snap) {
-        if (snap.hasError) {
-          return Center(child: Text('Dashboard error: ${snap.error}'));
-        }
-
-        int total = 0;
-        int openDeals = 0;
-        int untouched = 0;
-        int followupsToday = 0;
-
-        if (snap.hasData) {
-          final docs = snap.data!.docs;
-          total = docs.length;
-
-          for (final doc in docs) {
-            final data = doc.data();
-
-            final status = (data['status'] ?? '').toString().trim();
-            final lastNote = (data['lastFollowUpNote'] ?? '').toString().trim();
-
-            if (status == 'Open' || status == 'Quotation Pending') {
-              openDeals++;
-            }
-
-            if (status == 'Open' && lastNote.isEmpty) {
-              untouched++;
-            }
-
-            final next = data['nextFollowUpDate'];
-            if (next is Timestamp) {
-              final dt = dateOnly(next.toDate());
-              if (dt == today) {
-                followupsToday++;
-              }
-            }
-          }
-        }
-
-        return Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              welcomeText,
-              style: const TextStyle(
-                fontSize: 15,
-                fontWeight: FontWeight.w900,
-                color: zText,
-              ),
-            ),
-            const SizedBox(height: 10 * density),
-            Row(
-              children: [
-                Expanded(
-                  child: _KpiBox(
-                    title: 'Open Deals',
-                    value: '$openDeals',
-                    icon: Icons.folder_open_outlined,
-                  ),
-                ),
-                const SizedBox(width: 8 * density),
-                Expanded(
-                  child: _KpiBox(
-                    title: 'Untouched',
-                    value: '$untouched',
-                    icon: Icons.mark_email_unread_outlined,
-                  ),
-                ),
-                const SizedBox(width: 8 * density),
-                Expanded(
-                  child: _KpiBox(
-                    title: 'Follow-ups Today',
-                    value: '$followupsToday',
-                    icon: Icons.event_repeat_outlined,
-                  ),
-                ),
-                const SizedBox(width: 8 * density),
-                Expanded(
-                  child: _KpiBox(
-                    title: 'My Inquiries',
-                    value: '$total',
-                    icon: Icons.insights_outlined,
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 8 * density),
-            Expanded(
-              child: Row(
-                children: const [
-                  Expanded(
-                    child: _Panel(
-                      title: 'My Open Tasks',
-                      emptyText: 'No open tasks',
-                      emptyIcon: Icons.task_alt,
-                    ),
-                  ),
-                  SizedBox(width: 8 * density),
-                  Expanded(
-                    child: _Panel(
-                      title: 'My Meetings',
-                      emptyText: 'No meetings scheduled',
-                      emptyIcon: Icons.event_available,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
-        );
-      },
-    );
-  }
-}
-
-class _KpiBox extends StatelessWidget {
-  final String title;
-  final String value;
-  final IconData icon;
-
-  const _KpiBox({required this.title, required this.value, required this.icon});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      height: 72 * density,
-      padding: const EdgeInsets.all(10 * density),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        border: Border.all(color: zBorder),
-        borderRadius: BorderRadius.circular(10 * density),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Icon(icon, size: 15, color: zMuted),
-              const SizedBox(width: 6 * density),
-              Expanded(
-                child: Text(
-                  title,
-                  style: const TextStyle(
-                    color: zMuted,
-                    fontSize: 11.5,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-              ),
-            ],
-          ),
-          const Spacer(),
-          Text(
-            value,
-            style: const TextStyle(
-              fontSize: 16,
-              fontWeight: FontWeight.w900,
-              color: zText,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _Panel extends StatelessWidget {
-  final String title;
-  final String emptyText;
-  final IconData emptyIcon;
-
-  const _Panel({
-    required this.title,
-    required this.emptyText,
-    required this.emptyIcon,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      decoration: BoxDecoration(
-        color: Colors.white,
-        border: Border.all(color: zBorder),
-        borderRadius: BorderRadius.circular(10 * density),
-      ),
-      child: Column(
-        children: [
-          Container(
-            padding: const EdgeInsets.symmetric(
-                horizontal: 10 * density,
-                vertical: 8 * density
-            ),
-            decoration: const BoxDecoration(
-              border: Border(bottom: BorderSide(color: zBorder)),
-            ),
-            child: Row(
-              children: [
-                Text(
-                  title,
-                  style: const TextStyle(
-                    fontSize: 12.5,
-                    fontWeight: FontWeight.w900,
-                    color: zText,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          Expanded(
-            child: Center(
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16 * density),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(emptyIcon, color: zMuted, size: 20),
-                    const SizedBox(height: 6 * density),
-                    Text(
-                      emptyText,
-                      textAlign: TextAlign.center,
-                      style: const TextStyle(
-                        fontSize: 11.5,
-                        color: zMuted,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
             ),
           ),
         ],

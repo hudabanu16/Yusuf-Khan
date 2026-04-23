@@ -20,12 +20,16 @@ class ScreensQuotationList extends StatefulWidget {
 }
 
 class _ScreensQuotationListState extends State<ScreensQuotationList> {
+  final TextEditingController _searchController = TextEditingController();
+
   String? _companyId;
   String? _currentUserUid;
   String _currentUserRole = 'sales';
   bool _isLoadingContext = true;
   String? _errorMessage;
+
   String _searchText = '';
+  String _statusFilter = 'All';
 
   // Single Source of Truth for Queries
   Query<Map<String, dynamic>>? _primaryQuery;
@@ -69,6 +73,12 @@ class _ScreensQuotationListState extends State<ScreensQuotationList> {
   void initState() {
     super.initState();
     _loadUserContext();
+  }
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
   }
 
   Future<void> _loadUserContext() async {
@@ -243,33 +253,6 @@ class _ScreensQuotationListState extends State<ScreensQuotationList> {
 
     final parsed = double.tryParse(value.toString()) ?? 0.0;
     return 'Rs ${parsed.toStringAsFixed(2)}';
-  }
-
-  Color _statusTextColor(String status) {
-    final s = status.trim().toLowerCase();
-    if (s == 'draft') return Colors.orange.shade800;
-    if (s == 'converted to so') return Colors.green.shade800;
-    if (s == 'approved') return Colors.green.shade800;
-    if (s == 'sent') return Colors.blue.shade800;
-    return Colors.grey.shade800;
-  }
-
-  Color _statusBgColor(String status) {
-    final s = status.trim().toLowerCase();
-    if (s == 'draft') return Colors.orange.shade50;
-    if (s == 'converted to so') return Colors.green.shade50;
-    if (s == 'approved') return Colors.green.shade50;
-    if (s == 'sent') return Colors.blue.shade50;
-    return Colors.grey.shade100;
-  }
-
-  Color _statusBorderColor(String status) {
-    final s = status.trim().toLowerCase();
-    if (s == 'draft') return Colors.orange.shade300;
-    if (s == 'converted to so') return Colors.green.shade300;
-    if (s == 'approved') return Colors.green.shade300;
-    if (s == 'sent') return Colors.blue.shade300;
-    return Colors.grey.shade300;
   }
 
   Future<void> _openCreateQuotation() async {
@@ -509,172 +492,133 @@ class _ScreensQuotationListState extends State<ScreensQuotationList> {
     );
   }
 
-  Widget _buildListView(List<QueryDocumentSnapshot<Map<String, dynamic>>> filtered) {
-    if (filtered.isEmpty) {
-      return Container(
-        width: double.infinity,
-        padding: const EdgeInsets.all(32),
-        decoration: BoxDecoration(
-          border: Border.all(color: Colors.grey.shade300),
-          borderRadius: BorderRadius.circular(12),
-          color: Colors.white,
-        ),
-        child: const Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(
-              Icons.receipt_long,
-              size: 54,
-              color: Colors.grey,
-            ),
-            SizedBox(height: 12),
-            Text(
-              'No quotations found',
-              style: TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-            SizedBox(height: 6),
-            Text(
-              'Create your first quotation to see it here.',
-              style: TextStyle(color: Colors.grey),
-            ),
-          ],
-        ),
-      );
-    }
+  // --- LOCAL FILTERING ---
+  List<QueryDocumentSnapshot<Map<String, dynamic>>> _applyLocalFilters(
+      List<QueryDocumentSnapshot<Map<String, dynamic>>> docs) {
 
-    return Container(
-      decoration: BoxDecoration(
-        color: Colors.white,
-        border: Border.all(color: Colors.grey.shade300),
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: ListView.separated(
-        itemCount: filtered.length,
-        separatorBuilder: (_, __) => Divider(height: 1, color: Colors.grey.shade300),
-        itemBuilder: (context, index) {
-          final doc = filtered[index];
-          final data = doc.data();
-
-          final quoteNumber = (data['quoteNumber'] ?? '-').toString();
-          final customer = (data['clientName'] ?? '-').toString();
-          final status = (data['status'] ?? 'Draft').toString();
-          final quoteDate = _formatTimestamp(data['quoteDate']);
-          final grandTotal = _money(data['grandTotal']);
-
-          return ListTile(
-            contentPadding: const EdgeInsets.symmetric(
-              horizontal: 16,
-              vertical: 10,
-            ),
-            title: Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    quoteNumber,
-                    style: const TextStyle(
-                      fontWeight: FontWeight.bold,
-                      color: primaryColor,
-                    ),
-                  ),
-                ),
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 10,
-                    vertical: 4,
-                  ),
-                  decoration: BoxDecoration(
-                    color: _statusBgColor(status),
-                    borderRadius: BorderRadius.circular(20),
-                    border: Border.all(
-                      color: _statusBorderColor(status),
-                    ),
-                  ),
-                  child: Text(
-                    status,
-                    style: TextStyle(
-                      fontWeight: FontWeight.w600,
-                      color: _statusTextColor(status),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-            subtitle: Padding(
-              padding: const EdgeInsets.only(top: 8),
-              child: Wrap(
-                spacing: 18,
-                runSpacing: 8,
-                children: [
-                  Text('Customer: $customer'),
-                  Text('Date: $quoteDate'),
-                  Text('Total: $grandTotal'),
-                ],
-              ),
-            ),
-            trailing: Wrap(
-              spacing: 2,
-              children: [
-                IconButton(
-                  icon: const Icon(Icons.visibility_outlined),
-                  tooltip: 'View',
-                  onPressed: () => _openQuotationDetails(doc.id, data),
-                ),
-                IconButton(
-                  icon: const Icon(
-                    Icons.edit_outlined,
-                    color: Colors.blueGrey,
-                  ),
-                  tooltip: 'Edit',
-                  onPressed: () => _openQuotationForEdit(doc.id, data),
-                ),
-                IconButton(
-                  icon: const Icon(
-                    Icons.shopping_cart_checkout_outlined,
-                    color: Colors.green,
-                  ),
-                  tooltip: 'Convert to Sales Order',
-                  onPressed: () => _convertToSalesOrder(doc.id, data),
-                ),
-                IconButton(
-                  icon: const Icon(
-                    Icons.delete_outline,
-                    color: Colors.red,
-                  ),
-                  tooltip: 'Delete',
-                  onPressed: () => _confirmDeleteQuotation(doc.id, data),
-                ),
-              ],
-            ),
-          );
-        },
-      ),
-    );
-  }
-
-  // --- 4. LOCAL SORTING BACKUP IN UI ---
-  List<QueryDocumentSnapshot<Map<String, dynamic>>> _applyLocalFilters(List<QueryDocumentSnapshot<Map<String, dynamic>>> docs) {
-    // Local sort safeguard in case Firestore index ordering fails/is bypassed
+    // Local sort safeguard
     docs.sort((a, b) {
       final aDate = (a.data()['createdAt'] as Timestamp?)?.toDate();
       final bDate = (b.data()['createdAt'] as Timestamp?)?.toDate();
       return (bDate ?? DateTime(2000)).compareTo(aDate ?? DateTime(2000));
     });
 
+    final normalizedSearch = _searchText.trim().toLowerCase();
+
     return docs.where((doc) {
       final data = doc.data();
       final quoteNumber = (data['quoteNumber'] ?? '').toString().toLowerCase();
       final customer = (data['clientName'] ?? '').toString().toLowerCase();
-      final status = (data['status'] ?? '').toString().toLowerCase();
+      final status = (data['status'] ?? '').toString().trim();
 
-      if (_searchText.isEmpty) return true;
+      final matchesSearch = normalizedSearch.isEmpty ||
+          quoteNumber.contains(normalizedSearch) ||
+          customer.contains(normalizedSearch);
 
-      return quoteNumber.contains(_searchText) ||
-          customer.contains(_searchText) ||
-          status.contains(_searchText);
+      final matchesStatus = _statusFilter == 'All' || status.toLowerCase() == _statusFilter.toLowerCase();
+
+      return matchesSearch && matchesStatus;
     }).toList();
+  }
+
+  bool get _hasActiveFilters => _statusFilter != 'All';
+
+  void _resetFilters() {
+    setState(() {
+      _statusFilter = 'All';
+    });
+  }
+
+  Future<void> _openFilterSheet() async {
+    String tempStatus = _statusFilter;
+
+    const statuses = [
+      'All',
+      'Draft',
+      'Approved',
+      'Sent',
+      'Converted to SO',
+    ];
+
+    await showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      backgroundColor: Colors.white,
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (ctx, setModalState) {
+            return Padding(
+              padding: EdgeInsets.fromLTRB(
+                16,
+                6,
+                16,
+                MediaQuery.of(context).viewInsets.bottom + 16,
+              ),
+              child: SingleChildScrollView(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'Filters',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    const SizedBox(height: 14),
+                    DropdownButtonFormField<String>(
+                      value: tempStatus,
+                      decoration: const InputDecoration(
+                        labelText: 'Status',
+                        isDense: true,
+                        border: OutlineInputBorder(),
+                      ),
+                      items: statuses
+                          .map((e) =>
+                          DropdownMenuItem(value: e, child: Text(e)))
+                          .toList(),
+                      onChanged: (value) {
+                        setModalState(() {
+                          tempStatus = value ?? 'All';
+                        });
+                      },
+                    ),
+                    const SizedBox(height: 14),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: TextButton(
+                            onPressed: () {
+                              setState(() {
+                                _statusFilter = 'All';
+                              });
+                              Navigator.pop(context);
+                            },
+                            child: const Text('Reset'),
+                          ),
+                        ),
+                        Expanded(
+                          child: ElevatedButton(
+                            onPressed: () {
+                              setState(() {
+                                _statusFilter = tempStatus;
+                              });
+                              Navigator.pop(context);
+                            },
+                            child: const Text('Apply'),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
   }
 
   @override
@@ -705,7 +649,6 @@ class _ScreensQuotationListState extends State<ScreensQuotationList> {
       );
     }
 
-    // --- 6. NULL SAFETY BEFORE STREAM ---
     if (_primaryQuery == null || _fallbackQuery == null) {
       return const Scaffold(
         body: Center(child: Text('System initialization failed')),
@@ -713,129 +656,590 @@ class _ScreensQuotationListState extends State<ScreensQuotationList> {
     }
 
     return Scaffold(
-      backgroundColor: const Color(0xFFF4F7FB),
-      body: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.end,
-              children: [
-                ElevatedButton.icon(
-                  onPressed: _openCreateQuotation,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: primaryColor,
-                    foregroundColor: Colors.white,
-                    elevation: 0,
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 18,
-                      vertical: 14,
-                    ),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(14),
+      backgroundColor: Colors.white,
+      appBar: AppBar(
+        elevation: 0,
+        toolbarHeight: 6,
+        automaticallyImplyLeading: false,
+        backgroundColor: Colors.white,
+        surfaceTintColor: Colors.transparent,
+      ),
+      floatingActionButton: FloatingActionButton(
+        tooltip: 'Create Quotation',
+        backgroundColor: const Color(0xFF2563EB),
+        foregroundColor: Colors.white,
+        onPressed: _openCreateQuotation,
+        child: const Icon(Icons.add),
+      ),
+      body: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+        stream: _primaryQuery?.snapshots(),
+        builder: (context, primarySnap) {
+          if (primarySnap.hasError) {
+            debugPrint("🔥 Firestore Query Error (Primary): ${primarySnap.error}");
+          }
+
+          if (primarySnap.connectionState == ConnectionState.waiting) {
+            return const Center(child: CircularProgressIndicator());
+          }
+
+          final primaryDocs = primarySnap.data?.docs.toList() ?? [];
+          List<QueryDocumentSnapshot<Map<String, dynamic>>> sourceDocs = primaryDocs;
+
+          if (primaryDocs.isEmpty && primarySnap.hasError) {
+            // Fallback logic inside builder if primary fails completely
+            return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+                stream: _fallbackQuery?.snapshots(),
+                builder: (context, fallbackSnap) {
+                  if (fallbackSnap.hasError) {
+                    return Center(
+                      child: Text(
+                        'System setup required. Please contact admin.',
+                        style: TextStyle(color: Colors.red.shade800),
+                      ),
+                    );
+                  }
+                  if (fallbackSnap.connectionState == ConnectionState.waiting) {
+                    return const Center(child: CircularProgressIndicator());
+                  }
+                  final fallbackDocs = fallbackSnap.data?.docs.toList() ?? [];
+                  if (fallbackDocs.isNotEmpty && _dynamicQuotationCollection != _fallbackCollection) {
+                    WidgetsBinding.instance.addPostFrameCallback((_) {
+                      if (mounted) setState(() => _dynamicQuotationCollection = _fallbackCollection);
+                    });
+                  }
+                  return _buildContent(fallbackDocs);
+                }
+            );
+          }
+
+          if (primaryDocs.isNotEmpty && _dynamicQuotationCollection != _primaryCollection) {
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              if (mounted) setState(() => _dynamicQuotationCollection = _primaryCollection);
+            });
+          }
+
+          return _buildContent(sourceDocs);
+        },
+      ),
+    );
+  }
+
+  Widget _buildContent(List<QueryDocumentSnapshot<Map<String, dynamic>>> allDocs) {
+    final filteredDocs = _applyLocalFilters(allDocs);
+
+    int total = filteredDocs.length;
+    int draft = 0;
+    int approved = 0;
+    int converted = 0;
+
+    for (final doc in filteredDocs) {
+      final status = (doc.data()['status'] ?? '').toString().toLowerCase();
+      if (status == 'draft') draft++;
+      if (status == 'approved') approved++;
+      if (status == 'converted to so') converted++;
+    }
+
+    return Column(
+      children: [
+        // TOP CONTROL BAR
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 6, 16, 8),
+          child: Row(
+            children: [
+              ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 320),
+                child: SizedBox(
+                  height: 38,
+                  child: TextField(
+                    controller: _searchController,
+                    onChanged: (value) {
+                      setState(() {
+                        _searchText = value;
+                      });
+                    },
+                    decoration: InputDecoration(
+                      hintText: 'Search quotation no, customer...',
+                      prefixIcon: const Icon(Icons.search, size: 18),
+                      suffixIcon: _searchText.trim().isEmpty
+                          ? null
+                          : IconButton(
+                        tooltip: 'Clear',
+                        icon: const Icon(Icons.close, size: 17),
+                        onPressed: () {
+                          _searchController.clear();
+                          setState(() {
+                            _searchText = '';
+                          });
+                        },
+                      ),
+                      isDense: true,
+                      filled: true,
+                      fillColor: Colors.grey.shade100,
+                      contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 8,
+                      ),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(10),
+                        borderSide: BorderSide.none,
+                      ),
+                      enabledBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(10),
+                        borderSide: BorderSide.none,
+                      ),
+                      focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(10),
+                        borderSide: BorderSide.none,
+                      ),
                     ),
                   ),
-                  icon: const Icon(Icons.add),
-                  label: const Text('Create New'),
+                ),
+              ),
+              const SizedBox(width: 8),
+              SizedBox(
+                height: 38,
+                width: 38,
+                child: Material(
+                  color: Colors.grey.shade100,
+                  borderRadius: BorderRadius.circular(10),
+                  child: InkWell(
+                    borderRadius: BorderRadius.circular(10),
+                    onTap: _openFilterSheet,
+                    child: Stack(
+                      alignment: Alignment.center,
+                      children: [
+                        Icon(
+                          Icons.tune_rounded,
+                          size: 18,
+                          color: Colors.grey.shade800,
+                        ),
+                        if (_hasActiveFilters)
+                          Positioned(
+                            right: 8,
+                            top: 8,
+                            child: Container(
+                              width: 7,
+                              height: 7,
+                              decoration: BoxDecoration(
+                                color: Colors.blue.shade700,
+                                shape: BoxShape.circle,
+                              ),
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+              const Spacer(),
+              _MiniStatText(label: 'Total', value: total.toString()),
+              const SizedBox(width: 10),
+              _MiniStatText(label: 'Draft', value: draft.toString()),
+              const SizedBox(width: 10),
+              _MiniStatText(label: 'Approved', value: approved.toString()),
+              const SizedBox(width: 10),
+              _MiniStatText(label: 'Converted', value: converted.toString()),
+            ],
+          ),
+        ),
+
+        if (_hasActiveFilters)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 4),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    'Filters applied',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: Colors.grey.shade700,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ),
+                TextButton(
+                  onPressed: _resetFilters,
+                  child: const Text('Clear'),
                 ),
               ],
             ),
-            const SizedBox(height: 16),
-            TextField(
-              decoration: InputDecoration(
-                hintText: 'Search by quotation no, customer, status',
-                prefixIcon: const Icon(Icons.search),
-                filled: true,
-                fillColor: Colors.white,
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                  borderSide: BorderSide(color: Colors.grey.shade300),
-                ),
-                enabledBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                  borderSide: BorderSide(color: Colors.grey.shade300),
-                ),
-                isDense: true,
-              ),
-              onChanged: (value) {
-                setState(() {
-                  _searchText = value.trim().toLowerCase();
-                });
-              },
-            ),
-            const SizedBox(height: 16),
-            Expanded(
-              child: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-                stream: _primaryQuery?.snapshots(),
-                builder: (context, primarySnap) {
-                  if (primarySnap.hasError) {
-                    debugPrint("🔥 Firestore Query Error (Primary): ${primarySnap.error}");
-                    // On error (like missing index), gracefully cascade to fallback stream
-                  } else if (primarySnap.connectionState == ConnectionState.waiting) {
-                    return const Center(child: CircularProgressIndicator());
-                  } else {
-                    debugPrint("Using primary query");
-                    // Ensure toList() to create a mutable list for sorting
-                    final primaryDocs = primarySnap.data?.docs.toList() ?? [];
-                    debugPrint("Docs count: ${primaryDocs.length}");
+          ),
 
-                    if (primaryDocs.isNotEmpty) {
-                      if (_dynamicQuotationCollection != _primaryCollection) {
-                        WidgetsBinding.instance.addPostFrameCallback((_) {
-                          if (mounted) setState(() => _dynamicQuotationCollection = _primaryCollection);
-                        });
-                      }
-                      return _buildListView(_applyLocalFilters(primaryDocs));
-                    }
-                  }
+        Expanded(
+          child: filteredDocs.isEmpty
+              ? _EmptyQuotationsState(
+            hasSearch: _searchText.trim().isNotEmpty || _hasActiveFilters,
+            onReset: () {
+              _searchController.clear();
+              setState(() {
+                _searchText = '';
+              });
+              _resetFilters();
+            },
+          )
+              : ListView.separated(
+            padding: const EdgeInsets.fromLTRB(16, 4, 16, 90),
+            itemCount: filteredDocs.length,
+            separatorBuilder: (_, __) => const SizedBox(height: 8),
+            itemBuilder: (context, index) {
+              final doc = filteredDocs[index];
+              final data = doc.data();
 
-                  // Fallback query resolution
-                  return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-                    stream: _fallbackQuery?.snapshots(),
-                    builder: (context, fallbackSnap) {
-                      if (fallbackSnap.hasError) {
-                        debugPrint("🔥 Firestore Query Error (Fallback): ${fallbackSnap.error}");
-                        return Center(
-                          child: Text(
-                            'System setup required. Please contact admin or check Firestore index.',
-                            style: TextStyle(color: Colors.red.shade800),
-                            textAlign: TextAlign.center,
+              final quoteNumber = (data['quoteNumber'] ?? '-').toString();
+              final customerName = (data['clientName'] ?? 'Unknown Customer').toString();
+              final status = (data['status'] ?? 'Draft').toString();
+              final quoteDate = _formatTimestamp(data['quoteDate']);
+              final grandTotal = _money(data['grandTotal']);
+
+              final contactPerson = (data['contactPerson'] ?? '').toString();
+              final mobile = (data['clientMobile'] ?? '').toString();
+              final inquirySource = (data['inquirySource'] ?? '').toString();
+              final paymentTerms = (data['paymentTerms'] ?? '').toString();
+              final deliveryTime = (data['deliveryTime'] ?? '').toString();
+
+              return Container(
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(
+                    color: Colors.grey.shade200,
+                    width: 0.8,
+                  ),
+                ),
+                child: Padding(
+                  padding: const EdgeInsets.all(12),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // TOP ROW
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          CircleAvatar(
+                            radius: 20,
+                            backgroundColor: Colors.blue.shade50,
+                            child: Text(
+                              customerName.isNotEmpty ? customerName[0].toUpperCase() : '?',
+                              style: TextStyle(
+                                fontSize: 15,
+                                fontWeight: FontWeight.w700,
+                                color: Colors.blue.shade800,
+                              ),
+                            ),
                           ),
-                        );
-                      }
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  quoteNumber,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(
+                                    fontSize: 15,
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                                const SizedBox(height: 3),
+                                Text(
+                                  customerName,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: TextStyle(
+                                    fontSize: 12.5,
+                                    color: Colors.grey.shade700,
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          PopupMenuButton<String>(
+                            tooltip: 'Actions',
+                            onSelected: (value) {
+                              if (value == 'view') {
+                                _openQuotationDetails(doc.id, data);
+                              } else if (value == 'edit') {
+                                _openQuotationForEdit(doc.id, data);
+                              } else if (value == 'convert') {
+                                _convertToSalesOrder(doc.id, data);
+                              } else if (value == 'delete') {
+                                _confirmDeleteQuotation(doc.id, data);
+                              }
+                            },
+                            itemBuilder: (context) => [
+                              const PopupMenuItem(
+                                value: 'view',
+                                child: Text('View Details'),
+                              ),
+                              const PopupMenuItem(
+                                value: 'edit',
+                                child: Text('Edit Quotation'),
+                              ),
+                              const PopupMenuItem(
+                                value: 'convert',
+                                child: Text('Convert to Sales Order'),
+                              ),
+                              const PopupMenuItem(
+                                value: 'delete',
+                                child: Text(
+                                  'Delete',
+                                  style: TextStyle(color: Colors.red),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 10),
 
-                      if (fallbackSnap.connectionState == ConnectionState.waiting) {
-                        return const Center(child: CircularProgressIndicator());
-                      }
+                      // CHIPS ROW
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 8,
+                        children: [
+                          _InfoChip(
+                            label: status,
+                            backgroundColor: _statusBgColor(status),
+                            textColor: _statusTextColor(status),
+                          ),
+                          if (inquirySource.isNotEmpty)
+                            _InfoChip(
+                              label: inquirySource,
+                              backgroundColor: Colors.grey.shade100,
+                              textColor: Colors.grey.shade800,
+                            ),
+                          if (paymentTerms.isNotEmpty)
+                            _InfoChip(
+                              label: paymentTerms,
+                              backgroundColor: Colors.blue.shade50,
+                              textColor: Colors.blue.shade800,
+                            ),
+                        ],
+                      ),
+                      const SizedBox(height: 10),
 
-                      debugPrint("Using fallback query");
-                      final fallbackDocs = fallbackSnap.data?.docs.toList() ?? [];
-                      debugPrint("Docs count: ${fallbackDocs.length}");
+                      // INFO ROW
+                      Wrap(
+                        spacing: 14,
+                        runSpacing: 8,
+                        children: [
+                          _InlineInfo(
+                            icon: Icons.calendar_today_outlined,
+                            text: quoteDate,
+                          ),
+                          _InlineInfo(
+                            icon: Icons.currency_rupee_outlined,
+                            text: grandTotal,
+                          ),
+                          _InlineInfo(
+                            icon: Icons.person_outline,
+                            text: contactPerson.isEmpty ? 'No Contact' : contactPerson,
+                          ),
+                          if (mobile.isNotEmpty)
+                            _InlineInfo(
+                              icon: Icons.phone_outlined,
+                              text: mobile,
+                            ),
+                          if (deliveryTime.isNotEmpty)
+                            _InlineInfo(
+                              icon: Icons.local_shipping_outlined,
+                              text: deliveryTime,
+                            ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              );
+            },
+          ),
+        ),
+      ],
+    );
+  }
 
-                      if (fallbackDocs.isNotEmpty) {
-                        if (_dynamicQuotationCollection != _fallbackCollection) {
-                          WidgetsBinding.instance.addPostFrameCallback((_) {
-                            if (mounted) setState(() => _dynamicQuotationCollection = _fallbackCollection);
-                          });
-                        }
-                        return _buildListView(_applyLocalFilters(fallbackDocs));
-                      }
+  // --- COLOR HELPERS TO MATCH TARGET DESIGN ---
 
-                      // Completely empty default state
-                      if (_dynamicQuotationCollection != _primaryCollection) {
-                        WidgetsBinding.instance.addPostFrameCallback((_) {
-                          if (mounted) setState(() => _dynamicQuotationCollection = _primaryCollection);
-                        });
-                      }
-                      return _buildListView([]);
-                    },
-                  );
-                },
+  Color _statusTextColor(String status) {
+    final s = status.trim().toLowerCase();
+    if (s == 'draft') return Colors.orange.shade800;
+    if (s == 'converted to so') return Colors.green.shade900;
+    if (s == 'approved') return Colors.green.shade800;
+    if (s == 'sent') return Colors.blue.shade800;
+    return Colors.grey.shade800;
+  }
+
+  Color _statusBgColor(String status) {
+    final s = status.trim().toLowerCase();
+    if (s == 'draft') return Colors.orange.shade50;
+    if (s == 'converted to so') return Colors.green.shade100;
+    if (s == 'approved') return Colors.green.shade50;
+    if (s == 'sent') return Colors.blue.shade50;
+    return Colors.grey.shade100;
+  }
+}
+
+// --- REUSABLE COMPONENTS FOR PARITY ---
+
+class _MiniStatText extends StatelessWidget {
+  final String label;
+  final String value;
+
+  const _MiniStatText({
+    required this.label,
+    required this.value,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Text(
+      '$label: $value',
+      style: TextStyle(
+        fontSize: 12,
+        color: Colors.grey.shade700,
+        fontWeight: FontWeight.w600,
+      ),
+    );
+  }
+}
+
+class _InlineInfo extends StatelessWidget {
+  final IconData icon;
+  final String text;
+
+  const _InlineInfo({
+    required this.icon,
+    required this.text,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return ConstrainedBox(
+      constraints: const BoxConstraints(maxWidth: 300),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 15, color: Colors.grey.shade700),
+          const SizedBox(width: 5),
+          Flexible(
+            child: Text(
+              text,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                fontSize: 12.6,
+                color: Colors.grey.shade800,
+                fontWeight: FontWeight.w500,
               ),
             ),
-          ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _InfoChip extends StatelessWidget {
+  final String label;
+  final Color backgroundColor;
+  final Color textColor;
+
+  const _InfoChip({
+    required this.label,
+    required this.backgroundColor,
+    required this.textColor,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: backgroundColor,
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Text(
+        label,
+        style: TextStyle(
+          fontSize: 11.8,
+          fontWeight: FontWeight.w700,
+          color: textColor,
         ),
       ),
+    );
+  }
+}
+
+class _EmptyQuotationsState extends StatelessWidget {
+  final bool hasSearch;
+  final VoidCallback onReset;
+
+  const _EmptyQuotationsState({
+    required this.hasSearch,
+    required this.onReset,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        return SingleChildScrollView(
+          padding: const EdgeInsets.all(28),
+          child: ConstrainedBox(
+            constraints: BoxConstraints(
+              minHeight: constraints.maxHeight - 40,
+            ),
+            child: IntrinsicHeight(
+              child: Center(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    CircleAvatar(
+                      radius: 34,
+                      backgroundColor: Colors.blue.shade50,
+                      child: Icon(
+                        hasSearch ? Icons.search_off : Icons.receipt_long_outlined,
+                        size: 34,
+                        color: Colors.blue.shade700,
+                      ),
+                    ),
+                    const SizedBox(height: 18),
+                    Text(
+                      hasSearch
+                          ? 'No matching quotations found'
+                          : 'No quotations found',
+                      style: const TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w700,
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      hasSearch
+                          ? 'Try changing the search text or filter.'
+                          : 'Create your first quotation to see it here.',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        color: Colors.grey.shade700,
+                        fontSize: 14,
+                      ),
+                    ),
+                    const SizedBox(height: 18),
+                    if (hasSearch)
+                      OutlinedButton(
+                        onPressed: onReset,
+                        child: const Text('Reset Filters'),
+                      ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        );
+      },
     );
   }
 }
