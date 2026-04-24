@@ -313,7 +313,7 @@ Widget _buildDialogUserHeader(Map<String, dynamic> data) {
       children: [
         CircleAvatar(
           radius: 30,
-          backgroundColor: _viewPrimaryColor.withOpacity(0.10),
+          backgroundColor: _viewPrimaryColor.withValues(alpha: 0.10),
           child: Text(
             name.isNotEmpty ? name[0].toUpperCase() : 'U',
             style: const TextStyle(
@@ -356,7 +356,7 @@ Widget _buildDialogUserHeader(Map<String, dynamic> data) {
                   MiniBadge(
                     text: formatRole(role),
                     textColor: roleColor(role),
-                    backgroundColor: roleColor(role).withOpacity(0.10),
+                    backgroundColor: roleColor(role).withValues(alpha: 0.10),
                   ),
                   if (department.isNotEmpty)
                     MiniBadge(

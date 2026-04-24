@@ -26,7 +26,7 @@ class _ScreenJoinCompanyState extends State<ScreenJoinCompany> {
   final TextEditingController emailController = TextEditingController();
   final TextEditingController passwordController = TextEditingController();
   final TextEditingController confirmPasswordController =
-  TextEditingController();
+      TextEditingController();
 
   bool isLoading = false;
   bool obscurePassword = true;
@@ -135,7 +135,6 @@ class _ScreenJoinCompanyState extends State<ScreenJoinCompany> {
         inviteCode: inviteCode,
         fullName: fullName,
         email: email,
-        password: password,
       );
 
       if (!mounted) return;
@@ -147,6 +146,7 @@ class _ScreenJoinCompanyState extends State<ScreenJoinCompany> {
             draftId: draftId,
             email: email,
             fullName: fullName,
+            password: password,
           ),
         ),
       );
@@ -191,17 +191,11 @@ class _ScreenJoinCompanyState extends State<ScreenJoinCompany> {
           ),
           title: const Text(
             'Join Existing Company',
-            style: TextStyle(
-              color: primaryColor,
-              fontWeight: FontWeight.w800,
-            ),
+            style: TextStyle(color: primaryColor, fontWeight: FontWeight.w800),
           ),
           bottom: PreferredSize(
             preferredSize: const Size.fromHeight(1),
-            child: Container(
-              height: 1,
-              color: borderColor,
-            ),
+            child: Container(height: 1, color: borderColor),
           ),
         ),
         body: SafeArea(
@@ -217,7 +211,7 @@ class _ScreenJoinCompanyState extends State<ScreenJoinCompany> {
                     border: Border.all(color: borderColor),
                     boxShadow: [
                       BoxShadow(
-                        color: Colors.black.withOpacity(0.05),
+                        color: Colors.black.withValues(alpha: 0.05),
                         blurRadius: 24,
                         offset: const Offset(0, 12),
                       ),
@@ -266,7 +260,7 @@ class _ScreenJoinCompanyState extends State<ScreenJoinCompany> {
                                   Container(
                                     padding: const EdgeInsets.all(12),
                                     decoration: BoxDecoration(
-                                      color: primaryColor.withOpacity(0.08),
+                                      color: primaryColor.withValues(alpha: 0.08),
                                       borderRadius: BorderRadius.circular(12),
                                     ),
                                     child: const Icon(
@@ -279,7 +273,7 @@ class _ScreenJoinCompanyState extends State<ScreenJoinCompany> {
                                   const Expanded(
                                     child: Column(
                                       crossAxisAlignment:
-                                      CrossAxisAlignment.start,
+                                          CrossAxisAlignment.start,
                                       children: [
                                         Text(
                                           'One-Time Employee Onboarding',
@@ -350,8 +344,9 @@ class _ScreenJoinCompanyState extends State<ScreenJoinCompany> {
                                 if (email.isEmpty) {
                                   return 'Email is required';
                                 }
-                                final emailRegex =
-                                RegExp(r'^[^@\s]+@[^@\s]+\.[^@\s]+$');
+                                final emailRegex = RegExp(
+                                  r'^[^@\s]+@[^@\s]+\.[^@\s]+$',
+                                );
                                 if (!emailRegex.hasMatch(email)) {
                                   return 'Enter a valid email';
                                 }
@@ -401,7 +396,7 @@ class _ScreenJoinCompanyState extends State<ScreenJoinCompany> {
                                   onPressed: () {
                                     setState(() {
                                       obscureConfirmPassword =
-                                      !obscureConfirmPassword;
+                                          !obscureConfirmPassword;
                                     });
                                   },
                                   icon: Icon(
@@ -513,20 +508,20 @@ class _ScreenJoinCompanyState extends State<ScreenJoinCompany> {
                                 ),
                                 child: isLoading
                                     ? const SizedBox(
-                                  width: 22,
-                                  height: 22,
-                                  child: CircularProgressIndicator(
-                                    strokeWidth: 2.5,
-                                    color: Colors.white,
-                                  ),
-                                )
+                                        width: 22,
+                                        height: 22,
+                                        child: CircularProgressIndicator(
+                                          strokeWidth: 2.5,
+                                          color: Colors.white,
+                                        ),
+                                      )
                                     : const Text(
-                                  'Send OTP & Continue',
-                                  style: TextStyle(
-                                    fontSize: 16,
-                                    fontWeight: FontWeight.w800,
-                                  ),
-                                ),
+                                        'Send OTP & Continue',
+                                        style: TextStyle(
+                                          fontSize: 16,
+                                          fontWeight: FontWeight.w800,
+                                        ),
+                                      ),
                               ),
                             ),
                             const SizedBox(height: 14),
@@ -568,10 +563,7 @@ class _ScreenJoinCompanyState extends State<ScreenJoinCompany> {
       suffixIcon: suffixIcon,
       filled: true,
       fillColor: Colors.white,
-      contentPadding: const EdgeInsets.symmetric(
-        horizontal: 16,
-        vertical: 18,
-      ),
+      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 18),
       border: OutlineInputBorder(
         borderRadius: BorderRadius.circular(14),
         borderSide: const BorderSide(color: borderColor),

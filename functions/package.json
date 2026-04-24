@@ -7,6 +7,7 @@
     "serve": "npm run build && firebase emulators:start --only functions",
     "shell": "npm run build && firebase functions:shell",
     "start": "npm run shell",
+    "cleanup:legacy-request-passwords": "npm run build && node lib/cleanup_legacy_request_passwords.js",
     "deploy": "firebase deploy --only functions",
     "logs": "firebase functions:log"
   },
@@ -17,7 +18,8 @@
   "dependencies": {
     "firebase-admin": "^12.6.0",
     "firebase-functions": "^6.0.1",
-    "nodemailer": "^8.0.3"
+    "nodemailer": "^8.0.3",
+    "xlsx": "^0.18.5"
   },
   "devDependencies": {
     "@types/nodemailer": "^7.0.11",

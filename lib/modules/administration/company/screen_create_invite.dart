@@ -483,7 +483,7 @@ class _ScreenCreateInviteState extends State<ScreenCreateInvite> {
     String Function(String)? labelBuilder,
   }) {
     return DropdownButtonFormField<String>(
-      value: options.contains(value) ? value : null,
+      initialValue: options.contains(value) ? value : null,
       decoration: _inputDecoration(
         label: label,
         icon: icon,
@@ -1076,7 +1076,7 @@ class _ScreenCreateInviteState extends State<ScreenCreateInvite> {
                               'Keep this enabled to create a ready-to-share invite immediately.',
                               style: TextStyle(color: _inviteMutedTextColor),
                             ),
-                            activeColor: _inviteAccentColor,
+                            activeThumbColor: _inviteAccentColor,
                             contentPadding: EdgeInsets.zero,
                           ),
                           const SizedBox(height: 10),

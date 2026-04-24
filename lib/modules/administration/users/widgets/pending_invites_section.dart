@@ -1,4 +1,3 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 
 import 'package:QUIK/modules/administration/users/helpers/user_management_constants.dart';
@@ -7,8 +6,8 @@ import 'package:QUIK/modules/administration/users/widgets/invite_card.dart';
 import 'package:QUIK/modules/administration/users/widgets/section_header.dart';
 
 class PendingInvitesSection extends StatelessWidget {
-  final List<QueryDocumentSnapshot> pendingInvites;
-  final Future<void> Function(QueryDocumentSnapshot doc) onDeleteInvite;
+  final List<InviteDoc> pendingInvites;
+  final Future<void> Function(InviteDoc doc) onDeleteInvite;
 
   const PendingInvitesSection({
     super.key,

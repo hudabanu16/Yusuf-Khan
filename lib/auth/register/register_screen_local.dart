@@ -44,7 +44,11 @@ class _RegisterScreenLocalState extends State<RegisterScreenLocal> {
       SnackBar(
         content: Row(
           children: [
-            const Icon(Icons.check_circle_outline, color: Colors.white, size: 18),
+            const Icon(
+              Icons.check_circle_outline,
+              color: Colors.white,
+              size: 18,
+            ),
             const SizedBox(width: 10),
             Expanded(child: Text(message)),
           ],
@@ -172,7 +176,8 @@ class _RegisterScreenLocalState extends State<RegisterScreenLocal> {
             ),
             const SizedBox(height: 10),
           ],
-          if (controller.needsManagingPartner && !controller.needsFirmRegistration) ...[
+          if (controller.needsManagingPartner &&
+              !controller.needsFirmRegistration) ...[
             RegisterWidgets.buildTextField(
               controller: controller.managingPartnerController,
               label: 'Managing / Designated Partner Name',
@@ -207,9 +212,81 @@ class _RegisterScreenLocalState extends State<RegisterScreenLocal> {
     );
   }
 
+  Widget _buildModuleSelectionSection() {
+    return RegisterWidgets.buildSectionCard(
+      title: 'Workspace Modules',
+      icon: Icons.widgets_outlined,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'Choose the modules this workspace should start with. You can update these later from Company Modules.',
+            style: TextStyle(
+              color: regMuted,
+              fontSize: 12.8,
+              height: 1.45,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          const SizedBox(height: 12),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              for (final module in controller.requiredWorkspaceModules)
+                _ModuleChoiceChip(
+                  label: module.displayName,
+                  icon: _iconForModule(module.iconKey),
+                  selected: true,
+                  locked: true,
+                  onSelected: null,
+                ),
+              for (final module in controller.selectableWorkspaceModules)
+                _ModuleChoiceChip(
+                  label: module.displayName,
+                  icon: _iconForModule(module.iconKey),
+                  selected: controller.isWorkspaceModuleSelected(module.id),
+                  locked: false,
+                  onSelected: (value) {
+                    controller.toggleWorkspaceModule(module.id, value);
+                  },
+                ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  IconData _iconForModule(String iconKey) {
+    switch (iconKey) {
+      case 'admin_panel_settings':
+        return Icons.admin_panel_settings_outlined;
+      case 'groups':
+        return Icons.groups_outlined;
+      case 'point_of_sale':
+        return Icons.point_of_sale_outlined;
+      case 'support_agent':
+        return Icons.support_agent_outlined;
+      case 'inventory_2':
+        return Icons.inventory_2_outlined;
+      case 'account_balance_wallet':
+        return Icons.account_balance_wallet_outlined;
+      case 'precision_manufacturing':
+        return Icons.precision_manufacturing_outlined;
+      case 'bar_chart':
+        return Icons.bar_chart_outlined;
+      case 'sensors':
+        return Icons.sensors_outlined;
+      case 'settings':
+        return Icons.settings_outlined;
+      default:
+        return Icons.apps_outlined;
+    }
+  }
+
   Widget _buildBody() {
-    final pageTitle =
-    controller.isEditMode ? 'My Profile' : 'Create Workspace';
+    final pageTitle = controller.isEditMode ? 'My Profile' : 'Create Workspace';
     final cardTitle = controller.isEditMode
         ? 'Update workspace profile'
         : 'Create your business workspace';
@@ -243,481 +320,575 @@ class _RegisterScreenLocalState extends State<RegisterScreenLocal> {
       body: controller.isLoading
           ? RegisterWidgets.buildLoadingView(controller.isEditMode)
           : SafeArea(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
-          child: Center(
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 820),
-              child: Container(
-                width: double.infinity,
-                padding: const EdgeInsets.all(18),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(24),
-                  border: Border.all(color: regBorder),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withOpacity(0.045),
-                      blurRadius: 22,
-                      offset: const Offset(0, 10),
-                    ),
-                  ],
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 14,
+                  vertical: 14,
                 ),
-                child: Form(
-                  key: controller.formKey,
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      RegisterWidgets.buildTopIntro(
-                        title: cardTitle,
-                        subtitle: cardSubtitle,
+                child: Center(
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 820),
+                    child: Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(18),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(24),
+                        border: Border.all(color: regBorder),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withValues(alpha: 0.045),
+                            blurRadius: 22,
+                            offset: const Offset(0, 10),
+                          ),
+                        ],
                       ),
-                      const SizedBox(height: 14),
-                      RegisterWidgets.buildWizardHeader(controller),
-                      const SizedBox(height: 16),
-                      if (controller.currentStep == 0) ...[
-                        RegisterWidgets.buildLogoUploadCard(
-                          c: controller,
-                          onPickLogo: () => controller.pickLogo(
-                            onInfo: _showInfo,
-                            onError: _showError,
-                          ),
-                          onRemoveLogo: controller.removeLogo,
-                          isLoading: controller.isLoading,
-                        ),
-                        const SizedBox(height: 16),
-                        RegisterWidgets.buildSectionCard(
-                          title: 'Entity Information',
-                          icon: Icons.business_center_outlined,
-                          child: Column(
-                            children: [
-                              RegisterWidgets.buildResponsiveRow(
-                                children: [
-                                  RegisterWidgets.buildDropdownField<String>(
-                                    value: controller.selectedEntityType,
-                                    label: 'Entity Type',
-                                    icon: Icons.account_balance_outlined,
-                                    items: RegisterConstants.entityTypes,
-                                    required: true,
-                                    onChanged:
-                                    controller.setSelectedEntityType,
-                                  ),
-                                  RegisterWidgets.buildDropdownField<String>(
-                                    value: controller.selectedIndustryType,
-                                    label: 'Industry Type',
-                                    icon: Icons.category_outlined,
-                                    items: RegisterConstants.industryTypes,
-                                    required: true,
-                                    onChanged:
-                                    controller.setSelectedIndustryType,
-                                  ),
-                                ],
-                              ),
-                              const SizedBox(height: 10),
-                              RegisterWidgets.buildDropdownField<String>(
-                                value: controller.selectedSubIndustry,
-                                label: 'Sub Industry',
-                                icon: Icons.account_tree_outlined,
-                                items: controller.availableSubIndustries,
-                                required: true,
-                                onChanged:
-                                controller.setSelectedSubIndustry,
-                              ),
-                              const SizedBox(height: 10),
-                              RegisterWidgets.buildTextField(
-                                controller: controller.entityNameController,
-                                label: 'Entity / Firm Name',
-                                icon: Icons.business_outlined,
-                                hint: 'e.g. Your Business Name',
-                                required: true,
-                              ),
-                              const SizedBox(height: 10),
-                              RegisterWidgets.buildResponsiveRow(
-                                children: [
-                                  RegisterWidgets.buildTextField(
-                                    controller: controller.phoneController,
-                                    label: 'Phone Number',
-                                    icon: Icons.phone_outlined,
-                                    hint: '+91 XXXXX XXXXX',
-                                    keyboardType: TextInputType.phone,
-                                    required: true,
-                                  ),
-                                  RegisterWidgets.buildTextField(
-                                    controller: controller.websiteController,
-                                    label: 'Website',
-                                    icon: Icons.language_outlined,
-                                    hint: 'www.yourentity.com',
-                                    keyboardType: TextInputType.url,
-                                  ),
-                                ],
-                              ),
-                              const SizedBox(height: 10),
-                              RegisterWidgets.buildTextField(
-                                controller: controller.emailController,
-                                label: 'Business Email',
-                                icon: Icons.email_outlined,
-                                hint: 'info@entity.com',
-                                keyboardType: TextInputType.emailAddress,
-                                enabled: true,
-                                required: true,
-                                validator: (val) {
-                                  final value = (val ?? '').trim();
-                                  if (value.isEmpty) {
-                                    return 'Business Email is required';
-                                  }
-                                  final emailRegex = RegExp(
-                                    r'^[^@\s]+@[^@\s]+\.[^@\s]+$',
-                                  );
-                                  if (!emailRegex.hasMatch(value)) {
-                                    return 'Enter a valid email';
-                                  }
-                                  return null;
-                                },
-                              ),
-                              const SizedBox(height: 10),
-                              RegisterWidgets.buildDropdownField<String>(
-                                value: controller.selectedEmployeeRange,
-                                label: 'Total Employees',
-                                icon: Icons.groups_2_outlined,
-                                items: RegisterConstants.employeeRanges,
-                                required: true,
-                                onChanged:
-                                controller.setSelectedEmployeeRange,
-                              ),
-                            ],
-                          ),
-                        ),
-                        const SizedBox(height: 14),
-                        _buildDynamicEntityFields(),
-                      ] else ...[
-                        RegisterWidgets.buildSectionCard(
-                          title: 'Entity Address',
-                          icon: Icons.location_on_outlined,
-                          child: Column(
-                            children: [
-                              RegisterWidgets.buildTextField(
-                                controller: controller.addressController,
-                                label: 'Street Address',
-                                icon: Icons.home_outlined,
-                                hint: 'Building, street, area',
-                                maxLines: 2,
-                                required: true,
-                              ),
-                              const SizedBox(height: 10),
-                              RegisterWidgets.buildResponsiveRow(
-                                children: [
-                                  RegisterWidgets.buildIndiaOnlyField(),
-                                  RegisterWidgets.buildDropdownField<String>(
-                                    value: controller.selectedStateValue,
-                                    label: 'State',
-                                    icon: Icons.map_outlined,
-                                    items: RegisterConstants.indiaStates,
-                                    required: true,
-                                    onChanged:
-                                    controller.setSelectedStateValue,
-                                  ),
-                                ],
-                              ),
-                              const SizedBox(height: 10),
-                              RegisterWidgets.buildResponsiveRow(
-                                children: [
-                                  RegisterWidgets.buildTextField(
-                                    controller: controller.cityController,
-                                    label: 'District / City',
-                                    icon: Icons.location_city_outlined,
-                                    hint: 'Enter district or city',
-                                    required: true,
-                                  ),
-                                  RegisterWidgets.buildTextField(
-                                    controller: controller.pincodeController,
-                                    label: 'Pincode / Zip Code',
-                                    icon: Icons.pin_drop_outlined,
-                                    hint: '400001',
-                                    keyboardType: TextInputType.number,
-                                    required: true,
-                                    validator: (val) {
-                                      final value = (val ?? '').trim();
-                                      if (value.isEmpty) {
-                                        return 'Pincode / Zip Code is required';
-                                      }
-                                      return null;
-                                    },
-                                  ),
-                                ],
-                              ),
-                            ],
-                          ),
-                        ),
-                        const SizedBox(height: 14),
-                        RegisterWidgets.buildOptionalTaxSection(
-                          showTaxInfo: controller.showTaxInfo,
-                          onToggle: controller.toggleShowTaxInfo,
-                          gstinController: controller.gstinController,
-                          panController: controller.panController,
-                          buildTextField: RegisterWidgets.buildTextField,
-                        ),
-                        if (!controller.isEditMode) ...[
-                          const SizedBox(height: 14),
-                          RegisterWidgets.buildSectionCard(
-                            title: 'Security',
-                            icon: Icons.lock_outline,
-                            child: Column(
-                              children: [
-                                RegisterWidgets.buildTextField(
-                                  controller: controller.passwordController,
-                                  label: 'Password',
-                                  icon: Icons.lock_outline,
-                                  hint: 'Minimum 6 characters',
-                                  obscureText: controller.obscurePassword,
-                                  required: true,
-                                  suffixIcon: IconButton(
-                                    icon: Icon(
-                                      controller.obscurePassword
-                                          ? Icons.visibility_off_outlined
-                                          : Icons.visibility_outlined,
-                                      color: regMuted,
-                                      size: 19,
-                                    ),
-                                    onPressed:
-                                    controller.toggleObscurePassword,
-                                  ),
+                      child: Form(
+                        key: controller.formKey,
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            RegisterWidgets.buildTopIntro(
+                              title: cardTitle,
+                              subtitle: cardSubtitle,
+                            ),
+                            const SizedBox(height: 14),
+                            RegisterWidgets.buildWizardHeader(controller),
+                            const SizedBox(height: 16),
+                            if (controller.currentStep == 0) ...[
+                              RegisterWidgets.buildLogoUploadCard(
+                                c: controller,
+                                onPickLogo: () => controller.pickLogo(
+                                  onInfo: _showInfo,
+                                  onError: _showError,
                                 ),
-                                const SizedBox(height: 10),
-                                RegisterWidgets.buildTextField(
-                                  controller:
-                                  controller.confirmPasswordController,
-                                  label: 'Confirm Password',
-                                  icon: Icons.lock_outline,
-                                  hint: 'Re-enter password',
-                                  obscureText:
-                                  controller.obscureConfirmPassword,
-                                  required: true,
-                                  suffixIcon: IconButton(
-                                    icon: Icon(
-                                      controller.obscureConfirmPassword
-                                          ? Icons.visibility_off_outlined
-                                          : Icons.visibility_outlined,
-                                      color: regMuted,
-                                      size: 19,
+                                onRemoveLogo: controller.removeLogo,
+                                isLoading: controller.isLoading,
+                              ),
+                              const SizedBox(height: 16),
+                              RegisterWidgets.buildSectionCard(
+                                title: 'Entity Information',
+                                icon: Icons.business_center_outlined,
+                                child: Column(
+                                  children: [
+                                    RegisterWidgets.buildResponsiveRow(
+                                      children: [
+                                        RegisterWidgets.buildDropdownField<
+                                          String
+                                        >(
+                                          value: controller.selectedEntityType,
+                                          label: 'Entity Type',
+                                          icon: Icons.account_balance_outlined,
+                                          items: RegisterConstants.entityTypes,
+                                          required: true,
+                                          onChanged:
+                                              controller.setSelectedEntityType,
+                                        ),
+                                        RegisterWidgets.buildDropdownField<
+                                          String
+                                        >(
+                                          value:
+                                              controller.selectedIndustryType,
+                                          label: 'Industry Type',
+                                          icon: Icons.category_outlined,
+                                          items:
+                                              RegisterConstants.industryTypes,
+                                          required: true,
+                                          onChanged: controller
+                                              .setSelectedIndustryType,
+                                        ),
+                                      ],
                                     ),
-                                    onPressed: controller
-                                        .toggleObscureConfirmPassword,
-                                  ),
+                                    const SizedBox(height: 10),
+                                    RegisterWidgets.buildDropdownField<String>(
+                                      value: controller.selectedSubIndustry,
+                                      label: 'Sub Industry',
+                                      icon: Icons.account_tree_outlined,
+                                      items: controller.availableSubIndustries,
+                                      required: true,
+                                      onChanged:
+                                          controller.setSelectedSubIndustry,
+                                    ),
+                                    const SizedBox(height: 10),
+                                    RegisterWidgets.buildTextField(
+                                      controller:
+                                          controller.entityNameController,
+                                      label: 'Entity / Firm Name',
+                                      icon: Icons.business_outlined,
+                                      hint: 'e.g. Your Business Name',
+                                      required: true,
+                                    ),
+                                    const SizedBox(height: 10),
+                                    RegisterWidgets.buildResponsiveRow(
+                                      children: [
+                                        RegisterWidgets.buildTextField(
+                                          controller:
+                                              controller.phoneController,
+                                          label: 'Phone Number',
+                                          icon: Icons.phone_outlined,
+                                          hint: '+91 XXXXX XXXXX',
+                                          keyboardType: TextInputType.phone,
+                                          required: true,
+                                        ),
+                                        RegisterWidgets.buildTextField(
+                                          controller:
+                                              controller.websiteController,
+                                          label: 'Website',
+                                          icon: Icons.language_outlined,
+                                          hint: 'www.yourentity.com',
+                                          keyboardType: TextInputType.url,
+                                        ),
+                                      ],
+                                    ),
+                                    const SizedBox(height: 10),
+                                    RegisterWidgets.buildTextField(
+                                      controller: controller.emailController,
+                                      label: 'Business Email',
+                                      icon: Icons.email_outlined,
+                                      hint: 'info@entity.com',
+                                      keyboardType: TextInputType.emailAddress,
+                                      enabled: true,
+                                      required: true,
+                                      validator: (val) {
+                                        final value = (val ?? '').trim();
+                                        if (value.isEmpty) {
+                                          return 'Business Email is required';
+                                        }
+                                        final emailRegex = RegExp(
+                                          r'^[^@\s]+@[^@\s]+\.[^@\s]+$',
+                                        );
+                                        if (!emailRegex.hasMatch(value)) {
+                                          return 'Enter a valid email';
+                                        }
+                                        return null;
+                                      },
+                                    ),
+                                    const SizedBox(height: 10),
+                                    RegisterWidgets.buildDropdownField<String>(
+                                      value: controller.selectedEmployeeRange,
+                                      label: 'Total Employees',
+                                      icon: Icons.groups_2_outlined,
+                                      items: RegisterConstants.employeeRanges,
+                                      required: true,
+                                      onChanged:
+                                          controller.setSelectedEmployeeRange,
+                                    ),
+                                  ],
                                 ),
-                                const SizedBox(height: 10),
-                                Container(
-                                  width: double.infinity,
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 12,
-                                    vertical: 11,
-                                  ),
-                                  decoration: BoxDecoration(
-                                    color: regFieldBg,
-                                    borderRadius:
-                                    BorderRadius.circular(14),
-                                    border: Border.all(color: regBorder),
-                                  ),
-                                  child: const Row(
+                              ),
+                              const SizedBox(height: 14),
+                              _buildDynamicEntityFields(),
+                            ] else if (controller.currentStep == 1) ...[
+                              RegisterWidgets.buildSectionCard(
+                                title: 'Entity Address',
+                                icon: Icons.location_on_outlined,
+                                child: Column(
+                                  children: [
+                                    RegisterWidgets.buildTextField(
+                                      controller: controller.addressController,
+                                      label: 'Street Address',
+                                      icon: Icons.home_outlined,
+                                      hint: 'Building, street, area',
+                                      maxLines: 2,
+                                      required: true,
+                                    ),
+                                    const SizedBox(height: 10),
+                                    RegisterWidgets.buildResponsiveRow(
+                                      children: [
+                                        RegisterWidgets.buildIndiaOnlyField(),
+                                        RegisterWidgets.buildDropdownField<
+                                          String
+                                        >(
+                                          value: controller.selectedStateValue,
+                                          label: 'State',
+                                          icon: Icons.map_outlined,
+                                          items: RegisterConstants.indiaStates,
+                                          required: true,
+                                          onChanged:
+                                              controller.setSelectedStateValue,
+                                        ),
+                                      ],
+                                    ),
+                                    const SizedBox(height: 10),
+                                    RegisterWidgets.buildResponsiveRow(
+                                      children: [
+                                        RegisterWidgets.buildTextField(
+                                          controller: controller.cityController,
+                                          label: 'District / City',
+                                          icon: Icons.location_city_outlined,
+                                          hint: 'Enter district or city',
+                                          required: true,
+                                        ),
+                                        RegisterWidgets.buildTextField(
+                                          controller:
+                                              controller.pincodeController,
+                                          label: 'Pincode / Zip Code',
+                                          icon: Icons.pin_drop_outlined,
+                                          hint: '400001',
+                                          keyboardType: TextInputType.number,
+                                          required: true,
+                                          validator: (val) {
+                                            final value = (val ?? '').trim();
+                                            if (value.isEmpty) {
+                                              return 'Pincode / Zip Code is required';
+                                            }
+                                            return null;
+                                          },
+                                        ),
+                                      ],
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              const SizedBox(height: 14),
+                              RegisterWidgets.buildOptionalTaxSection(
+                                showTaxInfo: controller.showTaxInfo,
+                                onToggle: controller.toggleShowTaxInfo,
+                                gstinController: controller.gstinController,
+                                panController: controller.panController,
+                                buildTextField: RegisterWidgets.buildTextField,
+                              ),
+                            ] else ...[
+                              _buildModuleSelectionSection(),
+                              if (!controller.isEditMode) ...[
+                                const SizedBox(height: 14),
+                                RegisterWidgets.buildSectionCard(
+                                  title: 'Security',
+                                  icon: Icons.lock_outline,
+                                  child: Column(
                                     children: [
-                                      Icon(
-                                        Icons.lock_open_rounded,
-                                        size: 16,
-                                        color: regSuccess,
-                                      ),
-                                      SizedBox(width: 8),
-                                      Expanded(
-                                        child: Text(
-                                          'This account will become the primary admin account for your entity workspace.',
-                                          style: TextStyle(
+                                      RegisterWidgets.buildTextField(
+                                        controller:
+                                            controller.passwordController,
+                                        label: 'Password',
+                                        icon: Icons.lock_outline,
+                                        hint: 'Minimum 6 characters',
+                                        obscureText: controller.obscurePassword,
+                                        required: true,
+                                        suffixIcon: IconButton(
+                                          icon: Icon(
+                                            controller.obscurePassword
+                                                ? Icons.visibility_off_outlined
+                                                : Icons.visibility_outlined,
                                             color: regMuted,
-                                            fontSize: 12.5,
-                                            fontWeight: FontWeight.w600,
-                                            height: 1.35,
+                                            size: 19,
                                           ),
+                                          onPressed:
+                                              controller.toggleObscurePassword,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 10),
+                                      RegisterWidgets.buildTextField(
+                                        controller: controller
+                                            .confirmPasswordController,
+                                        label: 'Confirm Password',
+                                        icon: Icons.lock_outline,
+                                        hint: 'Re-enter password',
+                                        obscureText:
+                                            controller.obscureConfirmPassword,
+                                        required: true,
+                                        suffixIcon: IconButton(
+                                          icon: Icon(
+                                            controller.obscureConfirmPassword
+                                                ? Icons.visibility_off_outlined
+                                                : Icons.visibility_outlined,
+                                            color: regMuted,
+                                            size: 19,
+                                          ),
+                                          onPressed: controller
+                                              .toggleObscureConfirmPassword,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 10),
+                                      Container(
+                                        width: double.infinity,
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 12,
+                                          vertical: 11,
+                                        ),
+                                        decoration: BoxDecoration(
+                                          color: regFieldBg,
+                                          borderRadius: BorderRadius.circular(
+                                            14,
+                                          ),
+                                          border: Border.all(color: regBorder),
+                                        ),
+                                        child: const Row(
+                                          children: [
+                                            Icon(
+                                              Icons.lock_open_rounded,
+                                              size: 16,
+                                              color: regSuccess,
+                                            ),
+                                            SizedBox(width: 8),
+                                            Expanded(
+                                              child: Text(
+                                                'This account will become the primary admin account for your entity workspace.',
+                                                style: TextStyle(
+                                                  color: regMuted,
+                                                  fontSize: 12.5,
+                                                  fontWeight: FontWeight.w600,
+                                                  height: 1.35,
+                                                ),
+                                              ),
+                                            ),
+                                          ],
                                         ),
                                       ),
                                     ],
                                   ),
                                 ),
                               ],
-                            ),
-                          ),
-                        ],
-                      ],
-                      const SizedBox(height: 18),
-                      if (controller.currentStep == 0)
-                        Row(
-                          children: [
-                            Expanded(
-                              child: SizedBox(
-                                height: 48,
-                                child: OutlinedButton(
-                                  onPressed: () => Navigator.pop(context),
-                                  style: OutlinedButton.styleFrom(
-                                    side: const BorderSide(color: regBorder),
-                                    shape: RoundedRectangleBorder(
-                                      borderRadius:
-                                      BorderRadius.circular(16),
-                                    ),
-                                  ),
-                                  child: Text(
-                                    controller.isEditMode ? 'Close' : 'Back',
-                                    style: const TextStyle(
-                                      fontSize: 14.5,
-                                      fontWeight: FontWeight.w700,
-                                      color: regText,
-                                    ),
-                                  ),
-                                ),
-                              ),
-                            ),
-                            const SizedBox(width: 10),
-                            Expanded(
-                              child: SizedBox(
-                                height: 48,
-                                child: FilledButton(
-                                  onPressed: controller.isLoading
-                                      ? null
-                                      : () => controller.goToNextStep(
-                                    onError: _showError,
-                                  ),
-                                  style: FilledButton.styleFrom(
-                                    backgroundColor: regSidebarTone,
-                                    shape: RoundedRectangleBorder(
-                                      borderRadius:
-                                      BorderRadius.circular(16),
-                                    ),
-                                    elevation: 0,
-                                  ),
-                                  child: const Text(
-                                    'Next',
-                                    style: TextStyle(
-                                      fontSize: 14.5,
-                                      fontWeight: FontWeight.w800,
-                                      color: Colors.white,
-                                    ),
-                                  ),
-                                ),
-                              ),
-                            ),
-                          ],
-                        )
-                      else
-                        Row(
-                          children: [
-                            Expanded(
-                              child: SizedBox(
-                                height: 48,
-                                child: OutlinedButton(
-                                  onPressed: controller.isLoading
-                                      ? null
-                                      : controller.goToPreviousStep,
-                                  style: OutlinedButton.styleFrom(
-                                    side: const BorderSide(color: regBorder),
-                                    shape: RoundedRectangleBorder(
-                                      borderRadius:
-                                      BorderRadius.circular(16),
-                                    ),
-                                  ),
-                                  child: const Text(
-                                    'Previous',
-                                    style: TextStyle(
-                                      fontSize: 14.5,
-                                      fontWeight: FontWeight.w700,
-                                      color: regText,
-                                    ),
-                                  ),
-                                ),
-                              ),
-                            ),
-                            const SizedBox(width: 10),
-                            Expanded(
-                              child: SizedBox(
-                                height: 48,
-                                child: FilledButton(
-                                  onPressed: controller.isLoading
-                                      ? null
-                                      : () async {
-                                    final ok = await controller.saveProfile(
-                                      context: context,
-                                      onError: _showError,
-                                      onSuccess: _showSuccess,
-                                    );
-                                    if (ok &&
-                                        mounted &&
-                                        controller.isEditMode) {
-                                      Navigator.pop(context);
-                                    }
-                                  },
-                                  style: FilledButton.styleFrom(
-                                    backgroundColor: regSidebarTone,
-                                    shape: RoundedRectangleBorder(
-                                      borderRadius:
-                                      BorderRadius.circular(16),
-                                    ),
-                                    elevation: 0,
-                                  ),
-                                  child: Text(
-                                    controller.isEditMode
-                                        ? 'Update Profile'
-                                        : 'Create Workspace',
-                                    style: const TextStyle(
-                                      fontSize: 14.5,
-                                      fontWeight: FontWeight.w800,
-                                      color: Colors.white,
-                                    ),
-                                  ),
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                      if (!controller.isEditMode) ...[
-                        const SizedBox(height: 12),
-                        const Center(
-                          child: Text(
-                            'By creating an account, you are setting up a secure entity workspace.',
-                            textAlign: TextAlign.center,
-                            style: TextStyle(
-                              color: regMuted,
-                              fontSize: 12.5,
-                              height: 1.4,
-                            ),
-                          ),
-                        ),
-                        const SizedBox(height: 8),
-                        Center(
-                          child: TextButton(
-                            onPressed: () => Navigator.pop(context),
-                            child: RichText(
-                              text: const TextSpan(
-                                text: 'Already have an account? ',
-                                style: TextStyle(
-                                  color: regMuted,
-                                  fontSize: 13.2,
-                                ),
+                            ],
+                            const SizedBox(height: 18),
+                            if (controller.currentStep == 0)
+                              Row(
                                 children: [
-                                  TextSpan(
-                                    text: 'Login here',
-                                    style: TextStyle(
-                                      color: regBlue,
-                                      fontWeight: FontWeight.w800,
+                                  Expanded(
+                                    child: SizedBox(
+                                      height: 48,
+                                      child: OutlinedButton(
+                                        onPressed: () => Navigator.pop(context),
+                                        style: OutlinedButton.styleFrom(
+                                          side: const BorderSide(
+                                            color: regBorder,
+                                          ),
+                                          shape: RoundedRectangleBorder(
+                                            borderRadius: BorderRadius.circular(
+                                              16,
+                                            ),
+                                          ),
+                                        ),
+                                        child: Text(
+                                          controller.isEditMode
+                                              ? 'Close'
+                                              : 'Back',
+                                          style: const TextStyle(
+                                            fontSize: 14.5,
+                                            fontWeight: FontWeight.w700,
+                                            color: regText,
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 10),
+                                  Expanded(
+                                    child: SizedBox(
+                                      height: 48,
+                                      child: FilledButton(
+                                        onPressed: controller.isLoading
+                                            ? null
+                                            : () => controller.goToNextStep(
+                                                onError: _showError,
+                                              ),
+                                        style: FilledButton.styleFrom(
+                                          backgroundColor: regSidebarTone,
+                                          shape: RoundedRectangleBorder(
+                                            borderRadius: BorderRadius.circular(
+                                              16,
+                                            ),
+                                          ),
+                                          elevation: 0,
+                                        ),
+                                        child: const Text(
+                                          'Next',
+                                          style: TextStyle(
+                                            fontSize: 14.5,
+                                            fontWeight: FontWeight.w800,
+                                            color: Colors.white,
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              )
+                            else if (!controller.isEditMode &&
+                                controller.currentStep == 1)
+                              Row(
+                                children: [
+                                  Expanded(
+                                    child: SizedBox(
+                                      height: 48,
+                                      child: OutlinedButton(
+                                        onPressed: controller.isLoading
+                                            ? null
+                                            : controller.goToPreviousStep,
+                                        style: OutlinedButton.styleFrom(
+                                          side: const BorderSide(
+                                            color: regBorder,
+                                          ),
+                                          shape: RoundedRectangleBorder(
+                                            borderRadius: BorderRadius.circular(
+                                              16,
+                                            ),
+                                          ),
+                                        ),
+                                        child: const Text(
+                                          'Previous',
+                                          style: TextStyle(
+                                            fontSize: 14.5,
+                                            fontWeight: FontWeight.w700,
+                                            color: regText,
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 10),
+                                  Expanded(
+                                    child: SizedBox(
+                                      height: 48,
+                                      child: FilledButton(
+                                        onPressed: controller.isLoading
+                                            ? null
+                                            : () => controller.goToNextStep(
+                                                onError: _showError,
+                                              ),
+                                        style: FilledButton.styleFrom(
+                                          backgroundColor: regSidebarTone,
+                                          shape: RoundedRectangleBorder(
+                                            borderRadius: BorderRadius.circular(
+                                              16,
+                                            ),
+                                          ),
+                                          elevation: 0,
+                                        ),
+                                        child: const Text(
+                                          'Next',
+                                          style: TextStyle(
+                                            fontSize: 14.5,
+                                            fontWeight: FontWeight.w800,
+                                            color: Colors.white,
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              )
+                            else
+                              Row(
+                                children: [
+                                  Expanded(
+                                    child: SizedBox(
+                                      height: 48,
+                                      child: OutlinedButton(
+                                        onPressed: controller.isLoading
+                                            ? null
+                                            : controller.goToPreviousStep,
+                                        style: OutlinedButton.styleFrom(
+                                          side: const BorderSide(
+                                            color: regBorder,
+                                          ),
+                                          shape: RoundedRectangleBorder(
+                                            borderRadius: BorderRadius.circular(
+                                              16,
+                                            ),
+                                          ),
+                                        ),
+                                        child: const Text(
+                                          'Previous',
+                                          style: TextStyle(
+                                            fontSize: 14.5,
+                                            fontWeight: FontWeight.w700,
+                                            color: regText,
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 10),
+                                  Expanded(
+                                    child: SizedBox(
+                                      height: 48,
+                                      child: FilledButton(
+                                        onPressed: controller.isLoading
+                                            ? null
+                                            : () async {
+                                                final ok = await controller
+                                                    .saveProfile(
+                                                      context: context,
+                                                      onError: _showError,
+                                                      onSuccess: _showSuccess,
+                                                    );
+                                                if (ok &&
+                                                    mounted &&
+                                                    controller.isEditMode) {
+                                                  Navigator.pop(context);
+                                                }
+                                              },
+                                        style: FilledButton.styleFrom(
+                                          backgroundColor: regSidebarTone,
+                                          shape: RoundedRectangleBorder(
+                                            borderRadius: BorderRadius.circular(
+                                              16,
+                                            ),
+                                          ),
+                                          elevation: 0,
+                                        ),
+                                        child: Text(
+                                          controller.isEditMode
+                                              ? 'Update Profile'
+                                              : 'Create Workspace',
+                                          style: const TextStyle(
+                                            fontSize: 14.5,
+                                            fontWeight: FontWeight.w800,
+                                            color: Colors.white,
+                                          ),
+                                        ),
+                                      ),
                                     ),
                                   ),
                                 ],
                               ),
-                            ),
-                          ),
+                            if (!controller.isEditMode) ...[
+                              const SizedBox(height: 12),
+                              const Center(
+                                child: Text(
+                                  'By creating an account, you are setting up a secure entity workspace.',
+                                  textAlign: TextAlign.center,
+                                  style: TextStyle(
+                                    color: regMuted,
+                                    fontSize: 12.5,
+                                    height: 1.4,
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(height: 8),
+                              Center(
+                                child: TextButton(
+                                  onPressed: () => Navigator.pop(context),
+                                  child: RichText(
+                                    text: const TextSpan(
+                                      text: 'Already have an account? ',
+                                      style: TextStyle(
+                                        color: regMuted,
+                                        fontSize: 13.2,
+                                      ),
+                                      children: [
+                                        TextSpan(
+                                          text: 'Login here',
+                                          style: TextStyle(
+                                            color: regBlue,
+                                            fontWeight: FontWeight.w800,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ],
                         ),
-                      ],
-                    ],
+                      ),
+                    ),
                   ),
                 ),
               ),
             ),
-          ),
-        ),
-      ),
     );
   }
 
@@ -733,5 +904,66 @@ class _RegisterScreenLocalState extends State<RegisterScreenLocal> {
   void dispose() {
     controller.dispose();
     super.dispose();
+  }
+}
+
+class _ModuleChoiceChip extends StatelessWidget {
+  final String label;
+  final IconData icon;
+  final bool selected;
+  final bool locked;
+  final ValueChanged<bool>? onSelected;
+
+  const _ModuleChoiceChip({
+    required this.label,
+    required this.icon,
+    required this.selected,
+    required this.locked,
+    required this.onSelected,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final borderColor = selected ? regBlue : regBorder;
+    final backgroundColor = selected ? const Color(0xFFEAF1FF) : Colors.white;
+    final foregroundColor = selected ? regBlue : regText;
+
+    return Tooltip(
+      message: locked ? '$label is required' : label,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(16),
+        onTap: locked || onSelected == null
+            ? null
+            : () => onSelected!(!selected),
+        child: Container(
+          constraints: const BoxConstraints(minHeight: 42),
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          decoration: BoxDecoration(
+            color: backgroundColor,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: borderColor),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(icon, size: 18, color: foregroundColor),
+              const SizedBox(width: 8),
+              Text(
+                label,
+                style: TextStyle(
+                  color: foregroundColor,
+                  fontSize: 13,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+              if (locked) ...[
+                const SizedBox(width: 6),
+                const Icon(Icons.lock_outline, size: 14, color: regMuted),
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
   }
 }

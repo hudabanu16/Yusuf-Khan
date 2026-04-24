@@ -438,35 +438,35 @@ const Map<String, List<String>> permissionActionsBySubmodule = {
   PurchaseSubmodules.vendors: standardCrudActions,
   PurchaseSubmodules.purchaseOrders: standardCrudActions,
   PurchaseSubmodules.grnMaterialReceipt: standardCrudActions,
-  PurchaseSubmodules.vendorLedger: const [
+  PurchaseSubmodules.vendorLedger: [
     PermissionActions.view,
     PermissionActions.export,
   ],
 
   InventorySubmodules.products: standardCrudActions,
-  InventorySubmodules.stockSummary: const [
+  InventorySubmodules.stockSummary: [
     PermissionActions.view,
     PermissionActions.export,
   ],
   InventorySubmodules.stockIn: standardCrudActions,
   InventorySubmodules.stockOut: standardCrudActions,
   InventorySubmodules.warehouse: standardCrudActions,
-  InventorySubmodules.lowStockAlerts: const [
+  InventorySubmodules.lowStockAlerts: [
     PermissionActions.view,
     PermissionActions.edit,
   ],
 
-  DispatchSubmodules.readyForDispatch: const [
+  DispatchSubmodules.readyForDispatch: [
     PermissionActions.view,
     PermissionActions.edit,
     PermissionActions.approve,
   ],
   DispatchSubmodules.dispatchChallans: standardCrudActions,
-  DispatchSubmodules.shipmentTracking: const [
+  DispatchSubmodules.shipmentTracking: [
     PermissionActions.view,
     PermissionActions.edit,
   ],
-  DispatchSubmodules.deliveredOrders: const [
+  DispatchSubmodules.deliveredOrders: [
     PermissionActions.view,
     PermissionActions.edit,
     PermissionActions.export,
@@ -475,7 +475,7 @@ const Map<String, List<String>> permissionActionsBySubmodule = {
   FinanceSubmodules.proformaInvoice: standardCrudActions,
   FinanceSubmodules.taxInvoice: standardCrudActions,
   FinanceSubmodules.paymentReceived: standardCrudActions,
-  FinanceSubmodules.outstanding: const [
+  FinanceSubmodules.outstanding: [
     PermissionActions.view,
     PermissionActions.export,
   ],
@@ -488,17 +488,17 @@ const Map<String, List<String>> permissionActionsBySubmodule = {
   ReportsSubmodules.paymentReport: reportActions,
 
   AdministrationSubmodules.users: standardCrudActions,
-  AdministrationSubmodules.rolesPermissions: const [
+  AdministrationSubmodules.rolesPermissions: [
     PermissionActions.view,
     PermissionActions.edit,
     PermissionActions.approve,
   ],
-  AdministrationSubmodules.companyProfile: const [
+  AdministrationSubmodules.companyProfile: [
     PermissionActions.view,
     PermissionActions.edit,
   ],
   AdministrationSubmodules.branches: standardCrudActions,
-  AdministrationSubmodules.auditLogs: const [
+  AdministrationSubmodules.auditLogs: [
     PermissionActions.view,
     PermissionActions.export,
   ],

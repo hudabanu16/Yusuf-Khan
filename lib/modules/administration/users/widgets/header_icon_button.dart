@@ -32,13 +32,13 @@ class _HeaderIconButtonState extends State<HeaderIconButton> {
     final Color backgroundColor = disabled
         ? Colors.grey.shade100
         : _isHovering
-        ? baseColor.withOpacity(0.08)
+        ? baseColor.withValues(alpha: 0.08)
         : Colors.white;
 
     final Color borderColor = disabled
         ? Colors.grey.shade300
         : _isHovering
-        ? baseColor.withOpacity(0.30)
+        ? baseColor.withValues(alpha: 0.30)
         : cardBorderColor;
 
     final Color iconColor =
@@ -54,8 +54,8 @@ class _HeaderIconButtonState extends State<HeaderIconButton> {
           child: InkWell(
             onTap: disabled ? null : widget.onTap,
             borderRadius: BorderRadius.circular(12),
-            splashColor: baseColor.withOpacity(0.15),
-            highlightColor: baseColor.withOpacity(0.05),
+            splashColor: baseColor.withValues(alpha: 0.15),
+            highlightColor: baseColor.withValues(alpha: 0.05),
             child: AnimatedContainer(
               duration: const Duration(milliseconds: 150),
               width: 42,

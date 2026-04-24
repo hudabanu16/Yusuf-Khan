@@ -189,7 +189,7 @@ class _PaymentsListScreenState extends State<PaymentsListScreen> {
                     const Text('Created By', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13, color: Colors.grey)),
                     const SizedBox(height: 8),
                     DropdownButtonFormField<String>(
-                      value: _selectedUser,
+                      initialValue: _selectedUser,
                       decoration: InputDecoration(
                         contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                         border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
@@ -285,7 +285,7 @@ class _PaymentsListScreenState extends State<PaymentsListScreen> {
         Text(label, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13, color: Colors.grey)),
         const SizedBox(height: 8),
         DropdownButtonFormField<String>(
-          value: value,
+          initialValue: value,
           decoration: InputDecoration(
             contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
             border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
@@ -405,7 +405,7 @@ class _PaymentsListScreenState extends State<PaymentsListScreen> {
           end: Alignment.bottomRight,
         ),
         borderRadius: BorderRadius.circular(12),
-        boxShadow: [BoxShadow(color: Colors.blue.withOpacity(0.2), blurRadius: 8, offset: const Offset(0, 4))],
+        boxShadow: [BoxShadow(color: Colors.blue.withValues(alpha: 0.2), blurRadius: 8, offset: const Offset(0, 4))],
       ),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -427,7 +427,7 @@ class _PaymentsListScreenState extends State<PaymentsListScreen> {
               ],
             ),
           ),
-          Container(width: 1, height: 40, color: Colors.white.withOpacity(0.2), margin: const EdgeInsets.symmetric(horizontal: 16)),
+          Container(width: 1, height: 40, color: Colors.white.withValues(alpha: 0.2), margin: const EdgeInsets.symmetric(horizontal: 16)),
           Column(
             crossAxisAlignment: CrossAxisAlignment.end,
             children: [
@@ -461,7 +461,7 @@ class _PaymentsListScreenState extends State<PaymentsListScreen> {
               decoration: BoxDecoration(
                 color: Colors.white,
                 borderRadius: BorderRadius.circular(30),
-                boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 10, offset: const Offset(0, 2))],
+                boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.04), blurRadius: 10, offset: const Offset(0, 2))],
               ),
               child: TextField(
                 controller: _searchController,
@@ -489,7 +489,7 @@ class _PaymentsListScreenState extends State<PaymentsListScreen> {
                 color: Colors.white,
                 borderRadius: BorderRadius.circular(12),
                 border: Border.all(color: Colors.grey.shade200),
-                boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 8)],
+                boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.02), blurRadius: 8)],
               ),
               child: Stack(
                 children: [
@@ -533,7 +533,7 @@ class _PaymentsListScreenState extends State<PaymentsListScreen> {
             color: Colors.white,
             borderRadius: BorderRadius.circular(12),
             border: Border.all(color: Colors.grey.shade200),
-            boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 8, offset: const Offset(0, 2))],
+            boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.02), blurRadius: 8, offset: const Offset(0, 2))],
           ),
           padding: const EdgeInsets.all(16),
           child: Column(
@@ -583,7 +583,7 @@ class _PaymentsListScreenState extends State<PaymentsListScreen> {
                     children: [
                       Container(
                         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                        decoration: BoxDecoration(color: statusColor.withOpacity(0.1), borderRadius: BorderRadius.circular(4)),
+                        decoration: BoxDecoration(color: statusColor.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(4)),
                         child: Text(status, style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: statusColor)),
                       ),
                       const SizedBox(height: 8),
@@ -723,7 +723,7 @@ class UserNameWidget extends StatefulWidget {
   final String prefix;
   final String? fallbackName;
 
-  const UserNameWidget({Key? key, required this.companyId, required this.uid, required this.prefix, this.fallbackName}) : super(key: key);
+  const UserNameWidget({super.key, required this.companyId, required this.uid, required this.prefix, this.fallbackName});
 
   static final Map<String, String> _cache = {};
 

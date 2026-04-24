@@ -185,7 +185,7 @@ class _ScreenSettingsHomeState extends State<ScreenSettingsHome> {
                   color: selected ? zBlueSoft : Colors.transparent,
                   borderRadius: BorderRadius.circular(12),
                   border: Border.all(
-                    color: selected ? zBlue.withOpacity(0.15) : zBorder,
+                    color: selected ? zBlue.withValues(alpha: 0.15) : zBorder,
                   ),
                 ),
                 child: Row(
@@ -799,7 +799,6 @@ class _ActionTile extends StatelessWidget {
   final String title;
   final String subtitle;
   final IconData icon;
-  final String? trailingText;
   final VoidCallback? onTap;
   final bool enabled;
   final bool isDanger;
@@ -808,7 +807,6 @@ class _ActionTile extends StatelessWidget {
     required this.title,
     required this.subtitle,
     required this.icon,
-    this.trailingText,
     this.onTap,
     this.enabled = true,
     this.isDanger = false,
@@ -875,26 +873,11 @@ class _ActionTile extends StatelessWidget {
               ),
             ),
             const SizedBox(width: 12),
-            if (trailingText != null)
-              Flexible(
-                child: Text(
-                  trailingText!,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    color: zMuted,
-                    fontSize: 12.2,
-                    fontWeight: FontWeight.w700,
-                  ),
-                  textAlign: TextAlign.right,
-                ),
-              )
-            else
-              Icon(
-                enabled ? Icons.arrow_forward_ios_rounded : Icons.lock_outline,
-                size: 16,
-                color: enabled ? accent : zMuted,
-              ),
+            Icon(
+              enabled ? Icons.arrow_forward_ios_rounded : Icons.lock_outline,
+              size: 16,
+              color: enabled ? accent : zMuted,
+            ),
           ],
         ),
       ),

@@ -170,7 +170,7 @@ class DesktopUserTable extends StatelessWidget {
           MiniBadge(
             text: formatRole(role),
             textColor: roleColor(role),
-            backgroundColor: roleColor(role).withOpacity(0.10),
+            backgroundColor: roleColor(role).withValues(alpha: 0.10),
           ),
         ),
         DataCell(
@@ -183,7 +183,7 @@ class DesktopUserTable extends StatelessWidget {
           MiniBadge(
             text: statusText,
             textColor: statusClr,
-            backgroundColor: statusClr.withOpacity(0.10),
+            backgroundColor: statusClr.withValues(alpha: 0.10),
           ),
         ),
         DataCell(
@@ -229,7 +229,7 @@ class DesktopUserTable extends StatelessWidget {
             height: 40,
             alignment: Alignment.center,
             decoration: BoxDecoration(
-              color: primaryColor.withOpacity(0.08),
+              color: primaryColor.withValues(alpha: 0.08),
               shape: BoxShape.circle,
             ),
             child: Text(
@@ -327,7 +327,7 @@ class DesktopUserTable extends StatelessWidget {
                 await onToggle(doc);
               }
                   : null,
-              activeColor: primaryColor,
+              activeThumbColor: primaryColor,
             ),
           ),
           const SizedBox(width: 2),

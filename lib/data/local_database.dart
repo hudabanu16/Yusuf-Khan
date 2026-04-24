@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'package:flutter/foundation.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -27,11 +28,11 @@ class LocalDatabase {
       _quotationsBox = await Hive.openBox(_quotationsBoxName);
 
       _initialized = true;
-      print('✅ LocalDatabase initialized successfully');
-      print('📦 Users in database: ${_usersBox!.length}');
-      print('📄 Quotations in database: ${_quotationsBox!.length}');
+      debugPrint('✅ LocalDatabase initialized successfully');
+      debugPrint('📦 Users in database: ${_usersBox!.length}');
+      debugPrint('📄 Quotations in database: ${_quotationsBox!.length}');
     } catch (e) {
-      print('❌ Error initializing database: $e');
+      debugPrint('❌ Error initializing database: $e');
       rethrow;
     }
   }
@@ -54,27 +55,27 @@ class LocalDatabase {
   Future<Map<String, dynamic>?> loginUser(String email, String password) async {
     await initialize();
 
-    print('🔍 Attempting login for: $email');
-    print('📦 Total users: ${_users.length}');
+    debugPrint('🔍 Attempting login for: $email');
+    debugPrint('📦 Total users: ${_users.length}');
 
     // Search through all users
     for (var key in _users.keys) {
       try {
         final userData = Map<String, dynamic>.from(_users.get(key) as Map);
-        print('👤 Checking user: ${userData['email']}');
+        debugPrint('👤 Checking user: ${userData['email']}');
 
         if (userData['email'] == email && userData['password'] == password) {
-          print('✅ Login successful!');
+          debugPrint('✅ Login successful!');
           await _saveCurrentUserId(userData['id']);
           return userData;
         }
       } catch (e) {
-        print('⚠️ Error reading user $key: $e');
+        debugPrint('⚠️ Error reading user $key: $e');
         continue;
       }
     }
 
-    print('❌ No matching user found');
+    debugPrint('❌ No matching user found');
     return null;
   }
 
@@ -94,14 +95,14 @@ class LocalDatabase {
   }) async {
     await initialize();
 
-    print('📝 Attempting to register: $email');
+    debugPrint('📝 Attempting to register: $email');
 
     // Check if email exists
     for (var key in _users.keys) {
       try {
         final userData = Map<String, dynamic>.from(_users.get(key) as Map);
         if (userData['email'] == email) {
-          print('❌ Email already registered');
+          debugPrint('❌ Email already registered');
           throw Exception('Email already registered');
         }
       } catch (e) {
@@ -136,8 +137,8 @@ class LocalDatabase {
     await _users.put(userKey, userData);
     await _saveCurrentUserId(userId);
 
-    print('✅ User registered successfully: $userKey');
-    print('📦 Total users now: ${_users.length}');
+    debugPrint('✅ User registered successfully: $userKey');
+    debugPrint('📦 Total users now: ${_users.length}');
 
     return userId;
   }
@@ -147,20 +148,20 @@ class LocalDatabase {
 
     final userId = await _getCurrentUserId();
     if (userId == null) {
-      print('⚠️ No current user ID found');
+      debugPrint('⚠️ No current user ID found');
       return null;
     }
 
     final userKey = 'user_$userId';
-    print('🔍 Looking for user: $userKey');
+    debugPrint('🔍 Looking for user: $userKey');
 
     final userData = _users.get(userKey);
     if (userData != null) {
-      print('✅ Current user found: ${(userData as Map)['email']}');
-      return Map<String, dynamic>.from(userData as Map);
+      debugPrint('✅ Current user found: ${(userData as Map)['email']}');
+      return Map<String, dynamic>.from(userData);
     }
 
-    print('❌ User not found in database');
+    debugPrint('❌ User not found in database');
     return null;
   }
 
@@ -174,14 +175,14 @@ class LocalDatabase {
       updatedUser.addAll(data);
       updatedUser['updatedAt'] = DateTime.now().toIso8601String();
       await _users.put(userKey, updatedUser);
-      print('✅ User updated: $userKey');
+      debugPrint('✅ User updated: $userKey');
     }
   }
 
   Future<void> logout() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove(_currentUserKey);
-    print('👋 User logged out');
+    debugPrint('👋 User logged out');
   }
 
   // QUOTATION OPERATIONS
@@ -218,8 +219,8 @@ class LocalDatabase {
     };
 
     await _quotations.put(quotationKey, quotationData);
-    print('✅ Quotation created: $quotationKey');
-    print('📄 Total quotations now: ${_quotations.length}');
+    debugPrint('✅ Quotation created: $quotationKey');
+    debugPrint('📄 Total quotations now: ${_quotations.length}');
 
     return quotationId;
   }
@@ -238,7 +239,7 @@ class LocalDatabase {
           userQuotations.add(quotationData);
         }
       } catch (e) {
-        print('⚠️ Error reading quotation $key: $e');
+        debugPrint('⚠️ Error reading quotation $key: $e');
         continue;
       }
     }
@@ -250,7 +251,7 @@ class LocalDatabase {
       return dateB.compareTo(dateA);
     });
 
-    print('📄 Found ${userQuotations.length} quotations for user $userId');
+    debugPrint('📄 Found ${userQuotations.length} quotations for user $userId');
     return userQuotations;
   }
 
@@ -258,20 +259,20 @@ class LocalDatabase {
     await initialize();
     final quotationKey = 'quote_$quotationId';
     await _quotations.delete(quotationKey);
-    print('🗑️ Quotation deleted: $quotationKey');
+    debugPrint('🗑️ Quotation deleted: $quotationKey');
   }
 
   // HELPER METHODS
   Future<void> _saveCurrentUserId(int userId) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setInt(_currentUserKey, userId);
-    print('💾 Current user ID saved: $userId');
+    debugPrint('💾 Current user ID saved: $userId');
   }
 
   Future<int?> _getCurrentUserId() async {
     final prefs = await SharedPreferences.getInstance();
     final userId = prefs.getInt(_currentUserKey);
-    print('🔑 Current user ID: $userId');
+    debugPrint('🔑 Current user ID: $userId');
     return userId;
   }
 
@@ -281,19 +282,19 @@ class LocalDatabase {
     await _quotations.clear();
     final prefs = await SharedPreferences.getInstance();
     await prefs.clear();
-    print('🗑️ All data cleared');
+    debugPrint('🗑️ All data cleared');
   }
 
   // DEBUG METHOD
   Future<void> printAllData() async {
     await initialize();
-    print('\n📊 === DATABASE DEBUG INFO ===');
-    print('Users Box: ${_users.length} entries');
+    debugPrint('\n📊 === DATABASE DEBUG INFO ===');
+    debugPrint('Users Box: ${_users.length} entries');
     for (var key in _users.keys) {
       final user = _users.get(key);
-      print('  $key: ${(user as Map)['email']}');
+      debugPrint('  $key: ${(user as Map)['email']}');
     }
-    print('Quotations Box: ${_quotations.length} entries');
-    print('=== END DEBUG INFO ===\n');
+    debugPrint('Quotations Box: ${_quotations.length} entries');
+    debugPrint('=== END DEBUG INFO ===\n');
   }
 }

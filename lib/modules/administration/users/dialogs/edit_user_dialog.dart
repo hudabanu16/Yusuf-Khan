@@ -419,7 +419,7 @@ Future<void> showEditUserDialog({
                                       color: _editMutedTextColor,
                                     ),
                                   ),
-                                  activeColor: _editAccentColor,
+                                  activeThumbColor: _editAccentColor,
                                   contentPadding: const EdgeInsets.symmetric(
                                     horizontal: 16,
                                     vertical: 4,
@@ -706,7 +706,7 @@ Widget _buildHeaderCard(Map<String, dynamic> data) {
       children: [
         CircleAvatar(
           radius: 30,
-          backgroundColor: _editPrimaryColor.withOpacity(0.10),
+          backgroundColor: _editPrimaryColor.withValues(alpha: 0.10),
           child: Text(
             name.isNotEmpty ? name[0].toUpperCase() : 'U',
             style: const TextStyle(
@@ -749,7 +749,7 @@ Widget _buildHeaderCard(Map<String, dynamic> data) {
                   MiniBadge(
                     text: formatRole(role),
                     textColor: roleColor(role),
-                    backgroundColor: roleColor(role).withOpacity(0.10),
+                    backgroundColor: roleColor(role).withValues(alpha: 0.10),
                   ),
                   if (department.isNotEmpty)
                     MiniBadge(
@@ -869,7 +869,7 @@ Widget _buildDropdownField({
   String Function(String)? labelBuilder,
 }) {
   return DropdownButtonFormField<String>(
-    value: options.contains(value) ? value : null,
+    initialValue: options.contains(value) ? value : null,
     decoration: _inputDecoration(
       label: label,
       icon: icon,

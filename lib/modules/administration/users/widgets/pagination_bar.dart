@@ -58,7 +58,7 @@ class PaginationBar extends StatelessWidget {
                       child: SizedBox(
                         height: 50,
                         child: DropdownButtonFormField<int>(
-                          value: rowsPerPage,
+                          initialValue: rowsPerPage,
                           onChanged: onRowsChanged,
                           isDense: true,
                           isExpanded: true,
@@ -116,7 +116,7 @@ class PaginationBar extends StatelessWidget {
               SizedBox(
                 width: 130,
                 child: DropdownButtonFormField<int>(
-                  value: rowsPerPage,
+                  initialValue: rowsPerPage,
                   onChanged: onRowsChanged,
                   isDense: true,
                   isExpanded: true,

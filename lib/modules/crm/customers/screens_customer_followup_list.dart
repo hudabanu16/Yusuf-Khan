@@ -79,7 +79,7 @@ class _ScreensCustomerFollowUpListState
                 ),
                 const SizedBox(height: 14),
                 DropdownButtonFormField<String>(
-                  value: tempMode.isEmpty ? null : tempMode,
+                  initialValue: tempMode.isEmpty ? null : tempMode,
                   decoration: const InputDecoration(
                     labelText: 'Follow-up Mode',
                     isDense: true,
@@ -99,7 +99,7 @@ class _ScreensCustomerFollowUpListState
                 ),
                 const SizedBox(height: 10),
                 DropdownButtonFormField<String>(
-                  value: tempOutcome.isEmpty ? null : tempOutcome,
+                  initialValue: tempOutcome.isEmpty ? null : tempOutcome,
                   decoration: const InputDecoration(
                     labelText: 'Outcome',
                     isDense: true,
@@ -119,7 +119,7 @@ class _ScreensCustomerFollowUpListState
                 ),
                 const SizedBox(height: 10),
                 DropdownButtonFormField<String>(
-                  value: tempDue.isEmpty ? null : tempDue,
+                  initialValue: tempDue.isEmpty ? null : tempDue,
                   decoration: const InputDecoration(
                     labelText: 'Next Follow-up Due',
                     isDense: true,
@@ -274,7 +274,7 @@ class _ScreensCustomerFollowUpListState
                           final contactDocs = contactSnap.data?.docs ?? [];
 
                           return DropdownButtonFormField<String>(
-                            value: selectedContactId,
+                            initialValue: selectedContactId,
                             decoration: const InputDecoration(
                               labelText: 'Contact Person',
                               prefixIcon: Icon(Icons.person_outline),
@@ -341,7 +341,7 @@ class _ScreensCustomerFollowUpListState
                       ),
                       const SizedBox(height: 12),
                       DropdownButtonFormField<String>(
-                        value: selectedMode,
+                        initialValue: selectedMode,
                         decoration: const InputDecoration(
                           labelText: 'Follow-up Mode',
                           prefixIcon: Icon(Icons.call_outlined),
@@ -363,7 +363,7 @@ class _ScreensCustomerFollowUpListState
                       ),
                       const SizedBox(height: 12),
                       DropdownButtonFormField<String>(
-                        value: selectedOutcome,
+                        initialValue: selectedOutcome,
                         decoration: const InputDecoration(
                           labelText: 'Outcome',
                           prefixIcon: Icon(Icons.track_changes_outlined),

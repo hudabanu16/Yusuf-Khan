@@ -13,12 +13,16 @@ class VerifyWorkspaceOtpScreen extends StatefulWidget {
   final String registrationId;
   final String businessEmail;
   final String entityName;
+  final String password;
+  final Set<String> enabledModuleIds;
 
   const VerifyWorkspaceOtpScreen({
     super.key,
     required this.registrationId,
     required this.businessEmail,
     required this.entityName,
+    required this.password,
+    required this.enabledModuleIds,
   });
 
   @override
@@ -47,6 +51,8 @@ class _VerifyWorkspaceOtpScreenState extends State<VerifyWorkspaceOtpScreen> {
       await _service.verifyWorkspaceOtpAndCreateWorkspace(
         registrationId: widget.registrationId,
         otp: otp,
+        password: widget.password,
+        enabledModuleIds: widget.enabledModuleIds,
       );
 
       if (!mounted) return;
@@ -54,10 +60,7 @@ class _VerifyWorkspaceOtpScreenState extends State<VerifyWorkspaceOtpScreen> {
       _showSnack('Business email verified successfully');
       Navigator.pop(context, true);
     } catch (e) {
-      _showSnack(
-        e.toString().replaceAll('Exception: ', ''),
-        isError: true,
-      );
+      _showSnack(e.toString().replaceAll('Exception: ', ''), isError: true);
     } finally {
       if (mounted) {
         setState(() => _isLoading = false);
@@ -69,15 +72,10 @@ class _VerifyWorkspaceOtpScreenState extends State<VerifyWorkspaceOtpScreen> {
     setState(() => _isResending = true);
 
     try {
-      await _service.sendWorkspaceOtp(
-        registrationId: widget.registrationId,
-      );
+      await _service.sendWorkspaceOtp(registrationId: widget.registrationId);
       _showSnack('OTP sent again to ${widget.businessEmail}');
     } catch (e) {
-      _showSnack(
-        e.toString().replaceAll('Exception: ', ''),
-        isError: true,
-      );
+      _showSnack(e.toString().replaceAll('Exception: ', ''), isError: true);
     } finally {
       if (mounted) {
         setState(() => _isResending = false);
@@ -181,7 +179,10 @@ class _VerifyWorkspaceOtpScreenState extends State<VerifyWorkspaceOtpScreen> {
                       ),
                       focusedBorder: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(14),
-                        borderSide: const BorderSide(color: _otpAccent, width: 1.3),
+                        borderSide: const BorderSide(
+                          color: _otpAccent,
+                          width: 1.3,
+                        ),
                       ),
                     ),
                   ),
@@ -201,17 +202,17 @@ class _VerifyWorkspaceOtpScreenState extends State<VerifyWorkspaceOtpScreen> {
                       ),
                       child: _isLoading
                           ? const SizedBox(
-                        width: 20,
-                        height: 20,
-                        child: CircularProgressIndicator(
-                          color: Colors.white,
-                          strokeWidth: 2.3,
-                        ),
-                      )
+                              width: 20,
+                              height: 20,
+                              child: CircularProgressIndicator(
+                                color: Colors.white,
+                                strokeWidth: 2.3,
+                              ),
+                            )
                           : const Text(
-                        'Verify & Create Workspace',
-                        style: TextStyle(fontWeight: FontWeight.w700),
-                      ),
+                              'Verify & Create Workspace',
+                              style: TextStyle(fontWeight: FontWeight.w700),
+                            ),
                     ),
                   ),
                   const SizedBox(height: 12),
@@ -228,17 +229,17 @@ class _VerifyWorkspaceOtpScreenState extends State<VerifyWorkspaceOtpScreen> {
                       ),
                       child: _isResending
                           ? const SizedBox(
-                        width: 18,
-                        height: 18,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      )
+                              width: 18,
+                              height: 18,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
                           : const Text(
-                        'Resend OTP',
-                        style: TextStyle(
-                          fontWeight: FontWeight.w700,
-                          color: _otpText,
-                        ),
-                      ),
+                              'Resend OTP',
+                              style: TextStyle(
+                                fontWeight: FontWeight.w700,
+                                color: _otpText,
+                              ),
+                            ),
                     ),
                   ),
                 ],

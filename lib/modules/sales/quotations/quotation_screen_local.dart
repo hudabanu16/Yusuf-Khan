@@ -62,7 +62,6 @@ class _QuotationScreenLocalState extends State<QuotationScreenLocal> {
   }
 
   String? _selectedCustomerId;
-  Map<String, dynamic>? _selectedCustomerSnapshot;
 
   final TextEditingController _companyNameController = TextEditingController();
   final TextEditingController _addressController = TextEditingController();
@@ -89,7 +88,7 @@ class _QuotationScreenLocalState extends State<QuotationScreenLocal> {
   DateTime _inquiryDate = DateTime.now();
   DateTime _quoteDate = DateTime.now();
 
-  List<Item> _items = [];
+  final List<Item> _items = [];
   double _taxRate = 18.0;
   double _discount = 0.0;
 
@@ -312,7 +311,7 @@ class _QuotationScreenLocalState extends State<QuotationScreenLocal> {
       '${d.day.toString().padLeft(2, '0')}/${d.month.toString().padLeft(2, '0')}/${d.year}';
 
   double get _subtotal =>
-      _items.fold(0.0, (sum, item) => sum + (item.quantity * item.unitPrice));
+      _items.fold(0.0, (total, item) => total + (item.quantity * item.unitPrice));
 
   double get _discountAmount => _subtotal * (_discount / 100);
   double get _taxableAmount => _subtotal - _discountAmount;
@@ -503,7 +502,6 @@ class _QuotationScreenLocalState extends State<QuotationScreenLocal> {
   void _applyCustomer(Map<String, dynamic> customer) {
     setState(() {
       _selectedCustomerId = (customer['id'] ?? '').toString();
-      _selectedCustomerSnapshot = Map<String, dynamic>.from(customer);
 
       _companyNameController.text =
           (customer['companyName'] ?? customer['name'] ?? '').toString();
@@ -523,7 +521,6 @@ class _QuotationScreenLocalState extends State<QuotationScreenLocal> {
   void _clearSelectedCustomer() {
     setState(() {
       _selectedCustomerId = null;
-      _selectedCustomerSnapshot = null;
       _companyNameController.clear();
       _addressController.clear();
       _emailController.clear();
@@ -1299,10 +1296,11 @@ class _QuotationScreenLocalState extends State<QuotationScreenLocal> {
     } catch (e) {
       _setError('Failed to save quotation: $e');
     } finally {
-      if (!mounted) return;
-      setState(() {
-        _isLoading = false;
-      });
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
     }
   }
 
@@ -1479,7 +1477,7 @@ class _QuotationScreenLocalState extends State<QuotationScreenLocal> {
         labelText: 'Quotation No.',
         prefixIcon: Icon(
           Icons.confirmation_number_outlined,
-          color: primaryColor.withOpacity(0.7),
+          color: primaryColor.withValues(alpha: 0.7),
         ),
         border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
         filled: true,
@@ -1914,7 +1912,7 @@ class _QuotationScreenLocalState extends State<QuotationScreenLocal> {
         keyboardType: keyboardType,
         decoration: InputDecoration(
           labelText: label,
-          prefixIcon: Icon(icon, color: primaryColor.withOpacity(0.7)),
+          prefixIcon: Icon(icon, color: primaryColor.withValues(alpha: 0.7)),
           border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
           filled: true,
           fillColor: Colors.white,
@@ -1939,7 +1937,7 @@ class _QuotationScreenLocalState extends State<QuotationScreenLocal> {
     return InputDecorator(
       decoration: InputDecoration(
         labelText: label,
-        prefixIcon: Icon(icon, color: primaryColor.withOpacity(0.7)),
+        prefixIcon: Icon(icon, color: primaryColor.withValues(alpha: 0.7)),
         border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
         filled: true,
         fillColor: Colors.white,
@@ -1969,7 +1967,7 @@ class _QuotationScreenLocalState extends State<QuotationScreenLocal> {
       child: InputDecorator(
         decoration: InputDecoration(
           labelText: label,
-          prefixIcon: Icon(icon, color: primaryColor.withOpacity(0.7)),
+          prefixIcon: Icon(icon, color: primaryColor.withValues(alpha: 0.7)),
           border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
           filled: true,
           fillColor: Colors.white,

@@ -8,10 +8,10 @@ class PaymentDetailScreen extends StatelessWidget {
   final PaymentModel payment;
 
   const PaymentDetailScreen({
-    Key? key,
+    super.key,
     required this.companyId,
     required this.payment,
-  }) : super(key: key);
+  });
 
   String _getCurrencySymbol(String currency) {
     switch (currency.toUpperCase()) {
@@ -103,7 +103,7 @@ class PaymentDetailScreen extends StatelessWidget {
                         ),
                         Container(
                           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                          decoration: BoxDecoration(color: statusColor.withOpacity(0.1), borderRadius: BorderRadius.circular(8)),
+                          decoration: BoxDecoration(color: statusColor.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(8)),
                           child: Text(status, style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: statusColor)),
                         ),
                       ],

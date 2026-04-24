@@ -539,7 +539,7 @@ class _ScreensAddCustomerState extends State<ScreensAddCustomer> {
         }
 
         return DropdownButtonFormField<String>(
-          value: safeAssignedValue,
+          initialValue: safeAssignedValue,
           decoration: _inputDecoration(
             label: 'Assign to',
             icon: Icons.person_pin_circle_outlined,
@@ -754,7 +754,7 @@ class _ScreensAddCustomerState extends State<ScreensAddCustomer> {
           _buildResponsiveRow(
             children: [
               DropdownButtonFormField<String>(
-                value: _customerStage,
+                initialValue: _customerStage,
                 decoration: _inputDecoration(
                   label: 'Customer Stage',
                   icon: Icons.account_tree_outlined,
@@ -772,7 +772,7 @@ class _ScreensAddCustomerState extends State<ScreensAddCustomer> {
                 },
               ),
               DropdownButtonFormField<String>(
-                value: _customerType,
+                initialValue: _customerType,
                 decoration: _inputDecoration(
                   label: 'Customer Type',
                   icon: Icons.groups_2_outlined,
@@ -800,7 +800,7 @@ class _ScreensAddCustomerState extends State<ScreensAddCustomer> {
           _buildResponsiveRow(
             children: [
               DropdownButtonFormField<String>(
-                value: _industry,
+                initialValue: _industry,
                 decoration: _inputDecoration(
                   label: 'Industry',
                   icon: Icons.factory_outlined,
@@ -823,7 +823,7 @@ class _ScreensAddCustomerState extends State<ScreensAddCustomer> {
                 },
               ),
               DropdownButtonFormField<String>(
-                value: _leadSource,
+                initialValue: _leadSource,
                 decoration: _inputDecoration(
                   label: 'Lead Source',
                   icon: Icons.campaign_outlined,
@@ -865,7 +865,7 @@ class _ScreensAddCustomerState extends State<ScreensAddCustomer> {
           _buildResponsiveRow(
             children: [
               DropdownButtonFormField<String>(
-                value: _status,
+                initialValue: _status,
                 decoration: _inputDecoration(
                   label: 'Status',
                   icon: Icons.verified_user_outlined,
@@ -881,7 +881,7 @@ class _ScreensAddCustomerState extends State<ScreensAddCustomer> {
                 onChanged: (value) => setState(() => _status = value),
               ),
               DropdownButtonFormField<String>(
-                value: _priority,
+                initialValue: _priority,
                 decoration: _inputDecoration(
                   label: 'Priority',
                   icon: Icons.flag_outlined,

@@ -4,6 +4,7 @@ class ModuleIds {
   static const String administration = 'administration';
   static const String crm = 'crm';
   static const String finance = 'finance';
+  static const String hr = 'hr';
   static const String inventory = 'inventory';
   static const String iot = 'iot';
   static const String production = 'production';
@@ -65,6 +66,13 @@ class ModuleRegistry {
       baseRoute: '/production',
       iconKey: 'precision_manufacturing',
       sortOrder: 70,
+    ),
+    AppModule(
+      id: ModuleIds.hr,
+      displayName: 'HR',
+      baseRoute: '/hr',
+      iconKey: 'badge',
+      sortOrder: 75,
     ),
     AppModule(
       id: ModuleIds.reports,

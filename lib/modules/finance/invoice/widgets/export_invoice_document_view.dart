@@ -1,5 +1,4 @@
 import 'dart:convert';
-import 'dart:typed_data';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -37,10 +36,15 @@ class ExportInvoiceDocumentView extends StatelessWidget {
     String code = invoice.currency.toUpperCase();
     String symbol = code;
 
-    if (code == 'USD') symbol = '\$';
-    else if (code == 'INR') symbol = '₹';
-    else if (code == 'EUR') symbol = '€';
-    else if (code == 'GBP') symbol = '£';
+    if (code == 'USD') {
+      symbol = '\$';
+    } else if (code == 'INR') {
+      symbol = '₹';
+    } else if (code == 'EUR') {
+      symbol = '€';
+    } else if (code == 'GBP') {
+      symbol = '£';
+    }
 
     return '$symbol ${_numFormatter.format(value)}';
   }
@@ -76,9 +80,15 @@ class ExportInvoiceDocumentView extends StatelessWidget {
     const tens = ['', '', 'Twenty', 'Thirty', 'Forty', 'Fifty', 'Sixty', 'Seventy', 'Eighty', 'Ninety'];
 
     String convertDigit(int n) {
-      if (n < 20) return units[n];
-      if (n < 100) return '${tens[n ~/ 10]}${n % 10 != 0 ? ' ${units[n % 10]}' : ''}';
-      if (n < 1000) return '${units[n ~/ 100]} Hundred${n % 100 != 0 ? ' and ${convertDigit(n % 100)}' : ''}';
+    if (n < 20) {
+      return units[n];
+    }
+    if (n < 100) {
+      return '${tens[n ~/ 10]}${n % 10 != 0 ? ' ${units[n % 10]}' : ''}';
+    }
+    if (n < 1000) {
+      return '${units[n ~/ 100]} Hundred${n % 100 != 0 ? ' and ${convertDigit(n % 100)}' : ''}';
+    }
       if (n < 1000000) return '${convertDigit(n ~/ 1000)} Thousand${n % 1000 != 0 ? ' ${convertDigit(n % 1000)}' : ''}';
       if (n < 1000000000) return '${convertDigit(n ~/ 1000000)} Million${n % 1000000 != 0 ? ' ${convertDigit(n % 1000000)}' : ''}';
       return '${convertDigit(n ~/ 1000000000)} Billion${n % 1000000000 != 0 ? ' ${convertDigit(n % 1000000000)}' : ''}';
@@ -92,10 +102,15 @@ class ExportInvoiceDocumentView extends StatelessWidget {
     String intWords = _convertNumberToWords(integerPart);
 
     String currencyName = currencyCode.toUpperCase();
-    if (currencyName == 'USD') currencyName = 'US Dollars';
-    else if (currencyName == 'INR') currencyName = 'Indian Rupees';
-    else if (currencyName == 'EUR') currencyName = 'Euros';
-    else if (currencyName == 'GBP') currencyName = 'Pounds Sterling';
+    if (currencyName == 'USD') {
+      currencyName = 'US Dollars';
+    } else if (currencyName == 'INR') {
+      currencyName = 'Indian Rupees';
+    } else if (currencyName == 'EUR') {
+      currencyName = 'Euros';
+    } else if (currencyName == 'GBP') {
+      currencyName = 'Pounds Sterling';
+    }
 
     String fractionStr = fractionalPart.toString().padLeft(2, '0');
     return '$currencyName $intWords and $fractionStr/100 Only';

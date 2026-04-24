@@ -37,7 +37,7 @@ class UserStatCard extends StatelessWidget {
               width: 32,
               height: 32,
               decoration: BoxDecoration(
-                color: iconBg.withOpacity(0.12),
+                color: iconBg.withValues(alpha: 0.12),
                 borderRadius: BorderRadius.circular(10),
               ),
               child: Icon(icon, color: iconBg, size: 16),
@@ -98,7 +98,7 @@ class UserStatCard extends StatelessWidget {
             width: 48,
             height: 48,
             decoration: BoxDecoration(
-              color: iconBg.withOpacity(0.12),
+              color: iconBg.withValues(alpha: 0.12),
               borderRadius: BorderRadius.circular(14),
             ),
             child: Icon(icon, color: iconBg),

@@ -4,7 +4,10 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:QUIK/shell/zoho_shell.dart';
+import 'package:QUIK/core/inventory/providers/inventory_config_provider.dart';
+import 'package:QUIK/core/inventory/services/inventory_config_service.dart';
 import 'package:QUIK/core/modules/providers/module_access_provider.dart';
+import 'package:QUIK/core/modules/services/tenant_module_service.dart';
 import 'package:QUIK/auth/login/login_screen.dart';
 import 'package:QUIK/modules/administration/company/screen_join_company.dart';
 
@@ -48,6 +51,7 @@ class _UserProfileGateState extends State<_UserProfileGate> {
   bool _loading = true;
   String? _error;
   Map<String, dynamic>? _data;
+  bool _isPlatformAdmin = false;
 
   @override
   void initState() {
@@ -64,9 +68,17 @@ class _UserProfileGateState extends State<_UserProfileGate> {
         final doc = await firestore.collection('users').doc(uid).get();
 
         if (doc.exists && doc.data() != null) {
+          final userData = doc.data()!;
+          final isPlatformAdmin = await _resolvePlatformAdminStatus(
+            firestore: firestore,
+            uid: uid,
+            userData: userData,
+          );
+
           if (!mounted) return;
           setState(() {
-            _data = doc.data();
+            _data = userData;
+            _isPlatformAdmin = isPlatformAdmin;
             _loading = false;
             _error = null;
           });
@@ -90,6 +102,39 @@ class _UserProfileGateState extends State<_UserProfileGate> {
     }
   }
 
+  Future<bool> _resolvePlatformAdminStatus({
+    required FirebaseFirestore firestore,
+    required String uid,
+    required Map<String, dynamic> userData,
+  }) async {
+    final userFlag =
+        userData['isPlatformAdmin'] == true ||
+        userData['platformAdmin'] == true ||
+        userData['isSuperAdmin'] == true;
+
+    var platformAdminDocAllowed = false;
+    try {
+      final platformAdminDoc = await firestore
+          .collection('platform_admins')
+          .doc(uid)
+          .get();
+      final platformAdminData = platformAdminDoc.data();
+      platformAdminDocAllowed =
+          platformAdminDoc.exists &&
+          platformAdminData?['isActive'] != false &&
+          platformAdminData?['active'] != false;
+    } catch (e) {
+      debugPrint('Platform admin lookup failed for $uid: $e');
+    }
+
+    final isPlatformAdmin = userFlag || platformAdminDocAllowed;
+    debugPrint(
+      'Platform admin resolved for $uid: $isPlatformAdmin '
+      '(userFlag=$userFlag, platformDoc=$platformAdminDocAllowed)',
+    );
+    return isPlatformAdmin;
+  }
+
   Future<void> _logout() async {
     await FirebaseAuth.instance.signOut();
   }
@@ -97,9 +142,7 @@ class _UserProfileGateState extends State<_UserProfileGate> {
   @override
   Widget build(BuildContext context) {
     if (_loading) {
-      return const Scaffold(
-        body: Center(child: CircularProgressIndicator()),
-      );
+      return const Scaffold(body: Center(child: CircularProgressIndicator()));
     }
 
     if (_error != null) {
@@ -110,11 +153,7 @@ class _UserProfileGateState extends State<_UserProfileGate> {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                const Icon(
-                  Icons.error_outline,
-                  size: 48,
-                  color: Colors.red,
-                ),
+                const Icon(Icons.error_outline, size: 48, color: Colors.red),
                 const SizedBox(height: 12),
                 Text(
                   _error!,
@@ -125,10 +164,7 @@ class _UserProfileGateState extends State<_UserProfileGate> {
                   textAlign: TextAlign.center,
                 ),
                 const SizedBox(height: 10),
-                ElevatedButton(
-                  onPressed: _logout,
-                  child: const Text('Logout'),
-                ),
+                ElevatedButton(onPressed: _logout, child: const Text('Logout')),
               ],
             ),
           ),
@@ -167,17 +203,18 @@ class _UserProfileGateState extends State<_UserProfileGate> {
 
     final role = (data['role'] ?? 'sales').toString();
     final companyName =
-    (data['companyName'] ?? widget.firebaseUser.email ?? 'Workspace').toString();
+        (data['companyName'] ?? widget.firebaseUser.email ?? 'Workspace')
+            .toString();
 
     final permissions = Map<String, dynamic>.from(data['permissions'] ?? {});
 
-    final userDisplayName = (
-        data['fullName'] ??
-            data['name'] ??
-            data['employeeName'] ??
-            data['displayName'] ??
-            ''
-    ).toString();
+    final userDisplayName =
+        (data['fullName'] ??
+                data['name'] ??
+                data['employeeName'] ??
+                data['displayName'] ??
+                '')
+            .toString();
 
     if (companyId.isEmpty) {
       return Scaffold(
@@ -193,7 +230,7 @@ class _UserProfileGateState extends State<_UserProfileGate> {
                 border: Border.all(color: Colors.grey.shade300),
                 boxShadow: [
                   BoxShadow(
-                    color: Colors.black.withOpacity(0.06),
+                    color: Colors.black.withValues(alpha: 0.06),
                     blurRadius: 26,
                     offset: const Offset(0, 12),
                   ),
@@ -261,10 +298,7 @@ class _UserProfileGateState extends State<_UserProfileGate> {
                     ),
                   ),
                   const SizedBox(height: 8),
-                  TextButton(
-                    onPressed: _logout,
-                    child: const Text('Logout'),
-                  ),
+                  TextButton(onPressed: _logout, child: const Text('Logout')),
                 ],
               ),
             ),
@@ -273,17 +307,103 @@ class _UserProfileGateState extends State<_UserProfileGate> {
       );
     }
 
-    return ModuleAccessProvider(
-      tenantId: companyId,
-      child: ZohoShell(
-        userEmail: widget.firebaseUser.email ?? 'user@workspace.com',
-        userUid: widget.firebaseUser.uid,
-        companyId: companyId,
-        companyName: companyName,
-        role: role,
-        permissions: permissions,
-        userDisplayName: userDisplayName,
+    return _TenantModuleBackfillGate(
+      companyId: companyId,
+      child: InventoryConfigProvider(
+        tenantId: companyId,
+        child: ModuleAccessProvider(
+          tenantId: companyId,
+          child: ZohoShell(
+            userEmail: widget.firebaseUser.email ?? 'user@workspace.com',
+            userUid: widget.firebaseUser.uid,
+            companyId: companyId,
+            companyName: companyName,
+            role: role,
+            permissions: permissions,
+            userDisplayName: userDisplayName,
+            isPlatformAdmin: _isPlatformAdmin,
+          ),
+        ),
       ),
     );
+  }
+}
+
+class _TenantModuleBackfillGate extends StatefulWidget {
+  final String companyId;
+  final Widget child;
+
+  const _TenantModuleBackfillGate({
+    required this.companyId,
+    required this.child,
+  });
+
+  @override
+  State<_TenantModuleBackfillGate> createState() =>
+      _TenantModuleBackfillGateState();
+}
+
+class _TenantModuleBackfillGateState extends State<_TenantModuleBackfillGate> {
+  final TenantModuleService _tenantModuleService = TenantModuleService();
+  final InventoryConfigService _inventoryConfigService =
+      InventoryConfigService();
+
+  bool _ready = false;
+  String? _initializedCompanyId;
+
+  @override
+  void initState() {
+    super.initState();
+    _ensureBackfilled();
+  }
+
+  @override
+  void didUpdateWidget(covariant _TenantModuleBackfillGate oldWidget) {
+    super.didUpdateWidget(oldWidget);
+
+    if (oldWidget.companyId != widget.companyId) {
+      _ready = false;
+      _ensureBackfilled();
+    }
+  }
+
+  Future<void> _ensureBackfilled() async {
+    final companyId = widget.companyId.trim();
+    if (companyId.isEmpty || _initializedCompanyId == companyId) {
+      if (mounted) {
+        setState(() => _ready = true);
+      }
+      return;
+    }
+
+    try {
+      await _tenantModuleService.ensureTenantModulesInitialized(
+        tenantId: companyId,
+        source: 'auth_backfill',
+      );
+      await _inventoryConfigService.ensureDefaultProfile(
+        tenantId: companyId,
+        source: 'auth_backfill',
+      );
+    } catch (e) {
+      debugPrint(
+        'TenantModuleBackfillGate: tenant startup backfill failed for $companyId: $e',
+      );
+    }
+
+    if (!mounted || widget.companyId.trim() != companyId) return;
+    setState(() {
+      _initializedCompanyId = companyId;
+      _ready = true;
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (!_ready) {
+      return const Scaffold(body: Center(child: CircularProgressIndicator()));
+    }
+
+    return widget.child;
   }
 }

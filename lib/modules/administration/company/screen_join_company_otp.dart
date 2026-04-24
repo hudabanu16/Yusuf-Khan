@@ -13,12 +13,14 @@ class ScreenJoinCompanyOtp extends StatefulWidget {
   final String draftId;
   final String email;
   final String fullName;
+  final String password;
 
   const ScreenJoinCompanyOtp({
     super.key,
     required this.draftId,
     required this.email,
     required this.fullName,
+    required this.password,
   });
 
   @override
@@ -70,6 +72,7 @@ class _ScreenJoinCompanyOtpState extends State<ScreenJoinCompanyOtp> {
       await _joinService.verifyJoinRequestOtpAndComplete(
         draftId: widget.draftId,
         otp: otp,
+        password: widget.password,
       );
 
       if (!mounted) return;
@@ -119,10 +122,7 @@ class _ScreenJoinCompanyOtpState extends State<ScreenJoinCompanyOtp> {
         ),
         title: const Text(
           'Verify Employee Email',
-          style: TextStyle(
-            color: primaryColor,
-            fontWeight: FontWeight.w800,
-          ),
+          style: TextStyle(color: primaryColor, fontWeight: FontWeight.w800),
         ),
         bottom: PreferredSize(
           preferredSize: const Size.fromHeight(1),
@@ -143,7 +143,7 @@ class _ScreenJoinCompanyOtpState extends State<ScreenJoinCompanyOtp> {
                   border: Border.all(color: borderColor),
                   boxShadow: [
                     BoxShadow(
-                      color: Colors.black.withOpacity(0.05),
+                      color: Colors.black.withValues(alpha: 0.05),
                       blurRadius: 24,
                       offset: const Offset(0, 12),
                     ),
@@ -192,8 +192,10 @@ class _ScreenJoinCompanyOtpState extends State<ScreenJoinCompanyOtp> {
                         ),
                         focusedBorder: const OutlineInputBorder(
                           borderRadius: BorderRadius.all(Radius.circular(14)),
-                          borderSide:
-                          BorderSide(color: accentColor, width: 1.6),
+                          borderSide: BorderSide(
+                            color: accentColor,
+                            width: 1.6,
+                          ),
                         ),
                       ),
                     ),
@@ -213,20 +215,20 @@ class _ScreenJoinCompanyOtpState extends State<ScreenJoinCompanyOtp> {
                         ),
                         child: isLoading
                             ? const SizedBox(
-                          width: 22,
-                          height: 22,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2.5,
-                            color: Colors.white,
-                          ),
-                        )
+                                width: 22,
+                                height: 22,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2.5,
+                                  color: Colors.white,
+                                ),
+                              )
                             : const Text(
-                          'Verify & Join Company',
-                          style: TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.w800,
-                          ),
-                        ),
+                                'Verify & Join Company',
+                                style: TextStyle(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.w800,
+                                ),
+                              ),
                       ),
                     ),
                     const SizedBox(height: 14),
@@ -243,18 +245,20 @@ class _ScreenJoinCompanyOtpState extends State<ScreenJoinCompanyOtp> {
                         ),
                         child: isResending
                             ? const SizedBox(
-                          width: 18,
-                          height: 18,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
+                                width: 18,
+                                height: 18,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                ),
+                              )
                             : const Text(
-                          'Resend OTP',
-                          style: TextStyle(
-                            fontSize: 15,
-                            fontWeight: FontWeight.w700,
-                            color: primaryColor,
-                          ),
-                        ),
+                                'Resend OTP',
+                                style: TextStyle(
+                                  fontSize: 15,
+                                  fontWeight: FontWeight.w700,
+                                  color: primaryColor,
+                                ),
+                              ),
                       ),
                     ),
                   ],

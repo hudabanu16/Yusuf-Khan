@@ -52,9 +52,9 @@ const String kAppTagline = 'Unified Business ERP';
 MaterialColor createMaterialColor(Color color) {
   final strengths = <double>[.05];
   final swatch = <int, Color>{};
-  final int r = color.red;
-  final int g = color.green;
-  final int b = color.blue;
+  final int r = (color.r * 255.0).round() & 0xff;
+  final int g = (color.g * 255.0).round() & 0xff;
+  final int b = (color.b * 255.0).round() & 0xff;
 
   for (int i = 1; i < 10; i++) {
     strengths.add(0.1 * i);
@@ -70,7 +70,7 @@ MaterialColor createMaterialColor(Color color) {
     );
   }
 
-  return MaterialColor(color.value, swatch);
+  return MaterialColor(color.toARGB32(), swatch);
 }
 
 ThemeData buildQuikTheme() {
@@ -94,8 +94,8 @@ ThemeData buildQuikTheme() {
 
   return base.copyWith(
     canvasColor: zCanvasBg,
-    splashColor: zBlue.withOpacity(0.05),
-    highlightColor: zBlue.withOpacity(0.03),
+    splashColor: zBlue.withValues(alpha: 0.05),
+    highlightColor: zBlue.withValues(alpha: 0.03),
 
     textTheme: base.textTheme.copyWith(
       headlineLarge: const TextStyle(
@@ -191,7 +191,7 @@ ThemeData buildQuikTheme() {
       color: Colors.white,
       elevation: kCardElevation,
       surfaceTintColor: Colors.transparent,
-      shadowColor: Colors.black.withOpacity(0.04),
+      shadowColor: Colors.black.withValues(alpha: 0.04),
       margin: EdgeInsets.zero,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(kAppRadiusLg),
@@ -350,7 +350,7 @@ ThemeData buildQuikTheme() {
       }),
       trackColor: WidgetStateProperty.resolveWith((states) {
         if (states.contains(WidgetState.selected)) return zBlue;
-        return zMuted.withOpacity(0.35);
+        return zMuted.withValues(alpha: 0.35);
       }),
     ),
 
@@ -392,7 +392,7 @@ ThemeData buildQuikTheme() {
 
     tooltipTheme: TooltipThemeData(
       decoration: BoxDecoration(
-        color: zText.withOpacity(0.95),
+        color: zText.withValues(alpha: 0.95),
         borderRadius: BorderRadius.circular(kAppRadiusSm),
       ),
       textStyle: const TextStyle(
@@ -407,7 +407,7 @@ ThemeData buildQuikTheme() {
       color: Colors.white,
       surfaceTintColor: Colors.transparent,
       elevation: 8,
-      shadowColor: Colors.black.withOpacity(0.08),
+      shadowColor: Colors.black.withValues(alpha: 0.08),
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(kAppRadiusLg),
         side: const BorderSide(color: zBorder),

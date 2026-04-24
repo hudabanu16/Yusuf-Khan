@@ -4,15 +4,9 @@
 // 2. collection: export_invoices -> customerId (Ascending) + status (Ascending)
 // 3. collection: outstanding -> status (Ascending) + dueDate (Ascending)
 
-import 'dart:convert';
-import 'dart:typed_data';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:intl/intl.dart';
-import 'package:pdf/pdf.dart';
-import 'package:pdf/widgets.dart' as pw;
-import 'package:printing/printing.dart';
 
 import '../models/export_invoice_item.dart';
 import '../models/export_invoice_model.dart';
@@ -198,7 +192,7 @@ class _ExportInvoiceScreenState extends State<ExportInvoiceScreen> {
                             builder: (context, pos, _) => Column(
                               children: [
                                 DropdownButtonFormField<String>(
-                                  value: pos,
+                                  initialValue: pos,
                                   decoration: _inputDecoration('Place of Supply *', Icons.location_on),
                                   items: _state.placeOfSupplyOptions.map((e) => DropdownMenuItem(value: e, child: Text(e))).toList(),
                                   onChanged: (v) => _state.selectedPlaceOfSupply.value = v!,
@@ -274,7 +268,7 @@ class _ExportInvoiceScreenState extends State<ExportInvoiceScreen> {
                                   subtitle: const Text('Without payment of IGST', style: TextStyle(fontSize: 12)),
                                   value: isLUT,
                                   onChanged: _state.toggleLUT,
-                                  activeColor: accentColor,
+                                  activeThumbColor: accentColor,
                                   contentPadding: EdgeInsets.zero
                               ),
                             ),
@@ -285,7 +279,7 @@ class _ExportInvoiceScreenState extends State<ExportInvoiceScreen> {
                                   subtitle: Text(isRC ? 'Yes' : 'No', style: TextStyle(fontSize: 12, color: isRC ? Colors.green : Colors.grey.shade600, fontWeight: FontWeight.bold)),
                                   value: isRC,
                                   onChanged: (v) => _state.isReverseCharge.value = v,
-                                  activeColor: accentColor,
+                                  activeThumbColor: accentColor,
                                   contentPadding: EdgeInsets.zero
                               ),
                             ),
@@ -316,7 +310,7 @@ class _ExportInvoiceScreenState extends State<ExportInvoiceScreen> {
                       child: ValueListenableBuilder<String>(
                         valueListenable: _state.selectedCurrency,
                         builder: (context, currency, _) => DropdownButtonFormField<String>(
-                          value: currency,
+                          initialValue: currency,
                           decoration: _inputDecoration('Currency', Icons.monetization_on),
                           items: _state.currencyItems,
                           onChanged: (v) => _state.selectedCurrency.value = v!,
@@ -390,7 +384,7 @@ class _ExportInvoiceScreenState extends State<ExportInvoiceScreen> {
                         builder: (context, sameAsBill, _) => Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [const _SubHeader('CONSIGNEE (SHIP TO)'), Row(children: [Switch(value: sameAsBill, onChanged: _state.invoiceId != null ? null : _state.toggleSameAsBill, activeColor: accentColor), const Text('Same as Buyer', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600))])]),
+                            Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [const _SubHeader('CONSIGNEE (SHIP TO)'), Row(children: [Switch(value: sameAsBill, onChanged: _state.invoiceId != null ? null : _state.toggleSameAsBill, activeThumbColor: accentColor), const Text('Same as Buyer', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600))])]),
                             if (sameAsBill) Container(height: 120, decoration: BoxDecoration(color: Colors.grey.shade100, borderRadius: BorderRadius.circular(8)), child: const Center(child: Text("Consignee details matching Buyer.", style: TextStyle(color: Colors.grey))))
                             else Column(
                               children: [
@@ -420,7 +414,7 @@ class _ExportInvoiceScreenState extends State<ExportInvoiceScreen> {
                         children: [
                           Expanded(child: _CustomField(label: 'Pre-Carriage By', controller: _state.preCarriageCtrl)),
                           const SizedBox(width: 16),
-                          Expanded(child: DropdownButtonFormField<String>(value: transportMode, decoration: _inputDecoration('Mode of Transport', Icons.commute), items: _state.transportModeItems, onChanged: (v) => _state.selectedTransportMode.value = v!)),
+                          Expanded(child: DropdownButtonFormField<String>(initialValue: transportMode, decoration: _inputDecoration('Mode of Transport', Icons.commute), items: _state.transportModeItems, onChanged: (v) => _state.selectedTransportMode.value = v!)),
                           const SizedBox(width: 16),
                           Expanded(child: _CustomField(label: _state.carrierLabel, controller: _state.carrierCtrl)),
                         ],
@@ -562,7 +556,7 @@ class _ExportInvoiceScreenState extends State<ExportInvoiceScreen> {
                           child: ValueListenableBuilder<String>(
                             valueListenable: _state.selectedPaymentMode,
                             builder: (context, paymentMode, _) => DropdownButtonFormField<String>(
-                              value: paymentMode,
+                              initialValue: paymentMode,
                               decoration: _inputDecoration('Mode of Realisation *', Icons.payment),
                               items: _state.paymentModeItems,
                               validator: (v) => v == null || v.isEmpty ? 'Required' : null,
@@ -583,7 +577,7 @@ class _ExportInvoiceScreenState extends State<ExportInvoiceScreen> {
                             builder: (context, currentTerm, _) => Column(
                               children: [
                                 DropdownButtonFormField<String>(
-                                  value: currentTerm,
+                                  initialValue: currentTerm,
                                   decoration: _inputDecoration('Payment Terms (Due Logic)', Icons.handshake),
                                   items: _state.paymentTermsList.map((e) => DropdownMenuItem(value: e, child: Text(e))).toList(),
                                   onChanged: (v) {
@@ -682,7 +676,7 @@ class _ExportInvoiceScreenState extends State<ExportInvoiceScreen> {
   Widget _buildLiveSummaryPanel(BuildContext context, bool isLocked) {
     return Container(
       width: double.infinity,
-      decoration: BoxDecoration(color: surfaceColor, border: Border(left: BorderSide(color: Colors.grey.shade200)), boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 10, offset: const Offset(-5, 0))]),
+      decoration: BoxDecoration(color: surfaceColor, border: Border(left: BorderSide(color: Colors.grey.shade200)), boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.02), blurRadius: 10, offset: const Offset(-5, 0))]),
       child: Column(
         children: [
           Container(padding: const EdgeInsets.all(24), decoration: BoxDecoration(color: _state.isCancelled ? Colors.red.shade900 : const Color(0xFF0F2A3D), border: Border(bottom: BorderSide(color: Colors.grey.shade800))), child: Row(children: [const Icon(Icons.analytics, color: Colors.white), const SizedBox(width: 12), Text(_state.isCancelled ? 'Cancelled Document' : 'Live Summary', style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold))])),
@@ -697,7 +691,7 @@ class _ExportInvoiceScreenState extends State<ExportInvoiceScreen> {
                     ValueListenableBuilder<String>(
                       valueListenable: _state.selectedIncoterm,
                       builder: (context, incoterm, _) => DropdownButtonFormField<String>(
-                        value: incoterm,
+                        initialValue: incoterm,
                         decoration: _inputDecoration('Incoterms (Affects Pricing)', Icons.handshake),
                         items: _state.incotermsList.map((e) => DropdownMenuItem(value: e, child: Text(e))).toList(),
                         onChanged: (v) {
@@ -773,7 +767,7 @@ class _ExportInvoiceScreenState extends State<ExportInvoiceScreen> {
           if (!isLocked)
             Container(
               padding: const EdgeInsets.all(24),
-              decoration: BoxDecoration(color: Colors.white, boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10, offset: const Offset(0, -5))]),
+              decoration: BoxDecoration(color: Colors.white, boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.05), blurRadius: 10, offset: const Offset(0, -5))]),
               child: ValueListenableBuilder<bool>(
                 valueListenable: _state.isSaving,
                 builder: (context, isSaving, _) => Column(
@@ -805,7 +799,7 @@ class _ExportInvoiceScreenState extends State<ExportInvoiceScreen> {
         builder: (context, isSaving, _) {
           return Container(
               padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(color: Colors.white, boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.1), blurRadius: 10)]),
+              decoration: BoxDecoration(color: Colors.white, boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.1), blurRadius: 10)]),
               child: SafeArea(
                   child: Row(
                       children: [
@@ -875,7 +869,7 @@ class _ExportInvoiceScreenState extends State<ExportInvoiceScreen> {
     if (!_state.formKey.currentState!.validate()) { ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Please fill all required fields correctly.'), backgroundColor: Colors.red)); return; }
 
     try {
-      final String docId = await _state.saveToFirestore(isDraft ? 'Draft' : 'Submitted');
+      await _state.saveToFirestore(isDraft ? 'Draft' : 'Submitted');
 
       if (!mounted) return;
 
@@ -1031,7 +1025,7 @@ class ExportInvoiceState {
     void updateSummary() => summaryState.value = _computeSummary();
     freightCtrl.addListener(updateSummary);
     insuranceCtrl.addListener(updateSummary);
-    exchangeRateCtrl.addListener(() { taxRate.notifyListeners(); updateSummary(); });
+    exchangeRateCtrl.addListener(updateSummary);
     items.addListener(updateSummary);
     isLUT.addListener(updateSummary);
     taxRate.addListener(updateSummary);
@@ -1066,7 +1060,7 @@ class ExportInvoiceState {
     final counterSnap = await tx.get(counterRef);
     int nextSeq = 1;
     if (counterSnap.exists) {
-      final counterMap = counterSnap.data() as Map<String, dynamic>?;
+      final counterMap = counterSnap.data();
       nextSeq = (counterMap?['currentValue'] ?? 0) + 1;
     }
 
@@ -1136,9 +1130,13 @@ class ExportInvoiceState {
 
     String stat = "DRAFT";
     if (gt > 0) {
-      if (_round(existingAmountReceived) == 0.0) stat = "UNPAID";
-      else if (_round(existingAmountReceived) >= gt) stat = "PAID";
-      else stat = "PARTIALLY PAID";
+      if (_round(existingAmountReceived) == 0.0) {
+        stat = "UNPAID";
+      } else if (_round(existingAmountReceived) >= gt) {
+        stat = "PAID";
+      } else {
+        stat = "PARTIALLY PAID";
+      }
     }
 
     return ExportSummaryData(
@@ -1161,18 +1159,24 @@ class ExportInvoiceState {
         ? safe(customPaymentTermCtrl.text).toLowerCase()
         : selectedPaymentTermState.value.toLowerCase();
 
-    if (term.contains('net 15')) dueDateNotifier.value = d.add(const Duration(days: 15));
-    else if (term.contains('net 30') || term.contains('da 30')) dueDateNotifier.value = d.add(const Duration(days: 30));
-    else if (term.contains('net 45')) dueDateNotifier.value = d.add(const Duration(days: 45));
-    else if (term.contains('net 60')) dueDateNotifier.value = d.add(const Duration(days: 60));
-    else dueDateNotifier.value = d;
+    if (term.contains('net 15')) {
+      dueDateNotifier.value = d.add(const Duration(days: 15));
+    } else if (term.contains('net 30') || term.contains('da 30')) {
+      dueDateNotifier.value = d.add(const Duration(days: 30));
+    } else if (term.contains('net 45')) {
+      dueDateNotifier.value = d.add(const Duration(days: 45));
+    } else if (term.contains('net 60')) {
+      dueDateNotifier.value = d.add(const Duration(days: 60));
+    } else {
+      dueDateNotifier.value = d;
+    }
   }
 
   String formatDate(DateTime d) => '${d.day.toString().padLeft(2, '0')}/${d.month.toString().padLeft(2, '0')}/${d.year}';
   String get loadingLabel => selectedTransportMode.value == 'Air / Cargo' ? 'Airport of Loading' : selectedTransportMode.value == 'Road' ? 'Place of Receipt' : selectedTransportMode.value == 'Rail' ? 'Station of Loading' : 'Port of Loading';
   String get dischargeLabel => selectedTransportMode.value == 'Air / Cargo' ? 'Airport of Discharge' : selectedTransportMode.value == 'Road' ? 'Place of Delivery' : selectedTransportMode.value == 'Rail' ? 'Station of Discharge' : 'Port of Discharge';
   String get carrierLabel => selectedTransportMode.value == 'Air / Cargo' ? 'Flight Number' : selectedTransportMode.value == 'Road' ? 'Vehicle Number' : selectedTransportMode.value == 'Rail' ? 'Train Number' : 'Vessel Name / Voyage No.';
-  double get subtotal => items.value.fold(0.0, (sum, item) => sum + item.computedAmount);
+  double get subtotal => items.value.fold(0.0, (total, item) => total + item.computedAmount);
 
   Future<void> _loadExistingInvoice() async {
     try {
@@ -1255,7 +1259,11 @@ class ExportInvoiceState {
   void toggleLUT(bool val) { isLUT.value = val; _updateDeclaration(); }
   void toggleSameAsBill(bool val) { sameAsBill.value = val; if (val) _copyBillToShip(); }
   void handleBillToChange() { if (sameAsBill.value) _copyBillToShip(); }
-  void saveItem(ExportInvoiceItem item, int? index) { final list = List<ExportInvoiceItem>.from(items.value); if (index != null) list[index] = item; else list.add(item); items.value = list; }
+  void saveItem(ExportInvoiceItem item, int? index) { final list = List<ExportInvoiceItem>.from(items.value); if (index != null) {
+    list[index] = item;
+  } else {
+    list.add(item);
+  } items.value = list; }
   void removeItem(int index) { final list = List<ExportInvoiceItem>.from(items.value); list.removeAt(index); items.value = list; }
 
   void _copyBillToShip() { shipName.text = billName.text; shipAddress.text = billAddress.text; shipCountry.text = billCountry.text; shipEmail.text = billEmail.text; shipPhone.text = billPhone.text; shipContact.text = billContact.text; }
@@ -1570,7 +1578,7 @@ InputDecoration _inputDecoration(String label, IconData icon) {
     labelText: label,
     labelStyle: const TextStyle(fontSize: 14),
     floatingLabelBehavior: FloatingLabelBehavior.always,
-    prefixIcon: Icon(icon, size: 20, color: primaryColor.withOpacity(0.7)),
+    prefixIcon: Icon(icon, size: 20, color: primaryColor.withValues(alpha: 0.7)),
     border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide(color: Colors.grey.shade300)),
     enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide(color: Colors.grey.shade300)),
     filled: true,
@@ -1588,11 +1596,19 @@ class _CustomField extends StatelessWidget {
   final int maxLines;
   final ValueChanged<String>? onChanged;
   final bool readOnly;
-  final FocusNode? focusNode;
-  final Widget? suffixIcon;
   final String? Function(String?)? validator;
 
-  const _CustomField({required this.label, this.controller, this.icon, this.required = false, this.keyboardType = TextInputType.text, this.maxLines = 1, this.onChanged, this.readOnly = false, this.focusNode, this.suffixIcon, this.validator});
+  const _CustomField({
+    required this.label,
+    this.controller,
+    this.icon,
+    this.required = false,
+    this.keyboardType = TextInputType.text,
+    this.maxLines = 1,
+    this.onChanged,
+    this.readOnly = false,
+    this.validator,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -1600,7 +1616,6 @@ class _CustomField extends StatelessWidget {
       padding: const EdgeInsets.only(bottom: 16.0),
       child: TextFormField(
         controller: controller,
-        focusNode: focusNode,
         maxLines: maxLines,
         keyboardType: keyboardType,
         onChanged: onChanged,
@@ -1609,7 +1624,6 @@ class _CustomField extends StatelessWidget {
         style: TextStyle(fontSize: 14, color: readOnly ? Colors.grey.shade700 : Colors.black87),
         decoration: _inputDecoration(label, icon ?? Icons.edit_note).copyWith(
           fillColor: readOnly ? Colors.grey.shade100 : Colors.white,
-          suffixIcon: suffixIcon,
         ),
       ),
     );
