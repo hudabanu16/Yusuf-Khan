@@ -1,3 +1,5 @@
+// 📄 File Path: lib/modules/sales/inquiries/screens_inquiry_list.dart
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
@@ -70,12 +72,18 @@ class _ScreensInquiryListState extends State<ScreensInquiryList> {
       resolvedCompanyId = _safeString(userData['companyId']);
     }
 
-    if (resolvedCompanyId.isEmpty && userData['companyIds'] is List && (userData['companyIds'] as List).isNotEmpty) {
+    if (resolvedCompanyId.isEmpty &&
+        userData['companyIds'] is List &&
+        (userData['companyIds'] as List).isNotEmpty) {
       resolvedCompanyId = _safeString((userData['companyIds'] as List).first);
     }
 
-    if (resolvedCompanyId.isEmpty && userData['memberships'] is Map && (userData['memberships'] as Map).isNotEmpty) {
-      resolvedCompanyId = _safeString((userData['memberships'] as Map).keys.first);
+    if (resolvedCompanyId.isEmpty &&
+        userData['memberships'] is Map &&
+        (userData['memberships'] as Map).isNotEmpty) {
+      resolvedCompanyId = _safeString(
+        (userData['memberships'] as Map).keys.first,
+      );
     }
 
     userData['companyId'] = resolvedCompanyId;
@@ -146,8 +154,9 @@ class _ScreensInquiryListState extends State<ScreensInquiryList> {
   }
 
   // --- 4. SMART FIRESTORE AUTO-FALLBACK QUERY ---
-  Future<Query<Map<String, dynamic>>> _resolveInquiryQuery(String companyId) async {
-    debugPrint("CompanyId: $companyId");
+  Future<Query<Map<String, dynamic>>> _resolveInquiryQuery(
+    String companyId,
+  ) async {
     final scopedQuery = FirebaseFirestore.instance
         .collection('companies')
         .doc(companyId)
@@ -156,7 +165,6 @@ class _ScreensInquiryListState extends State<ScreensInquiryList> {
     try {
       final scopedSnap = await scopedQuery.limit(1).get();
       if (scopedSnap.docs.isNotEmpty) {
-        debugPrint("Using company scoped inquiries");
         return scopedQuery.orderBy('createdAt', descending: true);
       }
 
@@ -166,14 +174,12 @@ class _ScreensInquiryListState extends State<ScreensInquiryList> {
 
       final rootSnap = await rootQuery.limit(1).get();
       if (rootSnap.docs.isNotEmpty) {
-        debugPrint("Using root collection inquiries (Fallback)");
-        return rootQuery; // UI sorts chronologically locally, protects against missing composite index
+        return rootQuery;
       }
     } catch (e) {
       debugPrint("Query resolution error: $e");
     }
 
-    debugPrint("Using company scoped inquiries (Default/Empty)");
     return scopedQuery.orderBy('createdAt', descending: true);
   }
 
@@ -237,12 +243,12 @@ class _ScreensInquiryListState extends State<ScreensInquiryList> {
           .toLowerCase();
 
       final mobile =
-      (data['contactMobile'] ??
-          data['contactPhone'] ??
-          data['mobile'] ??
-          '')
-          .toString()
-          .toLowerCase();
+          (data['contactMobile'] ??
+                  data['contactPhone'] ??
+                  data['mobile'] ??
+                  '')
+              .toString()
+              .toLowerCase();
 
       final projectName = (data['projectName'] ?? '').toString().toLowerCase();
 
@@ -257,15 +263,15 @@ class _ScreensInquiryListState extends State<ScreensInquiryList> {
 
       final matchesSearch =
           normalizedSearch.isEmpty ||
-              inquiryCode.contains(normalizedSearch) ||
-              customerCode.contains(normalizedSearch) ||
-              customerName.contains(normalizedSearch) ||
-              subject.contains(normalizedSearch) ||
-              contactName.contains(normalizedSearch) ||
-              mobile.contains(normalizedSearch) ||
-              projectName.contains(normalizedSearch) ||
-              source.contains(normalizedSearch) ||
-              requiredProducts.contains(normalizedSearch);
+          inquiryCode.contains(normalizedSearch) ||
+          customerCode.contains(normalizedSearch) ||
+          customerName.contains(normalizedSearch) ||
+          subject.contains(normalizedSearch) ||
+          contactName.contains(normalizedSearch) ||
+          mobile.contains(normalizedSearch) ||
+          projectName.contains(normalizedSearch) ||
+          source.contains(normalizedSearch) ||
+          requiredProducts.contains(normalizedSearch);
 
       final matchesStatus = _statusFilter == 'All' || status == _statusFilter;
       final matchesPriority =
@@ -291,193 +297,134 @@ class _ScreensInquiryListState extends State<ScreensInquiryList> {
     return filtered;
   }
 
-  Color _priorityColor(String priority) {
-    switch (priority.toLowerCase()) {
-      case 'hot':
-        return const Color(0xFFDC2626);
-      case 'warm':
-        return const Color(0xFFD97706);
-      case 'cold':
-        return const Color(0xFF2563EB);
-      default:
-        return const Color(0xFF6B7280);
-    }
+  bool get _hasActiveFilters =>
+      _statusFilter != 'All' || _priorityFilter != 'All';
+
+  void _resetFilters() {
+    setState(() {
+      _statusFilter = 'All';
+      _priorityFilter = 'All';
+    });
   }
 
-  Color _statusColor(String status) {
-    switch (status.toLowerCase()) {
-      case 'open':
-        return const Color(0xFF2563EB);
-      case 'qualified':
-        return const Color(0xFF7C3AED);
-      case 'quotation pending':
-        return const Color(0xFFD97706);
-      case 'quotation sent':
-        return const Color(0xFF0F766E);
-      case 'follow-up pending':
-        return const Color(0xFFEA580C);
-      case 'won':
-        return const Color(0xFF16A34A);
-      case 'lost':
-        return const Color(0xFFDC2626);
-      case 'not qualified':
-        return const Color(0xFF6B7280);
-      default:
-        return const Color(0xFF6B7280);
-    }
-  }
+  Future<void> _openFilterSheet() async {
+    String tempStatus = _statusFilter;
+    String tempPriority = _priorityFilter;
 
-  Widget _buildSummaryCard({
-    required String title,
-    required String value,
-    required Color tone,
-    required IconData icon,
-  }) {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: const Color(0xFFE5EAF2)),
-        boxShadow: const [
-          BoxShadow(
-            color: Color(0x0A000000),
-            blurRadius: 10,
-            offset: Offset(0, 4),
-          ),
-        ],
-      ),
-      child: Row(
-        children: [
-          Container(
-            height: 42,
-            width: 42,
-            decoration: BoxDecoration(
-              color: tone.withValues(alpha: 0.10),
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: Icon(icon, color: tone, size: 20),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  value,
-                  style: const TextStyle(
-                    fontSize: 20,
-                    fontWeight: FontWeight.w800,
-                    color: Color(0xFF111827),
-                  ),
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  title,
-                  style: const TextStyle(
-                    fontSize: 12,
-                    color: Color(0xFF6B7280),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
+    const statuses = [
+      'All',
+      'Open',
+      'Qualified',
+      'Quotation Pending',
+      'Quotation Sent',
+      'Follow-up Pending',
+      'Won',
+      'Lost',
+      'Not Qualified',
+    ];
 
-  Widget _buildFilterChip({
-    required String label,
-    required bool selected,
-    required VoidCallback onTap,
-    Color? selectedColor,
-  }) {
-    final tone = selectedColor ?? const Color(0xFF2563EB);
+    const priorities = ['All', 'Hot', 'Warm', 'Cold'];
 
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(999),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
-        decoration: BoxDecoration(
-          color: selected ? tone.withValues(alpha: 0.12) : Colors.white,
-          borderRadius: BorderRadius.circular(999),
-          border: Border.all(color: selected ? tone : const Color(0xFFD9E1EC)),
-        ),
-        child: Text(
-          label,
-          style: TextStyle(
-            fontSize: 13,
-            fontWeight: FontWeight.w600,
-            color: selected ? tone : const Color(0xFF374151),
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildMetaPill({
-    required IconData icon,
-    required String text,
-    Color? color,
-  }) {
-    if (text.trim().isEmpty) return const SizedBox.shrink();
-
-    final tone = color ?? const Color(0xFF6B7280);
-
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
-      decoration: BoxDecoration(
-        color: tone.withValues(alpha: 0.08),
-        borderRadius: BorderRadius.circular(999),
-        border: Border.all(color: tone.withValues(alpha: 0.18)),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, size: 14, color: tone),
-          const SizedBox(width: 6),
-          Flexible(
-            child: Text(
-              text,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                fontSize: 12,
-                fontWeight: FontWeight.w600,
-                color: tone == const Color(0xFF6B7280)
-                    ? const Color(0xFF374151)
-                    : tone,
+    await showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      backgroundColor: Colors.white,
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (ctx, setModalState) {
+            return Padding(
+              padding: EdgeInsets.fromLTRB(
+                16,
+                6,
+                16,
+                MediaQuery.of(context).viewInsets.bottom + 16,
               ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildFooterRight(Inquiry inquiry) {
-    return Wrap(
-      spacing: 8,
-      runSpacing: 8,
-      alignment: WrapAlignment.end,
-      children: [
-        _buildMetaPill(
-          icon: Icons.event_outlined,
-          text: inquiry.nextFollowUpDate == null
-              ? 'No follow-up'
-              : 'Follow-up ${_formatCompactDate(inquiry.nextFollowUpDate)}',
-          color: inquiry.nextFollowUpDate == null
-              ? const Color(0xFF6B7280)
-              : const Color(0xFF7C3AED),
-        ),
-        if (inquiry.linkedQuotationId.isNotEmpty)
-          _buildMetaPill(
-            icon: Icons.receipt_long_outlined,
-            text: 'Quotation linked',
-            color: const Color(0xFF0F766E),
-          ),
-      ],
+              child: SingleChildScrollView(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'Filters',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    const SizedBox(height: 14),
+                    DropdownButtonFormField<String>(
+                      value: tempStatus,
+                      decoration: const InputDecoration(
+                        labelText: 'Status',
+                        isDense: true,
+                        border: OutlineInputBorder(),
+                      ),
+                      items: statuses
+                          .map(
+                            (e) => DropdownMenuItem(value: e, child: Text(e)),
+                          )
+                          .toList(),
+                      onChanged: (value) {
+                        setModalState(() {
+                          tempStatus = value ?? 'All';
+                        });
+                      },
+                    ),
+                    const SizedBox(height: 10),
+                    DropdownButtonFormField<String>(
+                      value: tempPriority,
+                      decoration: const InputDecoration(
+                        labelText: 'Priority',
+                        isDense: true,
+                        border: OutlineInputBorder(),
+                      ),
+                      items: priorities
+                          .map(
+                            (e) => DropdownMenuItem(value: e, child: Text(e)),
+                          )
+                          .toList(),
+                      onChanged: (value) {
+                        setModalState(() {
+                          tempPriority = value ?? 'All';
+                        });
+                      },
+                    ),
+                    const SizedBox(height: 14),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: TextButton(
+                            onPressed: () {
+                              setState(() {
+                                _statusFilter = 'All';
+                                _priorityFilter = 'All';
+                              });
+                              Navigator.pop(context);
+                            },
+                            child: const Text('Reset'),
+                          ),
+                        ),
+                        Expanded(
+                          child: ElevatedButton(
+                            onPressed: () {
+                              setState(() {
+                                _statusFilter = tempStatus;
+                                _priorityFilter = tempPriority;
+                              });
+                              Navigator.pop(context);
+                            },
+                            child: const Text('Apply'),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            );
+          },
+        );
+      },
     );
   }
 
@@ -515,7 +462,7 @@ class _ScreensInquiryListState extends State<ScreensInquiryList> {
       MaterialPageRoute(
         builder: (_) => QuotationScreenLocal(
           userId:
-          (FirebaseAuth.instance.currentUser?.uid.hashCode ?? 0).abs() %
+              (FirebaseAuth.instance.currentUser?.uid.hashCode ?? 0).abs() %
               1000000,
         ),
       ),
@@ -534,617 +481,6 @@ class _ScreensInquiryListState extends State<ScreensInquiryList> {
     );
   }
 
-  Widget _buildInquiryCard({
-    required BuildContext context,
-    required QueryDocumentSnapshot<Map<String, dynamic>> doc,
-    required Inquiry inquiry,
-    required String role,
-    required String currentUserUid,
-  }) {
-    final assignedToUid = inquiry.assignedToUid;
-    final createdByUid = inquiry.createdBy;
-
-    final isAssignedToCurrentUser = assignedToUid == currentUserUid;
-    final isCreatedByCurrentUser = createdByUid == currentUserUid;
-
-    final priority = inquiry.priority.isEmpty ? 'Warm' : inquiry.priority;
-    final status = inquiry.status.isEmpty ? 'Open' : inquiry.status;
-    final subject = inquiry.subject;
-    final inquiryNumber = inquiry.inquiryNumber.isEmpty
-        ? '-'
-        : inquiry.inquiryNumber;
-    final source = inquiry.source;
-    final inquiryType = inquiry.inquiryType;
-    final location = inquiry.location;
-    final quantityScope = inquiry.quantityScope;
-    final expectedValue = inquiry.expectedValue;
-    final assignedToName = inquiry.assignedToName;
-    final channelRef = inquiry.sourceReference;
-    final createdAtText = inquiry.createdAt == null
-        ? '-'
-        : _formatDate(inquiry.createdAt!);
-
-    return Container(
-      margin: const EdgeInsets.only(bottom: 14),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: const Color(0xFFE5EAF2)),
-        boxShadow: const [
-          BoxShadow(
-            color: Color(0x0A000000),
-            blurRadius: 12,
-            offset: Offset(0, 4),
-          ),
-        ],
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: LayoutBuilder(
-          builder: (context, constraints) {
-            final isTight = constraints.maxWidth < 760;
-
-            final header = Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Container(
-                  height: 46,
-                  width: 46,
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFEAF1FF),
-                    borderRadius: BorderRadius.circular(14),
-                  ),
-                  child: const Icon(
-                    Icons.support_agent_outlined,
-                    color: Color(0xFF2563EB),
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      if (subject.isNotEmpty)
-                        Text(
-                          subject,
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.w700,
-                            color: Color(0xFF111827),
-                          ),
-                        ),
-                      if (subject.isNotEmpty) const SizedBox(height: 4),
-                      Text(
-                        inquiry.customerName.isEmpty
-                            ? '(No Customer Name)'
-                            : inquiry.customerName,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w600,
-                          color: Color(0xFF374151),
-                        ),
-                      ),
-                      const SizedBox(height: 4),
-                      Wrap(
-                        spacing: 8,
-                        runSpacing: 8,
-                        children: [
-                          if (inquiry.contactName.isNotEmpty)
-                            _buildMetaPill(
-                              icon: Icons.person_outline,
-                              text: inquiry.contactName,
-                            ),
-                          if (inquiry.contactPhone.isNotEmpty)
-                            _buildMetaPill(
-                              icon: Icons.phone_outlined,
-                              text: inquiry.contactPhone,
-                            ),
-                          if (source.isNotEmpty)
-                            _buildMetaPill(
-                              icon: Icons.hub_outlined,
-                              text: source,
-                            ),
-                          if (inquiryType.isNotEmpty)
-                            _buildMetaPill(
-                              icon: Icons.category_outlined,
-                              text: inquiryType,
-                            ),
-                        ],
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.end,
-                  children: [
-                    _buildMetaPill(
-                      icon: Icons.flag_outlined,
-                      text: status,
-                      color: _statusColor(status),
-                    ),
-                    const SizedBox(height: 8),
-                    _buildMetaPill(
-                      icon: Icons.local_fire_department_outlined,
-                      text: priority,
-                      color: _priorityColor(priority),
-                    ),
-                  ],
-                ),
-              ],
-            );
-
-            final details = Wrap(
-              spacing: 10,
-              runSpacing: 10,
-              children: [
-                _buildMetaPill(icon: Icons.tag_outlined, text: inquiryNumber),
-                if (channelRef.isNotEmpty)
-                  _buildMetaPill(icon: Icons.link_outlined, text: channelRef),
-                if (location.isNotEmpty)
-                  _buildMetaPill(
-                    icon: Icons.location_on_outlined,
-                    text: location,
-                  ),
-                if (quantityScope.isNotEmpty)
-                  _buildMetaPill(
-                    icon: Icons.numbers_outlined,
-                    text: quantityScope,
-                  ),
-                if (expectedValue.isNotEmpty)
-                  _buildMetaPill(
-                    icon: Icons.currency_rupee_outlined,
-                    text: expectedValue,
-                  ),
-                if (inquiry.deliveryTimeline.isNotEmpty)
-                  _buildMetaPill(
-                    icon: Icons.local_shipping_outlined,
-                    text: inquiry.deliveryTimeline,
-                  ),
-              ],
-            );
-
-            final footerLeft = Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  assignedToUid.isEmpty
-                      ? 'Unassigned'
-                      : isAssignedToCurrentUser
-                      ? 'Assigned to you'
-                      : assignedToName.isNotEmpty
-                      ? 'Assigned to $assignedToName'
-                      : 'Assigned',
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: assignedToUid.isEmpty
-                        ? Colors.red
-                        : isAssignedToCurrentUser
-                        ? Colors.green
-                        : const Color(0xFF2563EB),
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-                if (isCreatedByCurrentUser && !isAssignedToCurrentUser) ...[
-                  const SizedBox(height: 4),
-                  const Text(
-                    'Created by you',
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: Colors.blueGrey,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ],
-                const SizedBox(height: 6),
-                Text(
-                  'Created: $createdAtText',
-                  style: const TextStyle(
-                    fontSize: 12,
-                    color: Color(0xFF6B7280),
-                  ),
-                ),
-              ],
-            );
-
-            final actions = Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: [
-                OutlinedButton.icon(
-                  onPressed: () => _openEditInquiry(
-                    context: context,
-                    doc: doc,
-                    inquiry: inquiry,
-                    currentUserUid: currentUserUid,
-                  ),
-                  icon: const Icon(Icons.edit_outlined, size: 18),
-                  label: const Text('Open'),
-                ),
-                FilledButton.icon(
-                  onPressed: () => _openQuotationFromInquiry(inquiry: inquiry),
-                  icon: const Icon(Icons.receipt_long_outlined, size: 18),
-                  label: const Text('Create Quotation'),
-                ),
-              ],
-            );
-
-            final footer = Container(
-              margin: const EdgeInsets.only(top: 14),
-              padding: const EdgeInsets.all(14),
-              decoration: BoxDecoration(
-                color: const Color(0xFFF8FAFC),
-                borderRadius: BorderRadius.circular(14),
-                border: Border.all(color: const Color(0xFFE5E7EB)),
-              ),
-              child: isTight
-                  ? Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  footerLeft,
-                  const SizedBox(height: 10),
-                  _buildFooterRight(inquiry),
-                  const SizedBox(height: 10),
-                  actions,
-                ],
-              )
-                  : Column(
-                children: [
-                  Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Expanded(child: footerLeft),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Align(
-                          alignment: Alignment.centerRight,
-                          child: _buildFooterRight(inquiry),
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 12),
-                  Align(alignment: Alignment.centerRight, child: actions),
-                ],
-              ),
-            );
-
-            return Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                header,
-                if (inquiry.requiredProducts.isNotEmpty) ...[
-                  const SizedBox(height: 14),
-                  Text(
-                    inquiry.requiredProducts,
-                    maxLines: 3,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      fontSize: 13,
-                      height: 1.5,
-                      color: Color(0xFF4B5563),
-                    ),
-                  ),
-                ],
-                const SizedBox(height: 14),
-                details,
-                footer,
-              ],
-            );
-          },
-        ),
-      ),
-    );
-  }
-
-  Widget _buildTopBar() {
-    return Container(
-      width: double.infinity,
-      margin: const EdgeInsets.only(bottom: 18),
-      padding: const EdgeInsets.all(18),
-      decoration: BoxDecoration(
-        gradient: const LinearGradient(
-          colors: [Color(0xFF0F172A), Color(0xFF1E3A8A)],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
-        borderRadius: BorderRadius.circular(18),
-      ),
-      child: Wrap(
-        runSpacing: 12,
-        spacing: 12,
-        alignment: WrapAlignment.spaceBetween,
-        crossAxisAlignment: WrapCrossAlignment.center,
-        children: [
-          const Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                'Sales Inquiries',
-                style: TextStyle(
-                  color: Colors.white,
-                  fontSize: 22,
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-              SizedBox(height: 4),
-              Text(
-                'Manage leads, follow-ups, quotations and inquiry ownership in one place.',
-                style: TextStyle(color: Color(0xFFDCE7FF), fontSize: 13),
-              ),
-            ],
-          ),
-          SizedBox(
-            width: 320,
-            child: TextField(
-              controller: _searchController,
-              onChanged: (value) {
-                setState(() {
-                  _searchText = value.trim().toLowerCase();
-                });
-              },
-              decoration: InputDecoration(
-                hintText: 'Search customer, subject, contact, inquiry no...',
-                hintStyle: const TextStyle(fontSize: 13),
-                prefixIcon: const Icon(Icons.search),
-                suffixIcon: _searchText.trim().isEmpty
-                    ? null
-                    : IconButton(
-                  onPressed: () {
-                    _searchController.clear();
-                    setState(() {
-                      _searchText = '';
-                    });
-                  },
-                  icon: const Icon(Icons.close),
-                ),
-                filled: true,
-                fillColor: Colors.white,
-                contentPadding: const EdgeInsets.symmetric(
-                  horizontal: 14,
-                  vertical: 12,
-                ),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(14),
-                  borderSide: BorderSide.none,
-                ),
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildFiltersRow() {
-    const statuses = [
-      'All',
-      'Open',
-      'Qualified',
-      'Quotation Pending',
-      'Quotation Sent',
-      'Follow-up Pending',
-      'Won',
-      'Lost',
-      'Not Qualified',
-    ];
-
-    const priorities = ['All', 'Hot', 'Warm', 'Cold'];
-
-    return Container(
-      width: double.infinity,
-      margin: const EdgeInsets.only(bottom: 18),
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: const Color(0xFFE5EAF2)),
-        boxShadow: const [
-          BoxShadow(
-            color: Color(0x0A000000),
-            blurRadius: 12,
-            offset: Offset(0, 4),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Text(
-            'Filters',
-            style: TextStyle(
-              fontSize: 15,
-              fontWeight: FontWeight.w700,
-              color: Color(0xFF111827),
-            ),
-          ),
-          const SizedBox(height: 12),
-          const Text(
-            'Status',
-            style: TextStyle(
-              fontSize: 12,
-              color: Color(0xFF6B7280),
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-          const SizedBox(height: 8),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: statuses
-                .map(
-                  (e) => _buildFilterChip(
-                label: e,
-                selected: _statusFilter == e,
-                selectedColor: e == 'All'
-                    ? const Color(0xFF2563EB)
-                    : _statusColor(e),
-                onTap: () {
-                  setState(() => _statusFilter = e);
-                },
-              ),
-            )
-                .toList(),
-          ),
-          const SizedBox(height: 14),
-          const Text(
-            'Priority',
-            style: TextStyle(
-              fontSize: 12,
-              color: Color(0xFF6B7280),
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-          const SizedBox(height: 8),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: priorities
-                .map(
-                  (e) => _buildFilterChip(
-                label: e,
-                selected: _priorityFilter == e,
-                selectedColor: e == 'All'
-                    ? const Color(0xFF2563EB)
-                    : _priorityColor(e),
-                onTap: () {
-                  setState(() => _priorityFilter = e);
-                },
-              ),
-            )
-                .toList(),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildSummarySection(
-      List<QueryDocumentSnapshot<Map<String, dynamic>>> docs,
-      ) {
-    int total = docs.length;
-    int open = 0;
-    int followUp = 0;
-    int won = 0;
-    int hot = 0;
-
-    for (final doc in docs) {
-      final inquiry = Inquiry.fromSnapshot(doc);
-      final status = inquiry.status.toLowerCase();
-      final priority = inquiry.priority.toLowerCase();
-
-      if (status == 'open') open++;
-      if (status == 'follow-up pending') followUp++;
-      if (status == 'won') won++;
-      if (priority == 'hot') hot++;
-    }
-
-    return Container(
-      margin: const EdgeInsets.only(bottom: 18),
-      child: LayoutBuilder(
-        builder: (context, constraints) {
-          final isMobile = constraints.maxWidth < 760;
-
-          final cards = [
-            _buildSummaryCard(
-              title: 'Total Inquiries',
-              value: total.toString(),
-              tone: const Color(0xFF2563EB),
-              icon: Icons.inbox_outlined,
-            ),
-            _buildSummaryCard(
-              title: 'Open',
-              value: open.toString(),
-              tone: const Color(0xFF2563EB),
-              icon: Icons.folder_open_outlined,
-            ),
-            _buildSummaryCard(
-              title: 'Follow-up Pending',
-              value: followUp.toString(),
-              tone: const Color(0xFFEA580C),
-              icon: Icons.event_repeat_outlined,
-            ),
-            _buildSummaryCard(
-              title: 'Won',
-              value: won.toString(),
-              tone: const Color(0xFF16A34A),
-              icon: Icons.check_circle_outline,
-            ),
-            _buildSummaryCard(
-              title: 'Hot Priority',
-              value: hot.toString(),
-              tone: const Color(0xFFDC2626),
-              icon: Icons.local_fire_department_outlined,
-            ),
-          ];
-
-          if (isMobile) {
-            return Column(
-              children: cards
-                  .map(
-                    (e) => Padding(
-                  padding: const EdgeInsets.only(bottom: 12),
-                  child: e,
-                ),
-              )
-                  .toList(),
-            );
-          }
-
-          return Wrap(
-            spacing: 12,
-            runSpacing: 12,
-            children: cards.map((e) => SizedBox(width: 220, child: e)).toList(),
-          );
-        },
-      ),
-    );
-  }
-
-  Widget _buildEmptyState() {
-    return Center(
-      child: Container(
-        constraints: const BoxConstraints(maxWidth: 420),
-        padding: const EdgeInsets.all(24),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(18),
-          border: Border.all(color: const Color(0xFFE5EAF2)),
-        ),
-        child: const Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(Icons.search_off_rounded, size: 48, color: Color(0xFF94A3B8)),
-            SizedBox(height: 12),
-            Text(
-              'No inquiries found',
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.w700,
-                color: Color(0xFF111827),
-              ),
-            ),
-            SizedBox(height: 6),
-            Text(
-              'Try changing search or filters, or create a new inquiry using the + button.',
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                fontSize: 13,
-                color: Color(0xFF6B7280),
-                height: 1.5,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     final firebaseUser = FirebaseAuth.instance.currentUser;
@@ -1153,7 +489,6 @@ class _ScreensInquiryListState extends State<ScreensInquiryList> {
       return const Scaffold(body: Center(child: Text('User not logged in')));
     }
 
-    // Safety fallback just in case initState didn't bind
     _profileDataFuture ??= _loadProfileAndQuery(firebaseUser.uid);
 
     return FutureBuilder<Map<String, dynamic>?>(
@@ -1165,76 +500,47 @@ class _ScreensInquiryListState extends State<ScreensInquiryList> {
           );
         }
 
-        if (userSnap.hasError) {
-          return Scaffold(
-            appBar: AppBar(title: const Text('Inquiries')),
-            body: Center(
-              child: Padding(
-                padding: const EdgeInsets.all(16),
-                child: Text(
-                  'Error loading user profile:\n${userSnap.error}',
-                  textAlign: TextAlign.center,
-                  style: const TextStyle(color: Colors.red),
-                ),
-              ),
-            ),
+        if (userSnap.hasError || userSnap.data == null) {
+          return const Scaffold(
+            body: Center(child: Text('Error loading user profile')),
           );
         }
 
-        final userData = userSnap.data;
-        if (userData == null) {
-          return Scaffold(
-            appBar: AppBar(title: const Text('Inquiries')),
-            body: const Center(child: Text('User profile not found')),
-          );
-        }
-
+        final userData = userSnap.data!;
         final companyId = _safeString(userData['companyId']);
         final role = _safeString(userData['role']).isEmpty
             ? 'sales'
             : _safeString(userData['role']);
 
-        if (companyId.isEmpty) {
-          return Scaffold(
-            appBar: AppBar(title: const Text('Inquiries')),
-            body: const Center(child: Text('No company linked to this user')),
-          );
-        }
-
-        if (!_hasInquiryPermission(userData)) {
-          return Scaffold(
-            appBar: AppBar(title: const Text('Inquiries')),
-            body: const Center(
-              child: Text('You do not have permission to view inquiries'),
-            ),
+        if (companyId.isEmpty || !_hasInquiryPermission(userData)) {
+          return const Scaffold(
+            body: Center(child: Text('No permission or company linked.')),
           );
         }
 
         if (_inquiryQuery == null) {
-          return Scaffold(
-            appBar: AppBar(title: const Text('Inquiries')),
-            body: const Center(child: Text('Error resolving data path')),
+          return const Scaffold(
+            body: Center(child: Text('Error resolving data path')),
           );
         }
 
         return Scaffold(
-          backgroundColor: const Color(0xFFF5F7FB),
+          backgroundColor: Colors.white,
           appBar: AppBar(
             elevation: 0,
+            toolbarHeight: 6,
+            automaticallyImplyLeading: false,
             backgroundColor: Colors.white,
-            foregroundColor: const Color(0xFF111827),
-            surfaceTintColor: Colors.white,
-            title: const Text(
-              'Inquiries',
-              style: TextStyle(fontWeight: FontWeight.w700),
-            ),
+            surfaceTintColor: Colors.transparent,
           ),
           floatingActionButton: FloatingActionButton(
+            tooltip: 'Add Inquiry',
             backgroundColor: const Color(0xFF2563EB),
             foregroundColor: Colors.white,
             onPressed: () async {
-              final isFabricationInquiryProfile =
-                  InventoryConfigProvider.of(context).isFabricationInventory;
+              final isFabricationInquiryProfile = InventoryConfigProvider.of(
+                context,
+              ).isFabricationInventory;
               final result = await Navigator.push(
                 context,
                 MaterialPageRoute(
@@ -1263,7 +569,6 @@ class _ScreensInquiryListState extends State<ScreensInquiryList> {
                     backgroundColor: Colors.green,
                   ),
                 );
-                // Hard-reload the future to force a complete re-fetch
                 setState(() {
                   _profileDataFuture = _loadProfileAndQuery(firebaseUser.uid);
                 });
@@ -1276,13 +581,9 @@ class _ScreensInquiryListState extends State<ScreensInquiryList> {
             builder: (context, snapshot) {
               if (snapshot.hasError) {
                 return Center(
-                  child: Padding(
-                    padding: const EdgeInsets.all(16),
-                    child: Text(
-                      'Error loading inquiries:\n${snapshot.error}',
-                      textAlign: TextAlign.center,
-                      style: const TextStyle(color: Colors.red),
-                    ),
+                  child: Text(
+                    'Error loading inquiries:\n${snapshot.error}',
+                    style: const TextStyle(color: Colors.red),
                   ),
                 );
               }
@@ -1292,70 +593,668 @@ class _ScreensInquiryListState extends State<ScreensInquiryList> {
               }
 
               final allDocs = snapshot.data?.docs.toList() ?? [];
-              debugPrint("Docs count: ${allDocs.length}");
-
-              final docs = _applyLocalFilters(
+              final filteredDocs = _applyLocalFilters(
                 docs: allDocs,
                 role: role,
                 currentUserUid: firebaseUser.uid,
               );
 
-              return RefreshIndicator(
-                onRefresh: () async {
-                  // Re-bind future to force a true data reload from Firestore
-                  if (mounted) {
-                    setState(() {
-                      _profileDataFuture = _loadProfileAndQuery(firebaseUser.uid);
-                    });
-                  }
-                  await Future.delayed(const Duration(milliseconds: 400));
-                },
-                child: SingleChildScrollView(
-                  physics: const AlwaysScrollableScrollPhysics(),
-                  padding: const EdgeInsets.all(18),
-                  child: Center(
-                    child: ConstrainedBox(
-                      constraints: const BoxConstraints(maxWidth: 1180),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          _buildTopBar(),
-                          _buildSummarySection(docs),
-                          _buildFiltersRow(),
-                          if (docs.isEmpty)
-                            SizedBox(
-                              height: MediaQuery.of(context).size.height * 0.45,
-                              child: _buildEmptyState(),
-                            )
-                          else
-                            ListView.builder(
-                              itemCount: docs.length,
-                              shrinkWrap: true,
-                              physics: const NeverScrollableScrollPhysics(),
-                              itemBuilder: (context, index) {
-                                final doc = docs[index];
-                                final inquiry = Inquiry.fromSnapshot(doc);
+              // Calculate stats based on filtered data (similar to Customer)
+              int total = filteredDocs.length;
+              int open = 0;
+              int followUp = 0;
+              int won = 0;
 
-                                return _buildInquiryCard(
-                                  context: context,
-                                  doc: doc,
-                                  inquiry: inquiry,
-                                  role: role,
-                                  currentUserUid: firebaseUser.uid,
-                                );
+              for (final doc in filteredDocs) {
+                final status = (doc.data()['status'] ?? '')
+                    .toString()
+                    .toLowerCase();
+                if (status == 'open') open++;
+                if (status == 'follow-up pending') followUp++;
+                if (status == 'won') won++;
+              }
+
+              return Column(
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 6, 16, 8),
+                    child: Row(
+                      children: [
+                        ConstrainedBox(
+                          constraints: const BoxConstraints(maxWidth: 320),
+                          child: SizedBox(
+                            height: 38,
+                            child: TextField(
+                              controller: _searchController,
+                              onChanged: (value) {
+                                setState(() {
+                                  _searchText = value;
+                                });
                               },
+                              decoration: InputDecoration(
+                                hintText: 'Search customer, subject, no...',
+                                prefixIcon: const Icon(Icons.search, size: 18),
+                                suffixIcon: _searchText.trim().isEmpty
+                                    ? null
+                                    : IconButton(
+                                        tooltip: 'Clear',
+                                        icon: const Icon(Icons.close, size: 17),
+                                        onPressed: () {
+                                          _searchController.clear();
+                                          setState(() {
+                                            _searchText = '';
+                                          });
+                                        },
+                                      ),
+                                isDense: true,
+                                filled: true,
+                                fillColor: Colors.grey.shade100,
+                                contentPadding: const EdgeInsets.symmetric(
+                                  horizontal: 10,
+                                  vertical: 8,
+                                ),
+                                border: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(10),
+                                  borderSide: BorderSide.none,
+                                ),
+                                enabledBorder: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(10),
+                                  borderSide: BorderSide.none,
+                                ),
+                                focusedBorder: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(10),
+                                  borderSide: BorderSide.none,
+                                ),
+                              ),
                             ),
-                          const SizedBox(height: 80),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        SizedBox(
+                          height: 38,
+                          width: 38,
+                          child: Material(
+                            color: Colors.grey.shade100,
+                            borderRadius: BorderRadius.circular(10),
+                            child: InkWell(
+                              borderRadius: BorderRadius.circular(10),
+                              onTap: _openFilterSheet,
+                              child: Stack(
+                                alignment: Alignment.center,
+                                children: [
+                                  Icon(
+                                    Icons.tune_rounded,
+                                    size: 18,
+                                    color: Colors.grey.shade800,
+                                  ),
+                                  if (_hasActiveFilters)
+                                    Positioned(
+                                      right: 8,
+                                      top: 8,
+                                      child: Container(
+                                        width: 7,
+                                        height: 7,
+                                        decoration: BoxDecoration(
+                                          color: Colors.blue.shade700,
+                                          shape: BoxShape.circle,
+                                        ),
+                                      ),
+                                    ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+                        const Spacer(),
+                        _MiniStatText(label: 'Total', value: total.toString()),
+                        const SizedBox(width: 10),
+                        _MiniStatText(label: 'Open', value: open.toString()),
+                        const SizedBox(width: 10),
+                        _MiniStatText(
+                          label: 'Follow-up',
+                          value: followUp.toString(),
+                        ),
+                        const SizedBox(width: 10),
+                        _MiniStatText(label: 'Won', value: won.toString()),
+                      ],
+                    ),
+                  ),
+                  if (_hasActiveFilters)
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 0, 16, 4),
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              'Filters applied',
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: Colors.grey.shade700,
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                          ),
+                          TextButton(
+                            onPressed: _resetFilters,
+                            child: const Text('Clear'),
+                          ),
                         ],
                       ),
                     ),
+                  Expanded(
+                    child: filteredDocs.isEmpty
+                        ? _EmptyInquiriesState(
+                            hasSearch:
+                                _searchText.trim().isNotEmpty ||
+                                _hasActiveFilters,
+                            onReset: () {
+                              _searchController.clear();
+                              setState(() {
+                                _searchText = '';
+                              });
+                              _resetFilters();
+                            },
+                          )
+                        : ListView.separated(
+                            padding: const EdgeInsets.fromLTRB(16, 4, 16, 90),
+                            itemCount: filteredDocs.length,
+                            separatorBuilder: (_, __) =>
+                                const SizedBox(height: 8),
+                            itemBuilder: (context, index) {
+                              final doc = filteredDocs[index];
+                              final inquiry = Inquiry.fromSnapshot(doc);
+
+                              final priority = inquiry.priority.isEmpty
+                                  ? 'Warm'
+                                  : inquiry.priority;
+                              final status = inquiry.status.isEmpty
+                                  ? 'Open'
+                                  : inquiry.status;
+                              final subject = inquiry.subject;
+                              final customerName = inquiry.customerName.isEmpty
+                                  ? 'Unknown Customer'
+                                  : inquiry.customerName;
+                              final inquiryNumber =
+                                  inquiry.inquiryNumber.isEmpty
+                                  ? '-'
+                                  : inquiry.inquiryNumber;
+                              final assignedToName =
+                                  inquiry.assignedToName.isEmpty
+                                  ? 'Unassigned'
+                                  : inquiry.assignedToName;
+                              final contactName = inquiry.contactName;
+                              final phone = inquiry.contactPhone.isEmpty
+                                  ? 'No Phone'
+                                  : inquiry.contactPhone;
+
+                              return Container(
+                                decoration: BoxDecoration(
+                                  color: Colors.white,
+                                  borderRadius: BorderRadius.circular(14),
+                                  border: Border.all(
+                                    color: Colors.grey.shade200,
+                                    width: 0.8,
+                                  ),
+                                ),
+                                child: Padding(
+                                  padding: const EdgeInsets.all(12),
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      // TOP ROW
+                                      Row(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
+                                        children: [
+                                          CircleAvatar(
+                                            radius: 20,
+                                            backgroundColor:
+                                                Colors.blue.shade50,
+                                            child: Text(
+                                              customerName[0].toUpperCase(),
+                                              style: TextStyle(
+                                                fontSize: 15,
+                                                fontWeight: FontWeight.w700,
+                                                color: Colors.blue.shade800,
+                                              ),
+                                            ),
+                                          ),
+                                          const SizedBox(width: 10),
+                                          Expanded(
+                                            child: Column(
+                                              crossAxisAlignment:
+                                                  CrossAxisAlignment.start,
+                                              children: [
+                                                Text(
+                                                  subject.isEmpty
+                                                      ? 'No Subject'
+                                                      : subject,
+                                                  maxLines: 1,
+                                                  overflow:
+                                                      TextOverflow.ellipsis,
+                                                  style: const TextStyle(
+                                                    fontSize: 15,
+                                                    fontWeight: FontWeight.w700,
+                                                  ),
+                                                ),
+                                                const SizedBox(height: 3),
+                                                Text(
+                                                  customerName,
+                                                  maxLines: 1,
+                                                  overflow:
+                                                      TextOverflow.ellipsis,
+                                                  style: TextStyle(
+                                                    fontSize: 12.5,
+                                                    color: Colors.grey.shade700,
+                                                    fontWeight: FontWeight.w500,
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
+                                          ),
+                                          PopupMenuButton<String>(
+                                            tooltip: 'Actions',
+                                            onSelected: (value) {
+                                              if (value == 'open') {
+                                                _openEditInquiry(
+                                                  context: context,
+                                                  doc: doc,
+                                                  inquiry: inquiry,
+                                                  currentUserUid:
+                                                      firebaseUser.uid,
+                                                );
+                                              } else if (value == 'quote') {
+                                                _openQuotationFromInquiry(
+                                                  inquiry: inquiry,
+                                                );
+                                              }
+                                            },
+                                            itemBuilder: (context) => [
+                                              const PopupMenuItem(
+                                                value: 'open',
+                                                child: Text('Open Inquiry'),
+                                              ),
+                                              const PopupMenuItem(
+                                                value: 'quote',
+                                                child: Text('Create Quotation'),
+                                              ),
+                                            ],
+                                          ),
+                                        ],
+                                      ),
+                                      const SizedBox(height: 10),
+                                      // CHIPS ROW
+                                      Wrap(
+                                        spacing: 8,
+                                        runSpacing: 8,
+                                        children: [
+                                          _InfoChip(
+                                            label: status,
+                                            backgroundColor: _statusBg(status),
+                                            textColor: _statusFg(status),
+                                          ),
+                                          _InfoChip(
+                                            label: priority,
+                                            backgroundColor: _priorityBg(
+                                              priority,
+                                            ),
+                                            textColor: _priorityFg(priority),
+                                          ),
+                                          if (inquiry.source.isNotEmpty)
+                                            _InfoChip(
+                                              label: inquiry.source,
+                                              backgroundColor:
+                                                  Colors.grey.shade100,
+                                              textColor: Colors.grey.shade800,
+                                            ),
+                                          if (inquiry.inquiryType.isNotEmpty)
+                                            _InfoChip(
+                                              label: inquiry.inquiryType,
+                                              backgroundColor:
+                                                  Colors.blue.shade50,
+                                              textColor: Colors.blue.shade800,
+                                            ),
+                                          if (inquiry.location.isNotEmpty)
+                                            _InfoChip(
+                                              label: inquiry.location,
+                                              backgroundColor:
+                                                  Colors.grey.shade100,
+                                              textColor: Colors.grey.shade800,
+                                            ),
+                                        ],
+                                      ),
+                                      const SizedBox(height: 10),
+                                      // INFO ROW
+                                      Wrap(
+                                        spacing: 14,
+                                        runSpacing: 8,
+                                        children: [
+                                          _InlineInfo(
+                                            icon: Icons.tag_outlined,
+                                            text: inquiryNumber,
+                                          ),
+                                          _InlineInfo(
+                                            icon: Icons.person_outline,
+                                            text: contactName.isEmpty
+                                                ? 'No Contact'
+                                                : contactName,
+                                          ),
+                                          _InlineInfo(
+                                            icon: Icons.phone_outlined,
+                                            text: phone,
+                                          ),
+                                          if (inquiry.expectedValue.isNotEmpty)
+                                            _InlineInfo(
+                                              icon:
+                                                  Icons.currency_rupee_outlined,
+                                              text: inquiry.expectedValue,
+                                            ),
+                                          if (inquiry.quantityScope.isNotEmpty)
+                                            _InlineInfo(
+                                              icon: Icons.numbers_outlined,
+                                              text: inquiry.quantityScope,
+                                            ),
+                                          _InlineInfo(
+                                            icon: Icons.assignment_ind_outlined,
+                                            text: assignedToName,
+                                          ),
+                                        ],
+                                      ),
+                                      // FOLLOW-UP SECTION
+                                      const SizedBox(height: 12),
+                                      Container(
+                                        width: double.infinity,
+                                        padding: const EdgeInsets.all(12),
+                                        decoration: BoxDecoration(
+                                          color: Colors.grey.shade50,
+                                          borderRadius: BorderRadius.circular(
+                                            12,
+                                          ),
+                                          border: Border.all(
+                                            color: Colors.grey.shade200,
+                                          ),
+                                        ),
+                                        child: Column(
+                                          crossAxisAlignment:
+                                              CrossAxisAlignment.start,
+                                          children: [
+                                            Row(
+                                              children: [
+                                                Icon(
+                                                  Icons.timeline_outlined,
+                                                  size: 16,
+                                                  color: Colors.grey.shade800,
+                                                ),
+                                                const SizedBox(width: 6),
+                                                Text(
+                                                  'Timeline',
+                                                  style: TextStyle(
+                                                    fontSize: 12.8,
+                                                    fontWeight: FontWeight.w700,
+                                                    color: Colors.grey.shade800,
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
+                                            const SizedBox(height: 8),
+                                            _InlineInfo(
+                                              icon: Icons.add_circle_outline,
+                                              text:
+                                                  'Created: ${_formatCompactDate(inquiry.createdAt)}',
+                                            ),
+                                            Padding(
+                                              padding: const EdgeInsets.only(
+                                                top: 8,
+                                              ),
+                                              child: _InlineInfo(
+                                                icon:
+                                                    Icons.event_repeat_outlined,
+                                                text:
+                                                    'Next Follow-up: ${_formatCompactDate(inquiry.nextFollowUpDate)}',
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              );
+                            },
+                          ),
                   ),
-                ),
+                ],
               );
             },
           ),
         );
       },
     );
+  }
+}
+
+// --- REUSABLE COMPONENTS FOR PARITY ---
+
+class _MiniStatText extends StatelessWidget {
+  final String label;
+  final String value;
+
+  const _MiniStatText({required this.label, required this.value});
+
+  @override
+  Widget build(BuildContext context) {
+    return Text(
+      '$label: $value',
+      style: TextStyle(
+        fontSize: 12,
+        color: Colors.grey.shade700,
+        fontWeight: FontWeight.w600,
+      ),
+    );
+  }
+}
+
+class _InlineInfo extends StatelessWidget {
+  final IconData icon;
+  final String text;
+
+  const _InlineInfo({required this.icon, required this.text});
+
+  @override
+  Widget build(BuildContext context) {
+    return ConstrainedBox(
+      constraints: const BoxConstraints(maxWidth: 300),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 15, color: Colors.grey.shade700),
+          const SizedBox(width: 5),
+          Flexible(
+            child: Text(
+              text,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                fontSize: 12.6,
+                color: Colors.grey.shade800,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _InfoChip extends StatelessWidget {
+  final String label;
+  final Color backgroundColor;
+  final Color textColor;
+
+  const _InfoChip({
+    required this.label,
+    required this.backgroundColor,
+    required this.textColor,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: backgroundColor,
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Text(
+        label,
+        style: TextStyle(
+          fontSize: 11.8,
+          fontWeight: FontWeight.w700,
+          color: textColor,
+        ),
+      ),
+    );
+  }
+}
+
+class _EmptyInquiriesState extends StatelessWidget {
+  final bool hasSearch;
+  final VoidCallback onReset;
+
+  const _EmptyInquiriesState({required this.hasSearch, required this.onReset});
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        return SingleChildScrollView(
+          padding: const EdgeInsets.all(28),
+          child: ConstrainedBox(
+            constraints: BoxConstraints(minHeight: constraints.maxHeight - 40),
+            child: IntrinsicHeight(
+              child: Center(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    CircleAvatar(
+                      radius: 34,
+                      backgroundColor: Colors.blue.shade50,
+                      child: Icon(
+                        hasSearch ? Icons.search_off : Icons.inbox_outlined,
+                        size: 34,
+                        color: Colors.blue.shade700,
+                      ),
+                    ),
+                    const SizedBox(height: 18),
+                    Text(
+                      hasSearch
+                          ? 'No matching inquiries found'
+                          : 'No inquiries found',
+                      style: const TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w700,
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      hasSearch
+                          ? 'Try changing the search text or filter.'
+                          : 'No inquiry records are available yet.',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        color: Colors.grey.shade700,
+                        fontSize: 14,
+                      ),
+                    ),
+                    const SizedBox(height: 18),
+                    if (hasSearch)
+                      OutlinedButton(
+                        onPressed: onReset,
+                        child: const Text('Reset Filters'),
+                      ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
+
+// --- COLOR HELPERS ---
+
+Color _statusBg(String status) {
+  switch (status.toLowerCase()) {
+    case 'open':
+      return Colors.blue.shade50;
+    case 'qualified':
+      return Colors.purple.shade50;
+    case 'quotation pending':
+      return Colors.orange.shade50;
+    case 'quotation sent':
+      return Colors.teal.shade50;
+    case 'follow-up pending':
+      return Colors.deepOrange.shade50;
+    case 'won':
+      return Colors.green.shade50;
+    case 'lost':
+      return Colors.red.shade50;
+    case 'not qualified':
+      return Colors.grey.shade200;
+    default:
+      return Colors.grey.shade100;
+  }
+}
+
+Color _statusFg(String status) {
+  switch (status.toLowerCase()) {
+    case 'open':
+      return Colors.blue.shade800;
+    case 'qualified':
+      return Colors.purple.shade800;
+    case 'quotation pending':
+      return Colors.orange.shade800;
+    case 'quotation sent':
+      return Colors.teal.shade800;
+    case 'follow-up pending':
+      return Colors.deepOrange.shade800;
+    case 'won':
+      return Colors.green.shade800;
+    case 'lost':
+      return Colors.red.shade800;
+    case 'not qualified':
+      return Colors.grey.shade800;
+    default:
+      return Colors.grey.shade800;
+  }
+}
+
+Color _priorityBg(String priority) {
+  switch (priority.toLowerCase()) {
+    case 'hot':
+      return Colors.red.shade50;
+    case 'warm':
+      return Colors.orange.shade50;
+    case 'cold':
+      return Colors.blue.shade50;
+    default:
+      return Colors.grey.shade100;
+  }
+}
+
+Color _priorityFg(String priority) {
+  switch (priority.toLowerCase()) {
+    case 'hot':
+      return Colors.red.shade800;
+    case 'warm':
+      return Colors.orange.shade800;
+    case 'cold':
+      return Colors.blue.shade800;
+    default:
+      return Colors.grey.shade800;
   }
 }

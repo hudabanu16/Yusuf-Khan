@@ -10,6 +10,7 @@ import 'package:QUIK/modules/administration/inventory/screen_inventory_profile_s
 import 'package:QUIK/modules/administration/modules/screen_company_modules.dart';
 import 'package:QUIK/modules/administration/users/screen_user_management.dart';
 import 'package:QUIK/modules/crm/customers/screens_customer_list.dart';
+import 'package:QUIK/modules/dashboard/dashboard_screen.dart';
 import 'package:QUIK/modules/inventory/fabrication/screens/material_inward_screen.dart';
 import 'package:QUIK/modules/inventory/fabrication/screens/material_issue_screen.dart';
 import 'package:QUIK/modules/inventory/fabrication/screens/raw_material_stock_screen.dart';
@@ -1601,15 +1602,24 @@ class _ZohoShellState extends State<ZohoShell> {
     if (!_canViewPage(activePage)) {
       return Padding(
         padding: const EdgeInsets.all(14),
-        child: _homeDashboardLive(),
+        child: DashboardScreen(
+          companyId: widget.companyId,
+          userName: _resolvedEmployeeName(),
+          currentUserId: widget.userUid,
+          permissions: _currentPermissions,
+          role: _currentRole,
+        ),
       );
     }
 
     switch (activePage) {
       case ShellPage.dashboard:
-        return Padding(
-          padding: const EdgeInsets.all(14),
-          child: _homeDashboardLive(),
+        return DashboardScreen(
+          companyId: widget.companyId,
+          userName: _resolvedEmployeeName(),
+          currentUserId: widget.userUid,
+          permissions: _currentPermissions,
+          role: _currentRole,
         );
 
       case ShellPage.platformTenantModules:
@@ -2237,6 +2247,7 @@ class _ZohoShellState extends State<ZohoShell> {
     );
   }
 
+  // ignore: unused_element
   Widget _homeDashboardLive() {
     DateTime dateOnly(DateTime d) => DateTime(d.year, d.month, d.day);
     final today = dateOnly(DateTime.now());
