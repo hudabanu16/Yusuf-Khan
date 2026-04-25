@@ -37,6 +37,7 @@ import 'package:QUIK/modules/production/execution/screens/production_entry_list_
 import 'package:QUIK/modules/production/masters/screens/item_list_screen.dart';
 import 'package:QUIK/modules/production/masters/screens/process_list_screen.dart';
 import 'package:QUIK/modules/production/masters/screens/work_center_list_screen.dart';
+import 'package:QUIK/modules/reports/sales_report/sales_report_screen.dart';
 
 enum ShellPage {
   dashboard,
@@ -1025,6 +1026,7 @@ class _ZohoShellState extends State<ZohoShell> {
       case ShellPage.productionBoq:
       case ShellPage.productionEntries:
       case ShellPage.hrHome:
+      case ShellPage.reportsSales:
         return true;
       default:
         return false;
@@ -1805,6 +1807,12 @@ class _ZohoShellState extends State<ZohoShell> {
         return Padding(
           padding: const EdgeInsets.all(14),
           child: HrHomeScreen(tenantId: widget.companyId),
+        );
+
+      case ShellPage.reportsSales:
+        return Padding(
+          padding: const EdgeInsets.all(14),
+          child: SalesReportScreen(companyId: widget.companyId),
         );
 
       case ShellPage.settingsGeneral:

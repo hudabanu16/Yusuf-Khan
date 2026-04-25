@@ -29,6 +29,7 @@ class RegisterController extends ChangeNotifier {
   final phoneController = TextEditingController();
   final gstinController = TextEditingController();
   final panController = TextEditingController();
+  final iecController = TextEditingController();
   final websiteController = TextEditingController();
   final passwordController = TextEditingController();
   final confirmPasswordController = TextEditingController();
@@ -245,6 +246,7 @@ class RegisterController extends ChangeNotifier {
     phoneController.text = (user['phone'] ?? '').toString();
     gstinController.text = (user['gstin'] ?? '').toString();
     panController.text = (user['pan'] ?? '').toString();
+    iecController.text = (user['iecCode'] ?? '').toString();
     websiteController.text = (user['website'] ?? '').toString();
 
     cinController.text = (user['cin'] ?? '').toString();
@@ -299,7 +301,8 @@ class RegisterController extends ChangeNotifier {
     }
 
     if (gstinController.text.trim().isNotEmpty ||
-        panController.text.trim().isNotEmpty) {
+        panController.text.trim().isNotEmpty ||
+        iecController.text.trim().isNotEmpty) {
       showTaxInfo = true;
     }
   }
@@ -342,6 +345,8 @@ class RegisterController extends ChangeNotifier {
       'pincode': pincodeController.text.trim(),
       'gstin': gstinController.text.trim(),
       'pan': panController.text.trim(),
+      if (iecController.text.trim().isNotEmpty)
+        'iecCode': iecController.text.trim(),
       'website': websiteController.text.trim(),
       'cin': cinController.text.trim(),
       'llpin': llpinController.text.trim(),
@@ -681,6 +686,7 @@ class RegisterController extends ChangeNotifier {
     phoneController.dispose();
     gstinController.dispose();
     panController.dispose();
+    iecController.dispose();
     websiteController.dispose();
     passwordController.dispose();
     confirmPasswordController.dispose();
