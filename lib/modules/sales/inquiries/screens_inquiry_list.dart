@@ -1,10 +1,11 @@
+// 📄 File Path: lib/modules/sales/inquiries/screens_inquiry_list.dart
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
 import 'package:QUIK/models/inquiry_model.dart';
 import 'package:QUIK/modules/sales/inquiries/screens_add_inquiry.dart';
-import 'package:QUIK/modules/sales/inquiries/screens_inquiry_form.dart';
 import 'package:QUIK/modules/sales/quotations/quotation_screen_local.dart';
 
 class ScreensInquiryList extends StatefulWidget {
@@ -419,14 +420,17 @@ class _ScreensInquiryListState extends State<ScreensInquiryList> {
     required QueryDocumentSnapshot<Map<String, dynamic>> doc,
     required Inquiry inquiry,
     required String currentUserUid,
+    required String role,
   }) async {
     final result = await Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (_) => ScreensInquiryForm(
+        builder: (_) => ScreensAddInquiry(
+          companyId: inquiry.companyId,
+          currentUserUid: currentUserUid,
+          currentUserRole: role,
           existingDoc: doc.reference,
           existingInquiry: inquiry,
-          currentUserId: currentUserUid,
         ),
       ),
     );
@@ -827,6 +831,7 @@ class _ScreensInquiryListState extends State<ScreensInquiryList> {
                                             inquiry: inquiry,
                                             currentUserUid:
                                             firebaseUser.uid,
+                                            role: role,
                                           );
                                         } else if (value == 'quote') {
                                           _openQuotationFromInquiry(
