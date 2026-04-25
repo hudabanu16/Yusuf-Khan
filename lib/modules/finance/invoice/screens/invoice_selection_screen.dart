@@ -153,21 +153,27 @@ class _HoverableInvoiceCardState extends State<_HoverableInvoiceCard> {
         onTap: widget.onTap,
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 180),
-          transform: Matrix4.identity()..scale(_hover ? 1.02 : 1.0),
+          transform: Matrix4.identity()
+            ..scaleByDouble(
+              _hover ? 1.02 : 1.0,
+              _hover ? 1.02 : 1.0,
+              1,
+              1,
+            ),
           padding: const EdgeInsets.all(22),
           decoration: BoxDecoration(
             color: Colors.white,
             borderRadius: BorderRadius.circular(16),
             border: Border.all(
               color: _hover
-                  ? widget.primaryColor.withOpacity(0.5)
+                  ? widget.primaryColor.withValues(alpha: 0.5)
                   : zBorder,
             ),
             boxShadow: [
               BoxShadow(
                 color: _hover
-                    ? widget.primaryColor.withOpacity(0.08)
-                    : Colors.black.withOpacity(0.02),
+                    ? widget.primaryColor.withValues(alpha: 0.08)
+                    : Colors.black.withValues(alpha: 0.02),
                 blurRadius: _hover ? 18 : 8,
                 offset: const Offset(0, 6),
               ),
@@ -196,7 +202,7 @@ class _HoverableInvoiceCardState extends State<_HoverableInvoiceCard> {
                     padding: const EdgeInsets.symmetric(
                         horizontal: 10, vertical: 4),
                     decoration: BoxDecoration(
-                      color: widget.primaryColor.withOpacity(0.08),
+                      color: widget.primaryColor.withValues(alpha: 0.08),
                       borderRadius: BorderRadius.circular(6),
                     ),
                     child: Text(
@@ -243,7 +249,7 @@ class _HoverableInvoiceCardState extends State<_HoverableInvoiceCard> {
                 decoration: BoxDecoration(
                   color: _hover
                       ? widget.primaryColor
-                      : widget.primaryColor.withOpacity(0.08),
+                      : widget.primaryColor.withValues(alpha: 0.08),
                   borderRadius: BorderRadius.circular(8),
                 ),
                 child: Row(

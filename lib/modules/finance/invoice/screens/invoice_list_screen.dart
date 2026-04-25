@@ -405,9 +405,9 @@ class _InvoiceListScreenState extends State<InvoiceListScreen> {
 
           // Apply Search & Filters
           var filteredInvoices = invoices.where((inv) {
-            final invNum = (inv.invoiceNumber ?? '').toLowerCase();
-            final buyerName = (inv.buyer.name ?? '').toLowerCase();
-            final docStatus = (inv.status ?? '').toLowerCase();
+            final invNum = inv.invoiceNumber.toLowerCase();
+            final buyerName = inv.buyer.name.toLowerCase();
+            final docStatus = inv.status.toLowerCase();
 
             final matchesSearch = query.isEmpty || invNum.contains(query) || buyerName.contains(query);
             final matchesStatus = _statusFilter == 'all' || docStatus == _statusFilter.toLowerCase();
@@ -419,15 +419,15 @@ class _InvoiceListScreenState extends State<InvoiceListScreen> {
           if (_sortOption == 'amount_desc') {
             filteredInvoices.sort((a, b) => b.totals.grandTotal.compareTo(a.totals.grandTotal));
           } else if (_sortOption == 'customer_asc') {
-            filteredInvoices.sort((a, b) => (a.buyer.name ?? '').toLowerCase().compareTo((b.buyer.name ?? '').toLowerCase()));
+            filteredInvoices.sort((a, b) => a.buyer.name.toLowerCase().compareTo(b.buyer.name.toLowerCase()));
           } else {
             filteredInvoices.sort((a, b) => b.createdAt.compareTo(a.createdAt));
           }
 
           // Quick Stats
           final totalCount = filteredInvoices.length;
-          final draftCount = filteredInvoices.where((inv) => (inv.status ?? '').toLowerCase() == 'draft').length;
-          final finalCount = filteredInvoices.where((inv) => (inv.status ?? '').toLowerCase() == 'submitted').length;
+          final draftCount = filteredInvoices.where((inv) => inv.status.toLowerCase() == 'draft').length;
+          final finalCount = filteredInvoices.where((inv) => inv.status.toLowerCase() == 'submitted').length;
 
           return Column(
             children: [
@@ -596,14 +596,14 @@ class _InvoiceCardState extends State<_InvoiceCard> {
   @override
   Widget build(BuildContext context) {
     final invoice = widget.invoice;
-    final isDraft = (invoice.status ?? '').toLowerCase() == 'draft';
-    final isCancelled = (invoice.status ?? '').toLowerCase() == 'cancelled';
+    final isDraft = invoice.status.toLowerCase() == 'draft';
+    final isCancelled = invoice.status.toLowerCase() == 'cancelled';
 
     final displayStatus = isCancelled
         ? 'CANCELLED'
         : isDraft
         ? 'DRAFT'
-        : ((invoice.paymentStatus ?? '').isEmpty
+        : (invoice.paymentStatus.isEmpty
         ? 'UNPAID'
         : invoice.paymentStatus.toUpperCase());
 
@@ -656,10 +656,10 @@ class _InvoiceCardState extends State<_InvoiceCard> {
           decoration: BoxDecoration(
             color: isCancelled ? const Color(0xFFF9FAFB) : Colors.white,
             borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: _isHovered ? zBlue.withOpacity(0.4) : Colors.grey.shade200, width: 1),
+            border: Border.all(color: _isHovered ? zBlue.withValues(alpha: 0.4) : Colors.grey.shade200, width: 1),
             boxShadow: [
               BoxShadow(
-                  color: Colors.black.withOpacity(_isHovered ? 0.06 : 0.02),
+                  color: Colors.black.withValues(alpha: _isHovered ? 0.06 : 0.02),
                   blurRadius: _isHovered ? 16 : 8,
                   offset: const Offset(0, 4)
               ),
@@ -681,7 +681,7 @@ class _InvoiceCardState extends State<_InvoiceCard> {
                           Row(
                             children: [
                               Text(
-                                (invoice.invoiceNumber ?? '').isEmpty ? 'Pending Number' : invoice.invoiceNumber,
+                                invoice.invoiceNumber.isEmpty ? 'Pending Number' : invoice.invoiceNumber,
                                 style: TextStyle(
                                     fontSize: 14,
                                     fontWeight: FontWeight.w700,
@@ -695,7 +695,7 @@ class _InvoiceCardState extends State<_InvoiceCard> {
                           ),
                           const SizedBox(height: 8),
                           Text(
-                            (invoice.buyer.name ?? '').isEmpty ? 'Unknown Customer' : invoice.buyer.name,
+                            invoice.buyer.name.isEmpty ? 'Unknown Customer' : invoice.buyer.name,
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                             style: TextStyle(
@@ -708,7 +708,7 @@ class _InvoiceCardState extends State<_InvoiceCard> {
                           const SizedBox(height: 6),
                           Row(
                             children: [
-                              Icon(Icons.calendar_today_rounded, size: 13, color: zMuted.withOpacity(0.7)),
+                              Icon(Icons.calendar_today_rounded, size: 13, color: zMuted.withValues(alpha: 0.7)),
                               const SizedBox(width: 6),
                               Text(dateStr, style: const TextStyle(fontSize: 13, color: zMuted, fontWeight: FontWeight.w500)),
                             ],
@@ -740,7 +740,7 @@ class _InvoiceCardState extends State<_InvoiceCard> {
                               children: [
                                 Text(
                                   'Balance:',
-                                  style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: zMuted.withOpacity(0.8)),
+                                  style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: zMuted.withValues(alpha: 0.8)),
                                 ),
                                 Text(
                                   _formatCurrency(safeOutstanding),
@@ -770,7 +770,7 @@ class _InvoiceCardState extends State<_InvoiceCard> {
                                             minHeight: 5,
                                             backgroundColor: Colors.grey.shade100,
                                             valueColor: AlwaysStoppedAnimation<Color>(
-                                                value == 1.0 ? Colors.green.shade500 : zBlue.withOpacity(0.8)
+                                                value == 1.0 ? Colors.green.shade500 : zBlue.withValues(alpha: 0.8)
                                             ),
                                           ),
                                         ),
@@ -778,7 +778,7 @@ class _InvoiceCardState extends State<_InvoiceCard> {
                                       const SizedBox(height: 4),
                                       Text(
                                         '${(value * 100).toInt()}% Paid',
-                                        style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: zMuted.withOpacity(0.8)),
+                                        style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: zMuted.withValues(alpha: 0.8)),
                                       ),
                                     ],
                                   );
@@ -814,7 +814,7 @@ class _InvoiceCardState extends State<_InvoiceCard> {
                       ),
                     ),
                     const Spacer(),
-                    if (!isDraft && !isCancelled && (invoice.paymentStatus ?? '').toUpperCase() != 'PAID')
+                    if (!isDraft && !isCancelled && invoice.paymentStatus.toUpperCase() != 'PAID')
                       FilledButton.icon(
                         onPressed: widget.onRecordPayment,
                         icon: const Icon(Icons.payment, size: 16),
@@ -848,13 +848,13 @@ class _InvoiceCardState extends State<_InvoiceCard> {
                             if (val == 'cancel') widget.onCancel();
                           },
                           itemBuilder: (ctx) => [
-                            if ((invoice.paymentStatus ?? '').toUpperCase() != 'PAID')
+                            if (invoice.paymentStatus.toUpperCase() != 'PAID')
                               PopupMenuItem(
                                   value: 'edit',
                                   height: 40,
                                   child: Row(
                                     children: [
-                                      Icon(Icons.edit_outlined, size: 18, color: zText.withOpacity(0.8)),
+                                      Icon(Icons.edit_outlined, size: 18, color: zText.withValues(alpha: 0.8)),
                                       const SizedBox(width: 10),
                                       const Text('Edit Invoice', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
                                     ],
@@ -1030,25 +1030,6 @@ class _InfoChip extends StatelessWidget {
   }
 }
 
-class _InlineInfo extends StatelessWidget {
-  final IconData icon;
-  final String text;
-
-  const _InlineInfo({required this.icon, required this.text});
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Icon(icon, size: 14, color: zMuted),
-        const SizedBox(width: 4),
-        Text(text, style: const TextStyle(fontSize: 12, color: zMuted, fontWeight: FontWeight.w600)),
-      ],
-    );
-  }
-}
-
 class _EmptyInvoiceState extends StatelessWidget {
   final bool hasSearch;
 
@@ -1079,13 +1060,13 @@ class _EmptyInvoiceState extends StatelessWidget {
                   color: Colors.white,
                   shape: BoxShape.circle,
                   boxShadow: [
-                    BoxShadow(color: Colors.black.withOpacity(0.03), blurRadius: 20, offset: const Offset(0, 10))
+                    BoxShadow(color: Colors.black.withValues(alpha: 0.03), blurRadius: 20, offset: const Offset(0, 10))
                   ]
               ),
               child: Icon(
                   hasSearch ? Icons.search_off_rounded : Icons.receipt_long_rounded,
                   size: 48,
-                  color: zMuted.withOpacity(0.5)
+                  color: zMuted.withValues(alpha: 0.5)
               ),
             ),
             const SizedBox(height: 24),

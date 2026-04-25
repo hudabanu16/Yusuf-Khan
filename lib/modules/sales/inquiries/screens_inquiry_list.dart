@@ -2,8 +2,10 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
+import 'package:QUIK/core/inventory/providers/inventory_config_provider.dart';
 import 'package:QUIK/models/inquiry_model.dart';
 import 'package:QUIK/modules/sales/inquiries/screens_add_inquiry.dart';
+import 'package:QUIK/modules/sales/inquiries/screens_fabrication_inquiry.dart';
 import 'package:QUIK/modules/sales/inquiries/screens_inquiry_form.dart';
 import 'package:QUIK/modules/sales/quotations/quotation_screen_local.dart';
 
@@ -351,7 +353,7 @@ class _ScreensInquiryListState extends State<ScreensInquiryList> {
             height: 42,
             width: 42,
             decoration: BoxDecoration(
-              color: tone.withOpacity(0.10),
+              color: tone.withValues(alpha: 0.10),
               borderRadius: BorderRadius.circular(12),
             ),
             child: Icon(icon, color: tone, size: 20),
@@ -399,7 +401,7 @@ class _ScreensInquiryListState extends State<ScreensInquiryList> {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
         decoration: BoxDecoration(
-          color: selected ? tone.withOpacity(0.12) : Colors.white,
+          color: selected ? tone.withValues(alpha: 0.12) : Colors.white,
           borderRadius: BorderRadius.circular(999),
           border: Border.all(color: selected ? tone : const Color(0xFFD9E1EC)),
         ),
@@ -427,9 +429,9 @@ class _ScreensInquiryListState extends State<ScreensInquiryList> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
       decoration: BoxDecoration(
-        color: tone.withOpacity(0.08),
+        color: tone.withValues(alpha: 0.08),
         borderRadius: BorderRadius.circular(999),
-        border: Border.all(color: tone.withOpacity(0.18)),
+        border: Border.all(color: tone.withValues(alpha: 0.18)),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -1231,14 +1233,26 @@ class _ScreensInquiryListState extends State<ScreensInquiryList> {
             backgroundColor: const Color(0xFF2563EB),
             foregroundColor: Colors.white,
             onPressed: () async {
+              final isFabricationInquiryProfile =
+                  InventoryConfigProvider.of(context).isFabricationInventory;
               final result = await Navigator.push(
                 context,
                 MaterialPageRoute(
-                  builder: (_) => ScreensAddInquiry(
-                    companyId: companyId,
-                    currentUserUid: firebaseUser.uid,
-                    currentUserRole: role,
-                  ),
+                  builder: (_) {
+                    if (isFabricationInquiryProfile) {
+                      return ScreensFabricationInquiry(
+                        companyId: companyId,
+                        currentUserUid: firebaseUser.uid,
+                        currentUserRole: role,
+                      );
+                    }
+
+                    return ScreensAddInquiry(
+                      companyId: companyId,
+                      currentUserUid: firebaseUser.uid,
+                      currentUserRole: role,
+                    );
+                  },
                 ),
               );
 

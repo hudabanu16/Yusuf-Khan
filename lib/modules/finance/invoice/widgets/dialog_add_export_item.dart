@@ -8,12 +8,12 @@ class DialogAddExportItem extends StatefulWidget {
   final ExportInvoiceItem? existingItem;
 
   const DialogAddExportItem({
-    Key? key,
+    super.key,
     required this.companyId,
     required this.userUid,
     required this.selectedCurrency,
     this.existingItem,
-  }) : super(key: key);
+  });
 
   @override
   State<DialogAddExportItem> createState() => _DialogAddExportItemState();
@@ -187,7 +187,7 @@ class _DialogAddExportItemState extends State<DialogAddExportItem> {
                     const SizedBox(width: 16),
                     Expanded(
                       child: DropdownButtonFormField<String>(
-                        value: _selectedUnit,
+                        initialValue: _selectedUnit,
                         decoration: InputDecoration(
                           labelText: 'Unit / UOM *',
                           border: OutlineInputBorder(

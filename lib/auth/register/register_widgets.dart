@@ -6,10 +6,7 @@ import 'register_controller.dart';
 class RegisterWidgets {
   static Widget buildLogoFallback() {
     return Container(
-      decoration: const BoxDecoration(
-        color: regIconBg,
-        shape: BoxShape.circle,
-      ),
+      decoration: const BoxDecoration(color: regIconBg, shape: BoxShape.circle),
       child: const Center(
         child: Icon(
           Icons.business_center_outlined,
@@ -43,10 +40,7 @@ class RegisterWidgets {
   }
 
   static Widget buildWizardHeader(RegisterController c) {
-    Widget stepItem({
-      required int index,
-      required String title,
-    }) {
+    Widget stepItem({required int index, required String title}) {
       final bool isActive = c.currentStep == index;
       final bool isDone = c.currentStep > index;
 
@@ -56,9 +50,7 @@ class RegisterWidgets {
           decoration: BoxDecoration(
             color: isActive ? const Color(0xFFEAF1FF) : Colors.white,
             borderRadius: BorderRadius.circular(16),
-            border: Border.all(
-              color: isActive || isDone ? regBlue : regBorder,
-            ),
+            border: Border.all(color: isActive || isDone ? regBlue : regBorder),
           ),
           child: Row(
             children: [
@@ -77,13 +69,13 @@ class RegisterWidgets {
                   child: isDone
                       ? const Icon(Icons.check, size: 16, color: Colors.white)
                       : Text(
-                    '${index + 1}',
-                    style: TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w800,
-                      color: isActive ? Colors.white : regMuted,
-                    ),
-                  ),
+                          '${index + 1}',
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w800,
+                            color: isActive ? Colors.white : regMuted,
+                          ),
+                        ),
                 ),
               ),
               const SizedBox(width: 10),
@@ -107,7 +99,14 @@ class RegisterWidgets {
       children: [
         stepItem(index: 0, title: 'Business Details'),
         const SizedBox(width: 10),
-        stepItem(index: 1, title: 'Address & Security'),
+        stepItem(
+          index: 1,
+          title: c.isEditMode ? 'Address & Security' : 'Address',
+        ),
+        if (!c.isEditMode) ...[
+          const SizedBox(width: 10),
+          stepItem(index: 2, title: 'Modules & Security'),
+        ],
       ],
     );
   }
@@ -147,7 +146,7 @@ class RegisterWidgets {
           border: Border.all(color: regBorder),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withOpacity(0.05),
+              color: Colors.black.withValues(alpha: 0.05),
               blurRadius: 18,
               offset: const Offset(0, 8),
             ),
@@ -169,10 +168,7 @@ class RegisterWidgets {
             const SizedBox(height: 4),
             const Text(
               'Please wait a moment',
-              style: TextStyle(
-                color: regMuted,
-                fontSize: 12.2,
-              ),
+              style: TextStyle(color: regMuted, fontSize: 12.2),
             ),
           ],
         ),
@@ -237,7 +233,8 @@ class RegisterWidgets {
     required VoidCallback onRemoveLogo,
     required bool isLoading,
   }) {
-    final hasLogo = (c.logoBytes != null) || (c.logoUrl != null && c.logoUrl!.isNotEmpty);
+    final hasLogo =
+        (c.logoBytes != null) || (c.logoUrl != null && c.logoUrl!.isNotEmpty);
 
     return Container(
       width: double.infinity,
@@ -336,18 +333,19 @@ class RegisterWidgets {
     required TextEditingController gstinController,
     required TextEditingController panController,
     required Widget Function({
-    required TextEditingController controller,
-    required String label,
-    required IconData icon,
-    String? hint,
-    bool required,
-    bool obscureText,
-    bool enabled,
-    int maxLines,
-    TextInputType keyboardType,
-    Widget? suffixIcon,
-    String? Function(String?)? validator,
-    }) buildTextField,
+      required TextEditingController controller,
+      required String label,
+      required IconData icon,
+      String? hint,
+      bool required,
+      bool obscureText,
+      bool enabled,
+      int maxLines,
+      TextInputType keyboardType,
+      Widget? suffixIcon,
+      String? Function(String?)? validator,
+    })
+    buildTextField,
   }) {
     return Container(
       decoration: BoxDecoration(
@@ -393,10 +391,7 @@ class RegisterWidgets {
                         SizedBox(height: 2),
                         Text(
                           'Optional fields for GST and PAN details',
-                          style: TextStyle(
-                            fontSize: 12.8,
-                            color: regMuted,
-                          ),
+                          style: TextStyle(fontSize: 12.8, color: regMuted),
                         ),
                       ],
                     ),
@@ -499,7 +494,7 @@ class RegisterWidgets {
     bool required = false,
   }) {
     return DropdownButtonFormField<T>(
-      value: items.contains(value) ? value : null,
+      initialValue: items.contains(value) ? value : null,
       isExpanded: true,
       icon: const Icon(Icons.keyboard_arrow_down_rounded, color: regMuted),
       decoration: InputDecoration(
@@ -509,14 +504,13 @@ class RegisterWidgets {
           fontSize: 12.7,
           fontWeight: FontWeight.w600,
         ),
-        prefixIcon: Icon(
-          icon,
-          color: const Color(0xFF70859A),
-          size: 19,
-        ),
+        prefixIcon: Icon(icon, color: const Color(0xFF70859A), size: 19),
         filled: true,
         fillColor: Colors.white,
-        contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: 14,
+          vertical: 14,
+        ),
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(14),
           borderSide: const BorderSide(color: regBorder),
@@ -541,18 +535,18 @@ class RegisterWidgets {
       items: items
           .map(
             (e) => DropdownMenuItem<T>(
-          value: e,
-          child: Text(
-            e.toString(),
-            overflow: TextOverflow.ellipsis,
-            style: const TextStyle(
-              fontSize: 13.6,
-              color: regText,
-              fontWeight: FontWeight.w500,
+              value: e,
+              child: Text(
+                e.toString(),
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  fontSize: 13.6,
+                  color: regText,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
             ),
-          ),
-        ),
-      )
+          )
           .toList(),
       onChanged: onChanged,
       validator: (val) {
@@ -591,24 +585,20 @@ class RegisterWidgets {
       decoration: InputDecoration(
         labelText: '$label${required ? ' *' : ''}',
         hintText: hint,
-        hintStyle: const TextStyle(
-          color: regMuted,
-          fontSize: 12.8,
-        ),
+        hintStyle: const TextStyle(color: regMuted, fontSize: 12.8),
         labelStyle: TextStyle(
           color: enabled ? regMuted : Colors.grey.shade500,
           fontSize: 12.7,
           fontWeight: FontWeight.w600,
         ),
-        prefixIcon: Icon(
-          icon,
-          color: const Color(0xFF70859A),
-          size: 19,
-        ),
+        prefixIcon: Icon(icon, color: const Color(0xFF70859A), size: 19),
         suffixIcon: suffixIcon,
         filled: true,
         fillColor: enabled ? Colors.white : const Color(0xFFF3F4F6),
-        contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: 14,
+          vertical: 14,
+        ),
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(14),
           borderSide: const BorderSide(color: regBorder),
@@ -630,8 +620,9 @@ class RegisterWidgets {
           borderSide: const BorderSide(color: Colors.red, width: 1.4),
         ),
       ),
-      validator: validator ??
-              (val) {
+      validator:
+          validator ??
+          (val) {
             if (required && (val == null || val.trim().isEmpty)) {
               return '$label is required';
             }
@@ -663,7 +654,10 @@ class RegisterWidgets {
         ),
         filled: true,
         fillColor: const Color(0xFFF3F4F6),
-        contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: 14,
+          vertical: 14,
+        ),
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(14),
           borderSide: const BorderSide(color: regBorder),

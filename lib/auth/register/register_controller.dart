@@ -6,13 +6,16 @@ import 'package:file_picker/file_picker.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
+import 'package:QUIK/core/modules/models/app_module.dart';
+import 'package:QUIK/core/modules/module_registry.dart';
+
 import 'register_constants.dart';
 import 'register_workspace_service.dart';
 import 'verify_workspace_otp_screen.dart';
 
 class RegisterController extends ChangeNotifier {
   RegisterController({RegisterWorkspaceService? service})
-      : _service = service ?? RegisterWorkspaceService();
+    : _service = service ?? RegisterWorkspaceService();
 
   final RegisterWorkspaceService _service;
   final formKey = GlobalKey<FormState>();
@@ -50,6 +53,15 @@ class RegisterController extends ChangeNotifier {
 
   int currentStep = 0;
 
+  final Set<String> _selectedWorkspaceModuleIds = {
+    ModuleIds.crm,
+    ModuleIds.sales,
+    ModuleIds.service,
+    ModuleIds.inventory,
+    ModuleIds.finance,
+    ModuleIds.reports,
+  };
+
   String? selectedEntityType;
   String? selectedEmployeeRange;
   String? selectedIndustryType;
@@ -60,7 +72,8 @@ class RegisterController extends ChangeNotifier {
 
   List<String> get availableSubIndustries {
     if (selectedIndustryType == null) return [];
-    return RegisterConstants.subIndustriesByIndustry[selectedIndustryType!] ?? [];
+    return RegisterConstants.subIndustriesByIndustry[selectedIndustryType!] ??
+        [];
   }
 
   bool get needsCIN {
@@ -75,35 +88,84 @@ class RegisterController extends ChangeNotifier {
   bool get needsLLPIN =>
       selectedEntityType == 'Limited Liability Partnership (LLP)';
 
-  bool get needsFirmRegistration =>
-      selectedEntityType == 'Partnership Firm';
+  bool get needsFirmRegistration => selectedEntityType == 'Partnership Firm';
 
   bool get needsTrustRegistration =>
       selectedEntityType == 'Trust' || selectedEntityType == 'Society';
 
-  bool get needsProprietorName =>
-      selectedEntityType == 'Proprietorship';
+  bool get needsProprietorName => selectedEntityType == 'Proprietorship';
 
   bool get needsKartaName =>
       selectedEntityType == 'Hindu Undivided Family (HUF)';
 
   bool get needsManagingPartner =>
       selectedEntityType == 'Partnership Firm' ||
-          selectedEntityType == 'Limited Liability Partnership (LLP)';
+      selectedEntityType == 'Limited Liability Partnership (LLP)';
 
   bool get needsAuthorizedPerson =>
       selectedEntityType == 'Public Limited Company' ||
-          selectedEntityType == 'Private Limited Company' ||
-          selectedEntityType == 'One Person Company (OPC)' ||
-          selectedEntityType == 'Section 8 Company' ||
-          selectedEntityType == 'Trust' ||
-          selectedEntityType == 'Society' ||
-          selectedEntityType == 'Branch Office' ||
-          selectedEntityType == 'Liaison Office' ||
-          selectedEntityType == 'Subsidiary Company' ||
-          selectedEntityType == 'Foreign Company' ||
-          selectedEntityType == 'Government Company' ||
-          selectedEntityType == 'Statutory Corporation';
+      selectedEntityType == 'Private Limited Company' ||
+      selectedEntityType == 'One Person Company (OPC)' ||
+      selectedEntityType == 'Section 8 Company' ||
+      selectedEntityType == 'Trust' ||
+      selectedEntityType == 'Society' ||
+      selectedEntityType == 'Branch Office' ||
+      selectedEntityType == 'Liaison Office' ||
+      selectedEntityType == 'Subsidiary Company' ||
+      selectedEntityType == 'Foreign Company' ||
+      selectedEntityType == 'Government Company' ||
+      selectedEntityType == 'Statutory Corporation';
+
+  static const Set<String> requiredWorkspaceModuleIds = {
+    ModuleIds.administration,
+    ModuleIds.settings,
+  };
+
+  static const Set<String> selectableWorkspaceModuleIds = {
+    ModuleIds.crm,
+    ModuleIds.sales,
+    ModuleIds.service,
+    ModuleIds.inventory,
+    ModuleIds.finance,
+    ModuleIds.reports,
+    ModuleIds.iot,
+    ModuleIds.production,
+  };
+
+  List<AppModule> get requiredWorkspaceModules {
+    return ModuleRegistry.activeModules
+        .where((module) => requiredWorkspaceModuleIds.contains(module.id))
+        .toList(growable: false);
+  }
+
+  List<AppModule> get selectableWorkspaceModules {
+    return ModuleRegistry.activeModules
+        .where((module) => selectableWorkspaceModuleIds.contains(module.id))
+        .toList(growable: false);
+  }
+
+  Set<String> get enabledWorkspaceModuleIds {
+    return {...requiredWorkspaceModuleIds, ..._selectedWorkspaceModuleIds};
+  }
+
+  bool isWorkspaceModuleSelected(String moduleId) {
+    return enabledWorkspaceModuleIds.contains(moduleId);
+  }
+
+  void toggleWorkspaceModule(String moduleId, bool enabled) {
+    if (requiredWorkspaceModuleIds.contains(moduleId) ||
+        !selectableWorkspaceModuleIds.contains(moduleId)) {
+      return;
+    }
+
+    if (enabled) {
+      _selectedWorkspaceModuleIds.add(moduleId);
+    } else {
+      _selectedWorkspaceModuleIds.remove(moduleId);
+    }
+
+    notifyListeners();
+  }
 
   Future<void> initialize() async {
     isLoading = true;
@@ -174,11 +236,10 @@ class RegisterController extends ChangeNotifier {
 
     entityNameController.text =
         (user['entityName'] ?? user['companyName'] ?? '').toString();
-    addressController.text =
-        (user['address'] ?? user['streetAddress'] ?? '').toString();
+    addressController.text = (user['address'] ?? user['streetAddress'] ?? '')
+        .toString();
     stateController.text = (user['state'] ?? '').toString();
-    cityController.text =
-        (user['district'] ?? user['city'] ?? '').toString();
+    cityController.text = (user['district'] ?? user['city'] ?? '').toString();
     pincodeController.text = (user['pincode'] ?? '').toString();
     emailController.text = (user['email'] ?? '').toString();
     phoneController.text = (user['phone'] ?? '').toString();
@@ -188,17 +249,16 @@ class RegisterController extends ChangeNotifier {
 
     cinController.text = (user['cin'] ?? '').toString();
     llpinController.text = (user['llpin'] ?? '').toString();
-    firmRegistrationController.text =
-        (user['firmRegistrationNumber'] ?? '').toString();
-    trustRegistrationController.text =
-        (user['trustRegistrationNumber'] ?? '').toString();
-    proprietorNameController.text =
-        (user['proprietorName'] ?? '').toString();
+    firmRegistrationController.text = (user['firmRegistrationNumber'] ?? '')
+        .toString();
+    trustRegistrationController.text = (user['trustRegistrationNumber'] ?? '')
+        .toString();
+    proprietorNameController.text = (user['proprietorName'] ?? '').toString();
     kartaNameController.text = (user['kartaName'] ?? '').toString();
-    managingPartnerController.text =
-        (user['managingPartnerName'] ?? '').toString();
-    authorizedPersonController.text =
-        (user['authorizedPersonName'] ?? '').toString();
+    managingPartnerController.text = (user['managingPartnerName'] ?? '')
+        .toString();
+    authorizedPersonController.text = (user['authorizedPersonName'] ?? '')
+        .toString();
 
     selectedEntityType = (user['entityType'] ?? '').toString().isEmpty
         ? null
@@ -209,9 +269,9 @@ class RegisterController extends ChangeNotifier {
         : user['employeeRange'].toString();
 
     selectedIndustryType =
-    (user['industryType'] ?? user['businessCategory'] ?? '')
-        .toString()
-        .isEmpty
+        (user['industryType'] ?? user['businessCategory'] ?? '')
+            .toString()
+            .isEmpty
         ? null
         : (user['industryType'] ?? user['businessCategory']).toString();
 
@@ -219,13 +279,12 @@ class RegisterController extends ChangeNotifier {
         ? null
         : user['subIndustry'].toString();
 
-    selectedListingStatus =
-    (user['listingStatus'] ?? '').toString().isEmpty
+    selectedListingStatus = (user['listingStatus'] ?? '').toString().isEmpty
         ? null
         : user['listingStatus'].toString();
 
     selectedRegistrationStatus =
-    (user['registrationStatus'] ?? '').toString().isEmpty
+        (user['registrationStatus'] ?? '').toString().isEmpty
         ? null
         : user['registrationStatus'].toString();
 
@@ -297,6 +356,28 @@ class RegisterController extends ChangeNotifier {
   }
 
   void goToNextStep({required void Function(String) onError}) {
+    if (currentStep == 1) {
+      if (isEditMode) return;
+
+      if (addressController.text.trim().isEmpty) {
+        onError('Please enter street address');
+        return;
+      }
+      if (stateController.text.trim().isEmpty ||
+          cityController.text.trim().isEmpty) {
+        onError('Please enter state and district/city');
+        return;
+      }
+      if (pincodeController.text.trim().isEmpty) {
+        onError('Please enter pincode / zip code');
+        return;
+      }
+
+      currentStep = 2;
+      notifyListeners();
+      return;
+    }
+
     if (currentStep != 0) return;
 
     if (selectedEntityType == null || selectedEntityType!.trim().isEmpty) {
@@ -449,7 +530,7 @@ class RegisterController extends ChangeNotifier {
       }
 
       final email = emailController.text.trim().toLowerCase();
-      final password = passwordController.text.trim();
+      final password = passwordController.text;
 
       final tempUid = DateTime.now().millisecondsSinceEpoch.toString();
       final uploadedLogoUrl = await _service.uploadLogoIfNeeded(
@@ -462,14 +543,15 @@ class RegisterController extends ChangeNotifier {
       logoBytes = null;
 
       final companyData = buildCompanyPayload(logoUrlValue: uploadedLogoUrl);
+      final selectedModuleIds = enabledWorkspaceModuleIds;
 
       final registrationId = await _service.createWorkspaceRegistrationDraft(
         email: email,
-        password: password,
         displayName: resolvedDisplayName(),
         logoUrl: uploadedLogoUrl,
         companyData: companyData,
         adminPermissions: adminPermissions(),
+        enabledModuleIds: selectedModuleIds,
       );
 
       if (!context.mounted) return false;
@@ -481,6 +563,8 @@ class RegisterController extends ChangeNotifier {
             registrationId: registrationId,
             businessEmail: email,
             entityName: entityNameController.text.trim(),
+            password: password,
+            enabledModuleIds: selectedModuleIds,
           ),
         ),
       );

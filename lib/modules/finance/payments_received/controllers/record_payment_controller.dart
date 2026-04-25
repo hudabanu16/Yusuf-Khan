@@ -54,6 +54,8 @@ class RecordPaymentController extends ChangeNotifier {
     _loadCustomers();
   }
 
+  void notifyUi() => notifyListeners();
+
   @override
   void dispose() {
     amountCtrl.dispose();
@@ -124,7 +126,7 @@ class RecordPaymentController extends ChangeNotifier {
       final rawDocs = snap.docs;
 
       allUnpaidInvoices = rawDocs.where((doc) {
-        final data = doc.data() as Map<String, dynamic>;
+        final data = doc.data();
 
         final customerDataName = (data['buyer']?['name'] ?? '')
             .toString()

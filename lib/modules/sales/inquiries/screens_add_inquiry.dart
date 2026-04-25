@@ -286,9 +286,9 @@ void initState() {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
       decoration: BoxDecoration(
-        color: tone.withOpacity(0.08),
+        color: tone.withValues(alpha: 0.08),
         borderRadius: BorderRadius.circular(999),
-        border: Border.all(color: tone.withOpacity(0.18)),
+        border: Border.all(color: tone.withValues(alpha: 0.18)),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -565,7 +565,7 @@ void initState() {
             : null;
 
         return DropdownButtonFormField<String>(
-          value: safeSelectedValue,
+          initialValue: safeSelectedValue,
           decoration: _dec(
             'Select Customer *',
             prefixIcon: const Icon(Icons.apartment_outlined),
@@ -659,7 +659,7 @@ void initState() {
             : null;
 
         return DropdownButtonFormField<String>(
-          value: safeSelectedValue,
+          initialValue: safeSelectedValue,
           decoration: _dec(
             'Select Contact',
             prefixIcon: const Icon(Icons.person_outline),
@@ -746,7 +746,7 @@ void initState() {
             : (_canAssignOthers ? null : widget.currentUserUid);
 
         return DropdownButtonFormField<String>(
-          value: safeAssignedValue,
+          initialValue: safeAssignedValue,
           decoration: _dec(
             'Assign To *',
             prefixIcon: const Icon(Icons.badge_outlined),
@@ -1080,7 +1080,7 @@ void initState() {
                           ),
                         _twoCol(
                           left: DropdownButtonFormField<String>(
-                            value: _selectedSource,
+                            initialValue: _selectedSource,
                             decoration: _dec(
                               'Inquiry Source',
                               prefixIcon: const Icon(Icons.hub_outlined),
@@ -1119,7 +1119,7 @@ void initState() {
                         const SizedBox(height: 14),
                         _twoCol(
                           left: DropdownButtonFormField<String>(
-                            value: _selectedType,
+                            initialValue: _selectedType,
                             decoration: _dec(
                               'Inquiry Type',
                               prefixIcon: const Icon(Icons.category_outlined),
@@ -1141,7 +1141,7 @@ void initState() {
                             onChanged: (v) => setState(() => _selectedType = v),
                           ),
                           right: DropdownButtonFormField<String>(
-                            value: _selectedPriority,
+                            initialValue: _selectedPriority,
                             decoration: _dec(
                               'Priority',
                               prefixIcon: const Icon(
@@ -1163,7 +1163,7 @@ void initState() {
                         const SizedBox(height: 14),
                         _twoCol(
                           left: DropdownButtonFormField<String>(
-                            value: _selectedStatus,
+                            initialValue: _selectedStatus,
                             decoration: _dec(
                               'Status',
                               prefixIcon: const Icon(Icons.flag_outlined),

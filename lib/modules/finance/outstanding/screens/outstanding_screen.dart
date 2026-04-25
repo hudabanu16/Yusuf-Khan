@@ -83,7 +83,7 @@ class _OutstandingScreenState extends State<OutstandingScreen> {
                     const Text('Invoice Type', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13, color: Colors.grey)),
                     const SizedBox(height: 8),
                     DropdownButtonFormField<String>(
-                      value: _invoiceTypeFilter,
+                      initialValue: _invoiceTypeFilter,
                       decoration: InputDecoration(
                         contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                         border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
@@ -96,7 +96,7 @@ class _OutstandingScreenState extends State<OutstandingScreen> {
                     const Text('Status', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13, color: Colors.grey)),
                     const SizedBox(height: 8),
                     DropdownButtonFormField<String>(
-                      value: _includeDrafts ? 'drafts' : 'finalized',
+                      initialValue: _includeDrafts ? 'drafts' : 'finalized',
                       decoration: InputDecoration(
                         contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                         border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
@@ -431,7 +431,7 @@ class _OutstandingScreenState extends State<OutstandingScreen> {
           end: Alignment.bottomRight,
         ),
         borderRadius: BorderRadius.circular(12),
-        boxShadow: [BoxShadow(color: Colors.blue.withOpacity(0.2), blurRadius: 8, offset: const Offset(0, 4))],
+        boxShadow: [BoxShadow(color: Colors.blue.withValues(alpha: 0.2), blurRadius: 8, offset: const Offset(0, 4))],
       ),
       child: Column(
         children: [
@@ -470,7 +470,7 @@ class _OutstandingScreenState extends State<OutstandingScreen> {
                     ],
                   ),
                 ),
-                Container(width: 1, height: 40, color: Colors.white.withOpacity(0.2), margin: const EdgeInsets.symmetric(horizontal: 16)),
+                Container(width: 1, height: 40, color: Colors.white.withValues(alpha: 0.2), margin: const EdgeInsets.symmetric(horizontal: 16)),
                 Expanded(
                   flex: 2,
                   child: Column(
@@ -499,12 +499,12 @@ class _OutstandingScreenState extends State<OutstandingScreen> {
           ),
 
           if (fcTotals.isNotEmpty) ...[
-            Container(height: 1, color: Colors.white.withOpacity(0.1)),
+            Container(height: 1, color: Colors.white.withValues(alpha: 0.1)),
             Container(
               width: double.infinity,
               padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 16),
               decoration: BoxDecoration(
-                color: Colors.black.withOpacity(0.15),
+                color: Colors.black.withValues(alpha: 0.15),
                 borderRadius: const BorderRadius.only(bottomLeft: Radius.circular(12), bottomRight: Radius.circular(12)),
               ),
               child: Wrap(
@@ -514,7 +514,7 @@ class _OutstandingScreenState extends State<OutstandingScreen> {
                 children: fcTotals.entries.map((e) {
                   return Text(
                     '${e.key} ${_formatter.format(e.value)}',
-                    style: TextStyle(color: Colors.white.withOpacity(0.9), fontSize: 11, fontWeight: FontWeight.w600),
+                    style: TextStyle(color: Colors.white.withValues(alpha: 0.9), fontSize: 11, fontWeight: FontWeight.w600),
                   );
                 }).toList(),
               ),
@@ -535,7 +535,7 @@ class _OutstandingScreenState extends State<OutstandingScreen> {
               decoration: BoxDecoration(
                 color: Colors.white,
                 borderRadius: BorderRadius.circular(30),
-                boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 10, offset: const Offset(0, 2))],
+                boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.04), blurRadius: 10, offset: const Offset(0, 2))],
               ),
               child: TextField(
                 controller: _searchController,
@@ -563,7 +563,7 @@ class _OutstandingScreenState extends State<OutstandingScreen> {
                 color: Colors.white,
                 borderRadius: BorderRadius.circular(12),
                 border: Border.all(color: Colors.grey.shade200),
-                boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 8)],
+                boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.02), blurRadius: 8)],
               ),
               child: Stack(
                 children: [

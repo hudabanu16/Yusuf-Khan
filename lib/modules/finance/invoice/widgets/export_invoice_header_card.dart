@@ -198,7 +198,7 @@ class ExportInvoiceHeaderCard extends StatelessWidget {
   Widget _dropdown(String label, String value,
       Map<String, String> items, ValueChanged<String?> onChanged) {
     return DropdownButtonFormField<String>(
-      value: value,
+      initialValue: value,
       items: items.entries
           .map((e) => DropdownMenuItem(
         value: e.key,

@@ -174,7 +174,7 @@ class InviteCard extends StatelessWidget {
       width: 46,
       height: 46,
       decoration: BoxDecoration(
-        color: primaryColor.withOpacity(0.08),
+        color: primaryColor.withValues(alpha: 0.08),
         borderRadius: BorderRadius.circular(14),
       ),
       child: const Icon(
@@ -205,7 +205,7 @@ class InviteCard extends StatelessWidget {
           MiniBadge(
             text: formatRole(role),
             textColor: roleColor(role),
-            backgroundColor: roleColor(role).withOpacity(0.10),
+            backgroundColor: roleColor(role).withValues(alpha: 0.10),
           ),
       ],
     );

@@ -12,28 +12,34 @@ class ProductService {
     return _db.collection('companies').doc(companyId).collection('products');
   }
 
-  CollectionReference<Map<String, dynamic>> _categoriesRef(String companyId) {
-    return _db.collection('companies').doc(companyId).collection('inventory_categories');
-  }
-
   // 🔴 Active products only (filters out soft-deleted)
-  Stream<List<ItemModel>> watchProducts(String companyId) {
+  Stream<List<Item>> watchProducts(String companyId) {
     return _productsRef(companyId)
         .where('isDeleted', isEqualTo: false)
         .snapshots()
-        .map((snap) => snap.docs.map((doc) => ItemModel.fromMap(doc.id, doc.data())).toList());
+        .map(
+          (snap) => snap.docs
+              .map((doc) => Item.fromFirestore(doc.id, doc.data()))
+              .toList(),
+        );
   }
 
-  Future<void> saveProduct({required ItemModel product, bool isEdit = false}) async {
+  Future<void> saveProduct({required Item product, bool isEdit = false}) async {
     if (isEdit) {
-      await _productsRef(product.companyId).doc(product.id).update(product.toMap());
+      await _productsRef(
+        product.companyId,
+      ).doc(product.id).update(product.toFirestore());
     } else {
-      await _productsRef(product.companyId).add(product.toMap());
+      await _productsRef(product.companyId).add(product.toFirestore());
     }
   }
 
   // 🔴 ERP Standard: Soft Delete
-  Future<void> softDeleteProduct(String companyId, String productId, String deletedByUid) async {
+  Future<void> softDeleteProduct(
+    String companyId,
+    String productId,
+    String deletedByUid,
+  ) async {
     await _productsRef(companyId).doc(productId).update({
       'isDeleted': true,
       'isActive': false,
@@ -42,8 +48,17 @@ class ProductService {
     });
   }
 
-  Future<String> uploadProductMedia(String companyId, String uploaderUid, String fileName, Uint8List bytes, String contentType, String folder) async {
-    final ref = _storage.ref().child('companies/$companyId/products/$folder/$fileName');
+  Future<String> uploadProductMedia(
+    String companyId,
+    String uploaderUid,
+    String fileName,
+    Uint8List bytes,
+    String contentType,
+    String folder,
+  ) async {
+    final ref = _storage.ref().child(
+      'companies/$companyId/products/$folder/$fileName',
+    );
     final metadata = SettableMetadata(
       contentType: contentType,
       customMetadata: {
@@ -72,7 +87,12 @@ class ProductService {
 
     if (companyId.isEmpty) return globalData;
 
-    final companyUserDoc = await _db.collection('companies').doc(companyId).collection('users').doc(uid).get();
+    final companyUserDoc = await _db
+        .collection('companies')
+        .doc(companyId)
+        .collection('users')
+        .doc(uid)
+        .get();
     return {
       ...globalData,
       ...(companyUserDoc.data() ?? {}),

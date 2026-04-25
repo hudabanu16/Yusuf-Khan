@@ -27,7 +27,7 @@ class FilterDropdown extends StatelessWidget {
     return SizedBox(
       width: width,
       child: DropdownButtonFormField<String>(
-        value: value,
+        initialValue: value,
         items: items,
         onChanged: onChanged,
         isDense: true,

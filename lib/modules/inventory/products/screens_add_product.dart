@@ -1,4 +1,5 @@
-import 'dart:typed_data';
+// ignore_for_file: avoid_web_libraries_in_flutter, deprecated_member_use
+
 import 'dart:html' as html; // NATIVE WEB FILE LAUNCHER (NO PLUGINS REQUIRED)
 
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -967,7 +968,7 @@ class _ScreensAddProductState extends State<ScreensAddProduct> {
     required void Function(String?) onChanged,
   }) {
     return DropdownButtonFormField<String>(
-      value: value,
+      initialValue: value,
       decoration: _inputDecoration(label: label, icon: icon),
       items: items,
       onChanged: onChanged,
@@ -1009,7 +1010,7 @@ class _ScreensAddProductState extends State<ScreensAddProduct> {
         }
 
         return DropdownButtonFormField<String>(
-          value: _assignedToUid,
+          initialValue: _assignedToUid,
           decoration: _inputDecoration(
             label: 'Assign To',
             icon: Icons.person_outline,
@@ -1118,7 +1119,7 @@ class _ScreensAddProductState extends State<ScreensAddProduct> {
         }
 
         return DropdownButtonFormField<String?>(
-          value: _selectedCategoryId,
+          initialValue: _selectedCategoryId,
           decoration: _inputDecoration(
             label: 'Category *',
             icon: Icons.folder_outlined,
@@ -1168,7 +1169,7 @@ class _ScreensAddProductState extends State<ScreensAddProduct> {
     final catId = _selectedCategoryId;
     if (catId == null) {
       return DropdownButtonFormField<String?>(
-        value: null,
+        initialValue: null,
         decoration: _inputDecoration(
           label: 'Subcategory',
           icon: Icons.folder_open_outlined,
@@ -1220,7 +1221,7 @@ class _ScreensAddProductState extends State<ScreensAddProduct> {
         }
 
         return DropdownButtonFormField<String?>(
-          value: _selectedSubcategoryId,
+          initialValue: _selectedSubcategoryId,
           decoration: _inputDecoration(
             label: 'Subcategory',
             icon: Icons.folder_open_outlined,

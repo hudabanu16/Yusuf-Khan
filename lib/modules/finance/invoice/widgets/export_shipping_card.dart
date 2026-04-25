@@ -273,7 +273,7 @@ class ExportShippingCard extends StatelessWidget {
           ),
           const SizedBox(height: 8),
           DropdownButtonFormField<String>(
-            value: items.contains(value) ? value : null,
+            initialValue: items.contains(value) ? value : null,
             icon: const Icon(Icons.keyboard_arrow_down, color: zMuted),
             style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: zText),
             decoration: InputDecoration(

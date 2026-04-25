@@ -1,15 +1,16 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/foundation.dart';
 
 class JoinCompanyService {
   JoinCompanyService({
     FirebaseFirestore? firestore,
     FirebaseFunctions? functions,
     FirebaseAuth? auth,
-  })  : _firestore = firestore ?? FirebaseFirestore.instance,
-        _functions = functions ?? FirebaseFunctions.instance,
-        _auth = auth ?? FirebaseAuth.instance;
+  }) : _firestore = firestore ?? FirebaseFirestore.instance,
+       _functions = functions ?? FirebaseFunctions.instance,
+       _auth = auth ?? FirebaseAuth.instance;
 
   final FirebaseFirestore _firestore;
   final FirebaseFunctions _functions;
@@ -67,9 +68,7 @@ class JoinCompanyService {
     return false;
   }
 
-  Map<String, dynamic> _sanitizePermissions(
-      Map<String, dynamic>? input,
-      ) {
+  Map<String, dynamic> _sanitizePermissions(Map<String, dynamic>? input) {
     if (input == null || input.isEmpty) {
       return <String, dynamic>{};
     }
@@ -83,9 +82,7 @@ class JoinCompanyService {
       final value = entry.value;
 
       if (value is Map) {
-        sanitized[key] = _sanitizePermissions(
-          Map<String, dynamic>.from(value),
-        );
+        sanitized[key] = _sanitizePermissions(Map<String, dynamic>.from(value));
       } else if (value == null) {
         sanitized[key] = false;
       } else {
@@ -96,10 +93,7 @@ class JoinCompanyService {
     return sanitized;
   }
 
-  String _deriveStatus({
-    required bool isActive,
-    required bool isDeleted,
-  }) {
+  String _deriveStatus({required bool isActive, required bool isDeleted}) {
     if (isDeleted) return 'archived';
     return isActive ? 'active' : 'inactive';
   }
@@ -108,7 +102,6 @@ class JoinCompanyService {
     required String inviteCode,
     required String fullName,
     required String email,
-    required String password,
   }) async {
     final normalizedInviteCode = _normalizeText(inviteCode).toUpperCase();
     final normalizedFullName = _normalizeText(fullName);
@@ -126,20 +119,12 @@ class JoinCompanyService {
       throw Exception('Email is required.');
     }
 
-    final methods = await _auth.fetchSignInMethodsForEmail(emailLower);
-    if (methods.isNotEmpty) {
-      throw Exception(
-        'This email is already registered. Please login using your existing account.',
-      );
-    }
-
     final callable = _functions.httpsCallable('sendJoinCompanyOtp');
 
     final result = await callable.call({
       'inviteCode': normalizedInviteCode,
       'fullName': normalizedFullName,
       'email': emailLower,
-      'password': password,
     });
 
     final data = Map<String, dynamic>.from(result.data as Map);
@@ -149,26 +134,26 @@ class JoinCompanyService {
       throw Exception('Draft ID not returned from server.');
     }
 
+    await _deleteLegacyJoinRequestSecrets(draftId);
+
     return draftId;
   }
 
-  Future<void> resendJoinRequestOtp({
-    required String draftId,
-  }) async {
+  Future<void> resendJoinRequestOtp({required String draftId}) async {
     final normalizedDraftId = _normalizeText(draftId);
     if (normalizedDraftId.isEmpty) {
       throw Exception('Draft ID is required.');
     }
 
     final callable = _functions.httpsCallable('resendJoinCompanyOtp');
-    await callable.call({
-      'draftId': normalizedDraftId,
-    });
+    await callable.call({'draftId': normalizedDraftId});
+    await _deleteLegacyJoinRequestSecrets(normalizedDraftId);
   }
 
   Future<void> verifyJoinRequestOtpAndComplete({
     required String draftId,
     required String otp,
+    required String password,
   }) async {
     final normalizedDraftId = _normalizeText(draftId);
     final normalizedOtp = _normalizeText(otp);
@@ -181,6 +166,10 @@ class JoinCompanyService {
       throw Exception('OTP is required.');
     }
 
+    if (password.isEmpty) {
+      throw Exception('Password is required.');
+    }
+
     final callable = _functions.httpsCallable('verifyJoinCompanyOtp');
 
     final result = await callable.call({
@@ -188,17 +177,16 @@ class JoinCompanyService {
       'otp': normalizedOtp,
     });
 
+    await _deleteLegacyJoinRequestSecrets(normalizedDraftId);
+
     final data = Map<String, dynamic>.from(result.data as Map);
 
     final email = _normalizeEmail(data['email']);
-    final password = (data['password'] ?? '').toString();
     final fullName = _normalizeText(data['fullName']);
     final companyId = _normalizeText(data['companyId']);
     final companyName = _normalizeText(data['companyName']);
     final inviteId = _normalizeText(data['inviteId']);
-    final role = _normalizeRole(
-      (data['role'] ?? 'sales').toString(),
-    );
+    final role = _normalizeRole((data['role'] ?? 'sales').toString());
     final phone = _normalizePhone(data['phone']);
     final department = _normalizeText(data['department']);
     final designation = _normalizeText(data['designation']);
@@ -216,32 +204,21 @@ class JoinCompanyService {
       Map<String, dynamic>.from(data['permissions'] ?? const {}),
     );
 
-    if (email.isEmpty || password.isEmpty || companyId.isEmpty) {
+    if (email.isEmpty || companyId.isEmpty) {
       throw Exception('Incomplete verification response from server.');
     }
 
-    final methods = await _auth.fetchSignInMethodsForEmail(email);
-    if (methods.isNotEmpty) {
-      throw Exception('This email is already registered.');
-    }
-
-    final cred = await _auth.createUserWithEmailAndPassword(
+    final authResolution = await _getOrCreateVerifiedAuthUser(
       email: email,
       password: password,
     );
 
-    final user = cred.user;
-    if (user == null) {
-      throw Exception('Failed to create user account.');
-    }
+    final user = authResolution.user;
 
     final uid = user.uid;
     final isActive = true;
     final isDeleted = false;
-    final status = _deriveStatus(
-      isActive: isActive,
-      isDeleted: isDeleted,
-    );
+    final status = _deriveStatus(isActive: isActive, isDeleted: isDeleted);
 
     final rootUserRef = _firestore.collection('users').doc(uid);
     final companyUserRef = _firestore
@@ -249,21 +226,23 @@ class JoinCompanyService {
         .doc(companyId)
         .collection('users')
         .doc(uid);
-    final joinRequestRef =
-    _firestore.collection('join_company_requests').doc(normalizedDraftId);
+    final joinRequestRef = _firestore
+        .collection('join_company_requests')
+        .doc(normalizedDraftId);
 
     final inviteRef = inviteId.isNotEmpty
         ? _firestore
-        .collection('companies')
-        .doc(companyId)
-        .collection('invites')
-        .doc(inviteId)
+              .collection('companies')
+              .doc(companyId)
+              .collection('invites')
+              .doc(inviteId)
         : null;
 
     try {
       await _firestore.runTransaction((transaction) async {
-        final companySnap =
-        await transaction.get(_firestore.collection('companies').doc(companyId));
+        final companySnap = await transaction.get(
+          _firestore.collection('companies').doc(companyId),
+        );
 
         if (!companySnap.exists) {
           throw Exception('Company not found.');
@@ -277,7 +256,9 @@ class JoinCompanyService {
 
           final inviteData = inviteSnap.data() ?? <String, dynamic>{};
           final inviteCompanyId = _normalizeText(inviteData['companyId']);
-          final inviteStatus = _normalizeText(inviteData['status']).toLowerCase();
+          final inviteStatus = _normalizeText(
+            inviteData['status'],
+          ).toLowerCase();
           final inviteEmail = _normalizeEmail(inviteData['email']);
 
           if (inviteCompanyId.isNotEmpty && inviteCompanyId != companyId) {
@@ -345,11 +326,7 @@ class JoinCompanyService {
           'updatedByUid': uid,
         };
 
-        transaction.set(
-          rootUserRef,
-          rootPayload,
-          SetOptions(merge: true),
-        );
+        transaction.set(rootUserRef, rootPayload, SetOptions(merge: true));
 
         transaction.set(
           companyUserRef,
@@ -358,38 +335,101 @@ class JoinCompanyService {
         );
 
         if (inviteRef != null) {
-          transaction.set(
-            inviteRef,
-            {
-              'status': 'accepted',
-              'acceptedByUid': uid,
-              'acceptedByEmail': email,
-              'acceptedAt': FieldValue.serverTimestamp(),
-              'updatedAt': FieldValue.serverTimestamp(),
-              'updatedByUid': uid,
-            },
-            SetOptions(merge: true),
-          );
+          transaction.set(inviteRef, {
+            'status': 'accepted',
+            'acceptedByUid': uid,
+            'acceptedByEmail': email,
+            'acceptedAt': FieldValue.serverTimestamp(),
+            'updatedAt': FieldValue.serverTimestamp(),
+            'updatedByUid': uid,
+          }, SetOptions(merge: true));
         }
 
-        transaction.set(
-          joinRequestRef,
-          {
-            'draftId': normalizedDraftId,
-            'status': 'completed',
-            'verified': true,
-            'companyId': companyId,
-            'finalUid': uid,
-            'updatedAt': FieldValue.serverTimestamp(),
-          },
-          SetOptions(merge: true),
-        );
+        transaction.set(joinRequestRef, {
+          'draftId': normalizedDraftId,
+          'status': 'completed',
+          'verified': true,
+          'companyId': companyId,
+          'finalUid': uid,
+          'password': FieldValue.delete(),
+          'updatedAt': FieldValue.serverTimestamp(),
+        }, SetOptions(merge: true));
       });
     } catch (e) {
-      try {
-        await user.delete();
-      } catch (_) {}
+      if (authResolution.createdNewUser) {
+        try {
+          await user.delete();
+        } catch (_) {}
+      }
       rethrow;
     }
   }
+
+  Future<void> _deleteLegacyJoinRequestSecrets(String draftId) async {
+    final normalizedDraftId = draftId.trim();
+    if (normalizedDraftId.isEmpty) return;
+
+    try {
+      await _firestore
+          .collection('join_company_requests')
+          .doc(normalizedDraftId)
+          .update({'password': FieldValue.delete()});
+      debugPrint('JoinCompanyService: cleaned legacy join request secrets');
+    } on FirebaseException catch (e) {
+      if (e.code == 'not-found') return;
+      debugPrint('JoinCompanyService: legacy join cleanup skipped: ${e.code}');
+    } catch (e) {
+      debugPrint('JoinCompanyService: legacy join cleanup skipped');
+    }
+  }
+
+  Future<_AuthUserResolution> _getOrCreateVerifiedAuthUser({
+    required String email,
+    required String password,
+  }) async {
+    final normalizedEmail = _normalizeEmail(email);
+    debugPrint(
+      'JoinCompanyService auth create/recover email: $normalizedEmail',
+    );
+    debugPrint('JoinCompanyService auth password length: ${password.length}');
+
+    try {
+      final credential = await _auth.createUserWithEmailAndPassword(
+        email: normalizedEmail,
+        password: password,
+      );
+
+      final user = credential.user;
+      if (user == null) {
+        throw Exception('Failed to create user account.');
+      }
+
+      return _AuthUserResolution(user: user, createdNewUser: true);
+    } on FirebaseAuthException catch (e) {
+      debugPrint('JoinCompanyService create auth error code: ${e.code}');
+      debugPrint('JoinCompanyService create auth error message: ${e.message}');
+      if (e.code != 'email-already-in-use') {
+        rethrow;
+      }
+
+      final credential = await _auth.signInWithEmailAndPassword(
+        email: normalizedEmail,
+        password: password,
+      );
+
+      final user = credential.user;
+      if (user == null) {
+        throw Exception('Failed to recover existing user account.');
+      }
+
+      return _AuthUserResolution(user: user, createdNewUser: false);
+    }
+  }
+}
+
+class _AuthUserResolution {
+  const _AuthUserResolution({required this.user, required this.createdNewUser});
+
+  final User user;
+  final bool createdNewUser;
 }

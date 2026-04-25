@@ -100,7 +100,7 @@ class UserCard extends StatelessWidget {
                     await onToggle!.call();
                   }
                       : null,
-                  activeColor: primaryColor,
+                  activeThumbColor: primaryColor,
                   materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
                 ),
               ),
@@ -127,7 +127,7 @@ class UserCard extends StatelessWidget {
       height: 46,
       alignment: Alignment.center,
       decoration: BoxDecoration(
-        color: primaryColor.withOpacity(0.08),
+        color: primaryColor.withValues(alpha: 0.08),
         shape: BoxShape.circle,
       ),
       child: Text(
@@ -178,12 +178,12 @@ class UserCard extends StatelessWidget {
             MiniBadge(
               text: formatRole(role),
               textColor: currentRoleColor,
-              backgroundColor: currentRoleColor.withOpacity(0.10),
+              backgroundColor: currentRoleColor.withValues(alpha: 0.10),
             ),
             MiniBadge(
               text: currentStatusText,
               textColor: currentStatusColor,
-              backgroundColor: currentStatusColor.withOpacity(0.10),
+              backgroundColor: currentStatusColor.withValues(alpha: 0.10),
             ),
             if (isSelfUser)
               const MiniBadge(

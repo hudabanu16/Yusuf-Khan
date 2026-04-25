@@ -25,10 +25,10 @@ class ActionButton extends StatelessWidget {
     final bool disabled = onTap == null || isLoading;
 
     final Color backgroundColor =
-    disabled ? Colors.grey.shade100 : color.withOpacity(0.08);
+    disabled ? Colors.grey.shade100 : color.withValues(alpha: 0.08);
 
     final Color borderColor =
-    disabled ? Colors.grey.shade300 : color.withOpacity(0.25);
+    disabled ? Colors.grey.shade300 : color.withValues(alpha: 0.25);
 
     final Color foregroundColor =
     disabled ? Colors.grey : color;
@@ -38,8 +38,8 @@ class ActionButton extends StatelessWidget {
       child: InkWell(
         onTap: disabled ? null : onTap,
         borderRadius: BorderRadius.circular(12),
-        splashColor: color.withOpacity(0.15),
-        highlightColor: color.withOpacity(0.05),
+        splashColor: color.withValues(alpha: 0.15),
+        highlightColor: color.withValues(alpha: 0.05),
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 150),
           height: height,

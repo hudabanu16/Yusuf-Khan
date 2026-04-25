@@ -401,7 +401,7 @@ class _ScreensCustomerListState extends State<ScreensCustomerList> {
                 ),
                 const SizedBox(height: 14),
                 DropdownButtonFormField<String>(
-                  value: tempOwnership,
+                  initialValue: tempOwnership,
                   decoration: const InputDecoration(
                     labelText: 'Ownership',
                     isDense: true,
@@ -424,7 +424,7 @@ class _ScreensCustomerListState extends State<ScreensCustomerList> {
                 ),
                 const SizedBox(height: 10),
                 DropdownButtonFormField<String>(
-                  value: tempCustomerStage.isEmpty ? null : tempCustomerStage,
+                  initialValue: tempCustomerStage.isEmpty ? null : tempCustomerStage,
                   decoration: const InputDecoration(
                     labelText: 'Customer Stage',
                     isDense: true,
@@ -446,7 +446,7 @@ class _ScreensCustomerListState extends State<ScreensCustomerList> {
                 ),
                 const SizedBox(height: 10),
                 DropdownButtonFormField<String>(
-                  value: tempStatus.isEmpty ? null : tempStatus,
+                  initialValue: tempStatus.isEmpty ? null : tempStatus,
                   decoration: const InputDecoration(
                     labelText: 'Status',
                     isDense: true,
@@ -465,7 +465,7 @@ class _ScreensCustomerListState extends State<ScreensCustomerList> {
                 ),
                 const SizedBox(height: 10),
                 DropdownButtonFormField<String>(
-                  value: tempPriority.isEmpty ? null : tempPriority,
+                  initialValue: tempPriority.isEmpty ? null : tempPriority,
                   decoration: const InputDecoration(
                     labelText: 'Priority',
                     isDense: true,
@@ -484,7 +484,7 @@ class _ScreensCustomerListState extends State<ScreensCustomerList> {
                 ),
                 const SizedBox(height: 10),
                 DropdownButtonFormField<String>(
-                  value:
+                  initialValue:
                   tempCustomerType.isEmpty ? null : tempCustomerType,
                   decoration: const InputDecoration(
                     labelText: 'Customer Type',
@@ -533,7 +533,7 @@ class _ScreensCustomerListState extends State<ScreensCustomerList> {
                 ),
                 const SizedBox(height: 10),
                 DropdownButtonFormField<String>(
-                  value:
+                  initialValue:
                   tempFollowUpFilter.isEmpty ? null : tempFollowUpFilter,
                   decoration: const InputDecoration(
                     labelText: 'Follow-up',

@@ -485,9 +485,9 @@ class _ScreensInquiryFormState extends State<ScreensInquiryForm> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
       decoration: BoxDecoration(
-        color: tone.withOpacity(textWhite ? 0.18 : 0.08),
+        color: tone.withValues(alpha: textWhite ? 0.18 : 0.08),
         borderRadius: BorderRadius.circular(999),
-        border: Border.all(color: tone.withOpacity(0.18)),
+        border: Border.all(color: tone.withValues(alpha: 0.18)),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -776,7 +776,7 @@ class _ScreensInquiryFormState extends State<ScreensInquiryForm> {
         docs.any((d) => d.id == _assignedToUid) ? _assignedToUid : null;
 
         return DropdownButtonFormField<String>(
-          value: safeValue,
+          initialValue: safeValue,
           decoration: _dec(
             'Assign To',
             prefixIcon: const Icon(Icons.badge_outlined),
@@ -1005,7 +1005,7 @@ class _ScreensInquiryFormState extends State<ScreensInquiryForm> {
                         const SizedBox(height: 14),
                         _twoCol(
                           left: DropdownButtonFormField<String>(
-                            value: _source.isEmpty ? null : _source,
+                            initialValue: _source.isEmpty ? null : _source,
                             decoration: _dec(
                               'Inquiry Source',
                               prefixIcon: const Icon(Icons.hub_outlined),
@@ -1042,7 +1042,7 @@ class _ScreensInquiryFormState extends State<ScreensInquiryForm> {
                         const SizedBox(height: 14),
                         _twoCol(
                           left: DropdownButtonFormField<String>(
-                            value: _inquiryType.isEmpty ? null : _inquiryType,
+                            initialValue: _inquiryType.isEmpty ? null : _inquiryType,
                             decoration: _dec(
                               'Inquiry Type',
                               prefixIcon: const Icon(Icons.category_outlined),
@@ -1064,7 +1064,7 @@ class _ScreensInquiryFormState extends State<ScreensInquiryForm> {
                                 setState(() => _inquiryType = v ?? ''),
                           ),
                           right: DropdownButtonFormField<String>(
-                            value: _priority,
+                            initialValue: _priority,
                             decoration: _dec(
                               'Priority',
                               prefixIcon: const Icon(
@@ -1085,7 +1085,7 @@ class _ScreensInquiryFormState extends State<ScreensInquiryForm> {
                         const SizedBox(height: 14),
                         _twoCol(
                           left: DropdownButtonFormField<String>(
-                            value: _status,
+                            initialValue: _status,
                             decoration: _dec(
                               'Status',
                               prefixIcon: const Icon(Icons.flag_outlined),

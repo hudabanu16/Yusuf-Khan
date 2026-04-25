@@ -575,7 +575,7 @@ class _ScreensProductListState extends State<ScreensProductList> {
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       DropdownButtonFormField<String>(
-                        value: tempStatus,
+                        initialValue: tempStatus,
                         decoration: InputDecoration(
                           labelText: 'Status',
                           border: OutlineInputBorder(
@@ -602,7 +602,7 @@ class _ScreensProductListState extends State<ScreensProductList> {
                       ),
                       const SizedBox(height: 12),
                       DropdownButtonFormField<String>(
-                        value: tempStock,
+                        initialValue: tempStock,
                         decoration: InputDecoration(
                           labelText: 'Stock',
                           border: OutlineInputBorder(
@@ -633,7 +633,7 @@ class _ScreensProductListState extends State<ScreensProductList> {
                       ),
                       const SizedBox(height: 12),
                       DropdownButtonFormField<String>(
-                        value: tempCategory,
+                        initialValue: tempCategory,
                         decoration: InputDecoration(
                           labelText: 'Category',
                           border: OutlineInputBorder(
@@ -661,7 +661,7 @@ class _ScreensProductListState extends State<ScreensProductList> {
                       ),
                       const SizedBox(height: 12),
                       DropdownButtonFormField<String>(
-                        value: tempSubcategory,
+                        initialValue: tempSubcategory,
                         decoration: InputDecoration(
                           labelText: 'Subcategory',
                           border: OutlineInputBorder(
@@ -1887,7 +1887,7 @@ class _ScreensProductListState extends State<ScreensProductList> {
       child: DataTable(
         horizontalMargin: 10,
         columnSpacing: 18,
-        headingRowColor: MaterialStateProperty.all(const Color(0xFFF8FAFC)),
+        headingRowColor: WidgetStateProperty.all(const Color(0xFFF8FAFC)),
         columns: const [
           DataColumn(label: Text('Product')),
           DataColumn(label: Text('Category')),
@@ -2181,8 +2181,8 @@ class _ScreensProductListState extends State<ScreensProductList> {
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
       decoration: BoxDecoration(
         color: isActive
-            ? Colors.green.withOpacity(0.10)
-            : Colors.grey.withOpacity(0.12),
+            ? Colors.green.withValues(alpha: 0.10)
+            : Colors.grey.withValues(alpha: 0.12),
         borderRadius: BorderRadius.circular(30),
       ),
       child: Text(
@@ -2201,7 +2201,7 @@ class _ScreensProductListState extends State<ScreensProductList> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
       decoration: BoxDecoration(
-        color: color.withOpacity(0.10),
+        color: color.withValues(alpha: 0.10),
         borderRadius: BorderRadius.circular(30),
       ),
       child: Text(
@@ -2365,7 +2365,7 @@ class _ScreensProductListState extends State<ScreensProductList> {
               final totalCategories = categoryMasters.length;
               final totalSubcategories = categoryMasters.fold<int>(
                 0,
-                    (sum, e) => sum + e.subcategories.length,
+                    (total, e) => total + e.subcategories.length,
               );
 
               if (_categoryFilter != 'all' &&

@@ -16,7 +16,6 @@ const Color _kBorder = Color(0xFFE2E8F0);
 const Color _kBg = Color(0xFFF8FAFC);
 const Color _kCardBg = Colors.white;
 const Color _kSuccess = Color(0xFF16A34A);
-const Color _kSuccessSoft = Color(0xFFF0FDF4);
 const Color _kWarning = Color(0xFFEA580C);
 const Color _kWarningSoft = Color(0xFFFFF7ED);
 const Color _kError = Color(0xFFDC2626);
@@ -154,8 +153,8 @@ class _RecordPaymentScreenState extends State<RecordPaymentScreen> {
   int _getDecimalsForCurrency(String currency) {
     const zeroDecimalCurrencies = ['JPY', 'KRW', 'VND', 'BIF', 'CLP', 'PYG'];
     const threeDecimalCurrencies = ['BHD', 'KWD', 'OMR', 'JOD', 'TND'];
-    if (zeroDecimalCurrencies.contains((currency ?? '').toString().toUpperCase())) return 0;
-    if (threeDecimalCurrencies.contains((currency ?? '').toString().toUpperCase())) return 3;
+    if (zeroDecimalCurrencies.contains(currency.toUpperCase())) return 0;
+    if (threeDecimalCurrencies.contains(currency.toUpperCase())) return 3;
     return 2;
   }
 
@@ -169,7 +168,7 @@ class _RecordPaymentScreenState extends State<RecordPaymentScreen> {
   }
 
   String _getCurrencySymbol(String currency) {
-    switch ((currency ?? '').toString().toUpperCase()) {
+    switch (currency.toUpperCase()) {
       case 'USD': return '\$';
       case 'EUR': return '€';
       case 'GBP': return '£';
@@ -181,7 +180,7 @@ class _RecordPaymentScreenState extends State<RecordPaymentScreen> {
       case 'CAD': return 'C\$';
       case 'CHF': return 'CHF';
       case 'CNY': return '¥';
-      default: return (currency ?? '').toString();
+      default: return currency;
     }
   }
 
@@ -288,7 +287,7 @@ class _RecordPaymentScreenState extends State<RecordPaymentScreen> {
                                     Semantics(
                                       label: 'Select Currency',
                                       child: DropdownButtonFormField<String>(
-                                        value: _ctrl.selectedCurrency,
+                                        initialValue: _ctrl.selectedCurrency,
                                         decoration: _inputDecoration('Currency *', icon: isCurrencyLocked ? Icons.lock_outline : Icons.public),
                                         items: safeCurrencyList.map((e) => DropdownMenuItem(value: e, child: Text(e, style: const TextStyle(fontWeight: FontWeight.w600)))).toList(),
                                         onChanged: isCurrencyLocked ? null : (v) => _ctrl.changeCurrency((v ?? '').toString()),
@@ -358,7 +357,7 @@ class _RecordPaymentScreenState extends State<RecordPaymentScreen> {
                                     width: _isAmountFocused ? 2 : 1
                                 ),
                                 borderRadius: BorderRadius.circular(16),
-                                boxShadow: _isAmountFocused ? [BoxShadow(color: _kPrimary.withOpacity(0.1), blurRadius: 20, offset: const Offset(0, 10))] : [],
+                                boxShadow: _isAmountFocused ? [BoxShadow(color: _kPrimary.withValues(alpha: 0.1), blurRadius: 20, offset: const Offset(0, 10))] : [],
                               ),
                               child: Row(
                                 crossAxisAlignment: CrossAxisAlignment.center,
@@ -410,7 +409,7 @@ class _RecordPaymentScreenState extends State<RecordPaymentScreen> {
                                 child: Semantics(
                                   label: 'Payment Mode',
                                   child: DropdownButtonFormField<String>(
-                                    value: _ctrl.paymentMode,
+                                    initialValue: _ctrl.paymentMode,
                                     decoration: _inputDecoration('Payment Mode', icon: Icons.account_balance_outlined),
                                     items: const [
                                       DropdownMenuItem(value: 'Wire Transfer (TT)', child: Text('Wire Transfer (TT)', style: TextStyle(fontWeight: FontWeight.w600))),
@@ -421,8 +420,8 @@ class _RecordPaymentScreenState extends State<RecordPaymentScreen> {
                                     ],
                                     onChanged: (v) {
                                       if (v != null) {
-                                        _ctrl.paymentMode = (v ?? '').toString();
-                                        _ctrl.notifyListeners();
+                                        _ctrl.paymentMode = v;
+                                        _ctrl.notifyUi();
                                       }
                                     },
                                   ),
@@ -656,7 +655,7 @@ class _RecordPaymentScreenState extends State<RecordPaymentScreen> {
                 readOnly: isEdit || (widget.customerName != null && (widget.customerName ?? '').toString().isNotEmpty),
                 style: const TextStyle(fontWeight: FontWeight.w700, color: _kText, fontSize: 16),
                 decoration: _inputDecoration('Search Customer *', icon: Icons.business_outlined).copyWith(
-                  fillColor: hasSelection ? _kPrimarySoft.withOpacity(0.5) : Colors.white,
+                  fillColor: hasSelection ? _kPrimarySoft.withValues(alpha: 0.5) : Colors.white,
                   suffixIcon: _ctrl.isLoadingCustomers
                       ? const Padding(padding: EdgeInsets.all(14), child: SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)))
                       : (hasSelection && widget.customerName == null && !isEdit)
@@ -699,7 +698,7 @@ class _RecordPaymentScreenState extends State<RecordPaymentScreen> {
           );
           if (d != null) {
             _ctrl.paymentDate = d;
-            _ctrl.notifyListeners();
+            _ctrl.notifyUi();
           }
         },
         child: InputDecorator(
@@ -829,7 +828,7 @@ class _RecordPaymentScreenState extends State<RecordPaymentScreen> {
           children: [
             Container(
               padding: const EdgeInsets.all(20),
-              decoration: BoxDecoration(color: color.withOpacity(0.1), shape: BoxShape.circle),
+              decoration: BoxDecoration(color: color.withValues(alpha: 0.1), shape: BoxShape.circle),
               child: Icon(icon, size: 48, color: color),
             ),
             const SizedBox(height: 24),
@@ -1033,18 +1032,27 @@ class _RecordPaymentScreenState extends State<RecordPaymentScreen> {
 
           String disableReason = '';
           if (!_ctrl.isValidToSave) {
-            if (_ctrl.totalReceived <= 0) disableReason = "Enter Amount Received";
-            else if (double.tryParse(_ctrl.exchangeRateCtrl.text.trim()) == null || double.tryParse(_ctrl.exchangeRateCtrl.text.trim())! <= 0) disableReason = "Enter Valid Exchange Rate";
-            else if (isOverAllocated) disableReason = "Allocated exceeds Received";
-            else disableReason = "Fix allocation errors above";
+            if (_ctrl.totalReceived <= 0) {
+              disableReason = "Enter Amount Received";
+            } else if (double.tryParse(_ctrl.exchangeRateCtrl.text.trim()) == null || double.tryParse(_ctrl.exchangeRateCtrl.text.trim())! <= 0) {
+              disableReason = "Enter Valid Exchange Rate";
+            } else if (isOverAllocated) {
+              disableReason = "Allocated exceeds Received";
+            } else {
+              disableReason = "Fix allocation errors above";
+            }
           } else if (isOverAllocated) {
             disableReason = "Allocated exceeds Received";
           }
 
           String btnLabel = isEdit ? 'Update Payment' : 'Save Payment';
-          if (_ctrl.isSaving || _isSavingLocal) btnLabel = 'Processing...';
-          else if (isAdvanceOnly) btnLabel = isEdit ? 'Update as Advance' : 'Save as Advance';
-          else if (_ctrl.totalAllocated > 0) btnLabel = isEdit ? 'Update & Allocate' : 'Save & Allocate';
+          if (_ctrl.isSaving || _isSavingLocal) {
+            btnLabel = 'Processing...';
+          } else if (isAdvanceOnly) {
+            btnLabel = isEdit ? 'Update as Advance' : 'Save as Advance';
+          } else if (_ctrl.totalAllocated > 0) {
+            btnLabel = isEdit ? 'Update & Allocate' : 'Save & Allocate';
+          }
 
           return SafeArea(
             child: Container(
@@ -1261,9 +1269,9 @@ class _HoverCardState extends State<_HoverCard> {
         decoration: BoxDecoration(
             color: _kCardBg,
             borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: widget.hasError ? Colors.red.shade300 : (_isHovered ? _kPrimary.withOpacity(0.5) : _kBorder), width: widget.hasError ? 1.5 : 1),
+            border: Border.all(color: widget.hasError ? Colors.red.shade300 : (_isHovered ? _kPrimary.withValues(alpha: 0.5) : _kBorder), width: widget.hasError ? 1.5 : 1),
             boxShadow: [
-              if (_isHovered) BoxShadow(color: _kPrimary.withOpacity(0.08), blurRadius: 16, offset: const Offset(0, 4))
+              if (_isHovered) BoxShadow(color: _kPrimary.withValues(alpha: 0.08), blurRadius: 16, offset: const Offset(0, 4))
             ]
         ),
         child: widget.child,

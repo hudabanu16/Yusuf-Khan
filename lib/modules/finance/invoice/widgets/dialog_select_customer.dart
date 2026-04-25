@@ -5,9 +5,9 @@ class DialogSelectCustomer extends StatefulWidget {
   final String companyId;
 
   const DialogSelectCustomer({
-    Key? key,
+    super.key,
     required this.companyId,
-  }) : super(key: key);
+  });
 
   @override
   State<DialogSelectCustomer> createState() =>
@@ -168,7 +168,7 @@ class _DialogSelectCustomerState
                                 radius: 18,
                                 backgroundColor:
                                 const Color(0xFF1A3A52)
-                                    .withOpacity(0.1),
+                                    .withValues(alpha: 0.1),
                                 child: Text(
                                   name.isNotEmpty
                                       ? name[0].toUpperCase()

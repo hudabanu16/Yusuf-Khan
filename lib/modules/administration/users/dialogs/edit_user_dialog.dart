@@ -137,7 +137,7 @@ Future<void> showEditUserDialog({
   );
 
   final List<String> activeModules = isExportImport
-      ? ['dashboard', 'sales', 'crm', 'finance', 'reports']
+      ? ['dashboard', 'crm', 'finance', 'reports']
       : permissionModuleOrder;
 
   await showDialog<void>(
@@ -419,7 +419,7 @@ Future<void> showEditUserDialog({
                                       color: _editMutedTextColor,
                                     ),
                                   ),
-                                  activeColor: _editAccentColor,
+                                  activeThumbColor: _editAccentColor,
                                   contentPadding: const EdgeInsets.symmetric(
                                     horizontal: 16,
                                     vertical: 4,
@@ -670,15 +670,13 @@ Map<String, dynamic> _getIndustryDefaultPermissions({
     if (role.toLowerCase() == 'admin') {
       return {
         'dashboard': {'dashboard': true},
-        'sales': {'inquiries': true, 'quotations': true},
         'crm': {'customers': true},
         'finance': {'taxInvoice': true, 'paymentReceived': true, 'outstanding': true, 'expenseEntries': true},
-        'reports': {'salesReport': true, 'inquiryReport': true, 'customerReport': true, 'paymentReport': true},
+        'reports': {'salesReport': true, 'customerReport': true, 'paymentReport': true},
       };
     } else {
       return {
         'dashboard': {'dashboard': true},
-        'sales': {'inquiries': true, 'quotations': true},
         'crm': {'customers': true},
       };
     }
@@ -708,7 +706,7 @@ Widget _buildHeaderCard(Map<String, dynamic> data) {
       children: [
         CircleAvatar(
           radius: 30,
-          backgroundColor: _editPrimaryColor.withOpacity(0.10),
+          backgroundColor: _editPrimaryColor.withValues(alpha: 0.10),
           child: Text(
             name.isNotEmpty ? name[0].toUpperCase() : 'U',
             style: const TextStyle(
@@ -751,7 +749,7 @@ Widget _buildHeaderCard(Map<String, dynamic> data) {
                   MiniBadge(
                     text: formatRole(role),
                     textColor: roleColor(role),
-                    backgroundColor: roleColor(role).withOpacity(0.10),
+                    backgroundColor: roleColor(role).withValues(alpha: 0.10),
                   ),
                   if (department.isNotEmpty)
                     MiniBadge(
@@ -871,7 +869,7 @@ Widget _buildDropdownField({
   String Function(String)? labelBuilder,
 }) {
   return DropdownButtonFormField<String>(
-    value: options.contains(value) ? value : null,
+    initialValue: options.contains(value) ? value : null,
     decoration: _inputDecoration(
       label: label,
       icon: icon,
@@ -1071,10 +1069,10 @@ Widget _buildPermissionModuleCard({
             : (permissionSubmoduleMap[moduleKey] ?? const <String>[])
             .where((submoduleKey) {
           if (isExportImport) {
-            if (moduleKey == 'sales') return submoduleKey == 'inquiries' || submoduleKey == 'quotations';
+            if (moduleKey == 'sales') return false;
             if (moduleKey == 'crm') return submoduleKey == 'customers';
             if (moduleKey == 'finance') return ['taxInvoice', 'paymentReceived', 'outstanding', 'expenseEntries'].contains(submoduleKey);
-            if (moduleKey == 'reports') return ['salesReport', 'inquiryReport', 'customerReport', 'paymentReport'].contains(submoduleKey);
+            if (moduleKey == 'reports') return ['salesReport', 'customerReport', 'paymentReport'].contains(submoduleKey);
             return false;
           }
           return true;
@@ -1091,7 +1089,7 @@ Widget _buildPermissionModuleCard({
               border: Border.all(color: const Color(0xFFE2E8F0)),
             ),
             child: _buildActionGroup(
-              title: formatSubmoduleLabel(submoduleKey), // Correctly inherits "Invoice" from constants!
+              title: formatSubmoduleLabel(submoduleKey),
               actions: submodulePermissions,
               onChanged: (action, value) => onActionChanged(
                 moduleKey,

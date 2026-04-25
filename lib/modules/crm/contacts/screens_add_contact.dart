@@ -709,7 +709,7 @@ class _ScreensAddContactState extends State<ScreensAddContact> {
         ),
         boxShadow: [
           BoxShadow(
-            color: Colors.blue.withOpacity(0.18),
+            color: Colors.blue.withValues(alpha: 0.18),
             blurRadius: 18,
             offset: const Offset(0, 8),
           ),
@@ -724,7 +724,7 @@ class _ScreensAddContactState extends State<ScreensAddContact> {
             width: 54,
             height: 54,
             decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.16),
+              color: Colors.white.withValues(alpha: 0.16),
               borderRadius: BorderRadius.circular(16),
             ),
             child: const Icon(
@@ -763,7 +763,7 @@ class _ScreensAddContactState extends State<ScreensAddContact> {
                     vertical: 6,
                   ),
                   decoration: BoxDecoration(
-                    color: Colors.white.withOpacity(0.15),
+                    color: Colors.white.withValues(alpha: 0.15),
                     borderRadius: BorderRadius.circular(999),
                     border: Border.all(color: Colors.white24),
                   ),
@@ -794,7 +794,7 @@ class _ScreensAddContactState extends State<ScreensAddContact> {
         ),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.03),
+            color: Colors.black.withValues(alpha: 0.03),
             blurRadius: 12,
             offset: const Offset(0, -4),
           ),
@@ -880,7 +880,7 @@ class _SectionCard extends StatelessWidget {
         border: Border.all(color: Colors.grey.shade200),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.03),
+            color: Colors.black.withValues(alpha: 0.03),
             blurRadius: 12,
             offset: const Offset(0, 4),
           ),
