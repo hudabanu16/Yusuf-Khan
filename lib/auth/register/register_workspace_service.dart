@@ -6,6 +6,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/foundation.dart';
 
+import 'package:QUIK/core/inventory/services/inventory_config_service.dart';
 import 'package:QUIK/core/modules/services/tenant_module_service.dart';
 import 'package:QUIK/data/local_database.dart';
 
@@ -16,6 +17,7 @@ class RegisterWorkspaceService {
     FirebaseStorage? storage,
     FirebaseFunctions? functions,
     TenantModuleService? tenantModuleService,
+    InventoryConfigService? inventoryConfigService,
   }) : _firestore = firestore ?? FirebaseFirestore.instance,
        _auth = auth ?? FirebaseAuth.instance,
        _storage = storage ?? FirebaseStorage.instance,
@@ -24,6 +26,11 @@ class RegisterWorkspaceService {
            tenantModuleService ??
            TenantModuleService(
              firestore: firestore ?? FirebaseFirestore.instance,
+           ),
+       _inventoryConfigService =
+           inventoryConfigService ??
+           InventoryConfigService(
+             firestore: firestore ?? FirebaseFirestore.instance,
            );
 
   final FirebaseFirestore _firestore;
@@ -31,6 +38,7 @@ class RegisterWorkspaceService {
   final FirebaseStorage _storage;
   final FirebaseFunctions _functions;
   final TenantModuleService _tenantModuleService;
+  final InventoryConfigService _inventoryConfigService;
 
   Future<Map<String, dynamic>?> getLocalCurrentUser() async {
     final localUser = await LocalDatabase.instance.getCurrentUser();
@@ -173,6 +181,11 @@ class RegisterWorkspaceService {
       tenantId: companyRef.id,
       source: 'new_workspace_existing_user',
     );
+    await _inventoryConfigService.ensureDefaultProfile(
+      tenantId: companyRef.id,
+      source: 'new_workspace_existing_user',
+      companyData: companyData,
+    );
 
     await companyRef.collection('users').doc(uid).set({
       'uid': uid,
@@ -227,6 +240,11 @@ class RegisterWorkspaceService {
     await _tenantModuleService.ensureTenantModulesInitialized(
       tenantId: companyId,
       source: 'workspace_update',
+    );
+    await _inventoryConfigService.ensureDefaultProfile(
+      tenantId: companyId,
+      source: 'workspace_update',
+      companyData: companyData,
     );
 
     await _firestore
@@ -371,6 +389,11 @@ class RegisterWorkspaceService {
       tenantId: companyId,
       enabledModuleIds: moduleIdsForTenant,
       source: 'new_workspace_otp',
+    );
+    await _inventoryConfigService.ensureDefaultProfile(
+      tenantId: companyId,
+      source: 'new_workspace_otp',
+      companyData: companyData,
     );
 
     await _syncLocalWorkspaceUser(

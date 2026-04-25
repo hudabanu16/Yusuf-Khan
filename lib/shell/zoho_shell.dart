@@ -545,6 +545,11 @@ class _ZohoShellState extends State<ZohoShell> {
       return widget.isPlatformAdmin;
     }
 
+    if (page == ShellPage.adminModules ||
+        page == ShellPage.adminInventoryProfile) {
+      return false;
+    }
+
     if (_isGeneralInventoryPage(page) && _isFabricationInventory) {
       return false;
     }
@@ -664,9 +669,9 @@ class _ZohoShellState extends State<ZohoShell> {
       case ShellPage.adminRoles:
         return _hasPermission('administration', 'rolesPermissions');
       case ShellPage.adminModules:
-        return _hasPermission('administration', 'moduleSettings');
+        return false;
       case ShellPage.adminInventoryProfile:
-        return _hasPermission('administration', 'moduleSettings');
+        return false;
       case ShellPage.adminCompanyProfile:
         return _hasPermission('administration', 'companyProfile');
       case ShellPage.adminBranches:
@@ -1591,6 +1596,13 @@ class _ZohoShellState extends State<ZohoShell> {
   }
 
   Widget _buildActiveBody() {
+    if (!_canViewPage(activePage)) {
+      return Padding(
+        padding: const EdgeInsets.all(14),
+        child: _homeDashboardLive(),
+      );
+    }
+
     switch (activePage) {
       case ShellPage.dashboard:
         return Padding(

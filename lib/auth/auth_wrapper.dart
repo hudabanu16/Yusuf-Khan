@@ -381,7 +381,7 @@ class _TenantModuleBackfillGateState extends State<_TenantModuleBackfillGate> {
         tenantId: companyId,
         source: 'auth_backfill',
       );
-      await _inventoryConfigService.ensureDefaultProfile(
+      await _inventoryConfigService.ensureDefaultProfileFromCompany(
         tenantId: companyId,
         source: 'auth_backfill',
       );
