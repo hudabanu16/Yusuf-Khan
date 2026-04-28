@@ -32,6 +32,7 @@ class ScreensAddInquiry extends StatefulWidget {
 
 class _ScreensAddInquiryState extends State<ScreensAddInquiry> {
   final GlobalKey<FormState> _formKey = GlobalKey<FormState>();
+  final ScrollController _scrollController = ScrollController();
 
   // Core Identifiers & DRY Snapshots
   String? _selectedCustomerId;
@@ -77,6 +78,7 @@ class _ScreensAddInquiryState extends State<ScreensAddInquiry> {
   final TextEditingController _internalNotesController = TextEditingController();
   final TextEditingController _lastFollowUpNoteController = TextEditingController();
   final TextEditingController _linkedQuotationIdController = TextEditingController();
+  final TextEditingController _lossReasonController = TextEditingController();
   final TextEditingController _tagController = TextEditingController();
   final TextEditingController _customerSearchController = TextEditingController();
 
@@ -85,6 +87,7 @@ class _ScreensAddInquiryState extends State<ScreensAddInquiry> {
 
   // State Flags
   bool _isSaving = false;
+  String? _formMessage;
   final Map<String, bool> _sectionExpanded = {
     'Customer & Contacts': true,
     'Inquiry Basics': true,
@@ -146,6 +149,7 @@ class _ScreensAddInquiryState extends State<ScreensAddInquiry> {
   @override
   void dispose() {
     _debounceTimer?.cancel();
+    _scrollController.dispose();
     _subjectController.dispose();
     _sourceRefController.dispose();
     _expectedValueController.dispose();
@@ -158,6 +162,7 @@ class _ScreensAddInquiryState extends State<ScreensAddInquiry> {
     _internalNotesController.dispose();
     _lastFollowUpNoteController.dispose();
     _linkedQuotationIdController.dispose();
+    _lossReasonController.dispose();
     _tagController.dispose();
     _customerSearchController.dispose();
     super.dispose();
@@ -185,6 +190,134 @@ class _ScreensAddInquiryState extends State<ScreensAddInquiry> {
     );
   }
 
+  void _setFormMessage(String? message) {
+    if (!mounted) return;
+    setState(() {
+      _formMessage = message;
+    });
+  }
+
+  void _showValidationMessage(String message) {
+    _setFormMessage(message);
+    _scrollController.animateTo(
+      0,
+      duration: const Duration(milliseconds: 250),
+      curve: Curves.easeOut,
+    );
+  }
+
+  String _statusForStage(String stage) {
+    switch (stage) {
+      case 'Won':
+        return 'Won';
+      case 'Lost':
+        return 'Lost';
+      default:
+        return 'Open';
+    }
+  }
+
+  String _normalizeText(String value) {
+    return value.toLowerCase().trim().replaceAll(RegExp(r'[^a-z0-9]+'), ' ');
+  }
+
+  double? _parseMoney(String text) {
+    final cleaned = text.replaceAll(RegExp(r'[^0-9.]'), '').trim();
+    if (cleaned.isEmpty) return null;
+    return double.tryParse(cleaned);
+  }
+
+  Map<String, double?> _parseBudgetRange(String text) {
+    final matches = RegExp(r'\d+(?:\.\d+)?').allMatches(text);
+    final values = matches
+        .map((m) => double.tryParse(m.group(0) ?? ''))
+        .whereType<double>()
+        .toList();
+
+    if (values.isEmpty) {
+      return {'min': null, 'max': null};
+    }
+    if (values.length == 1) {
+      return {'min': values.first, 'max': values.first};
+    }
+    values.sort();
+    return {'min': values.first, 'max': values.last};
+  }
+
+  String _buildProductFingerprint() {
+    final tokens = _structuredProducts.map((item) {
+      final productId = (item['productId'] ?? '').toString().trim();
+      final name = _normalizeText((item['name'] ?? '').toString());
+      final sku = _normalizeText((item['sku'] ?? '').toString());
+      return [productId, sku, name].where((e) => e.isNotEmpty).join(':');
+    }).where((e) => e.isNotEmpty).toList()
+      ..sort();
+
+    return tokens.join('|');
+  }
+
+  String _buildRequirementFingerprint(String subjectSearch) {
+    final location = _normalizeText(_projectSiteLocationController.text);
+    final deliveryTimeline = _normalizeText(_deliveryTimelineController.text);
+    return [
+      subjectSearch,
+      _buildProductFingerprint(),
+      location,
+      deliveryTimeline,
+    ].where((e) => e.isNotEmpty).join('|');
+  }
+
+  String? _getStageTransitionError(String fromStage, String toStage) {
+    if (fromStage == toStage) return null;
+
+    final fromIndex = _pipelineStages.indexOf(fromStage);
+    final toIndex = _pipelineStages.indexOf(toStage);
+    if (fromIndex == -1 || toIndex == -1) return 'Invalid stage selection.';
+
+    if (fromStage == 'Won' || fromStage == 'Lost') {
+      return 'Closed inquiries cannot be moved back into the pipeline from this screen.';
+    }
+
+    if (toStage == 'Lost') {
+      return null;
+    }
+
+    if (toStage == 'Won') {
+      if (!(fromStage == 'Negotiation' || fromStage == 'Proposal')) {
+        return 'You can mark an inquiry as Won only from Proposal or Negotiation.';
+      }
+      return null;
+    }
+
+    if (toIndex > fromIndex + 1) {
+      return 'Move the inquiry one stage at a time to keep the pipeline accurate.';
+    }
+
+    return null;
+  }
+
+  void _applyStageSelection(String stage) {
+    final currentStage = _selectedStage;
+    final transitionError = _getStageTransitionError(currentStage, stage);
+    if (transitionError != null) {
+      _showValidationMessage(transitionError);
+      return;
+    }
+
+    setState(() {
+      _selectedStage = stage;
+      _selectedStatus = _statusForStage(stage);
+      if (stage == 'Won' || stage == 'Lost') {
+        _nextFollowUpDate = null;
+      }
+      if (stage != 'Lost') {
+        _lossReasonController.clear();
+      }
+      _formMessage = null;
+    });
+    _calculateDealScore();
+  }
+
   void _hydrateFromInquiry() {
     final iq = widget.existingInquiry;
     if (iq == null) return;
@@ -204,9 +337,9 @@ class _ScreensAddInquiryState extends State<ScreensAddInquiry> {
     _linkedQuotationIdController.text = iq.linkedQuotationId;
 
     _selectedPriority = iq.priority.isNotEmpty ? iq.priority : 'Warm';
-    _selectedStatus = iq.status.isNotEmpty ? iq.status : 'Open';
     _selectedSource = iq.source.isNotEmpty ? iq.source : null;
     _selectedType = iq.inquiryType.isNotEmpty ? iq.inquiryType : null;
+    _selectedStatus = iq.status.isNotEmpty ? iq.status : _statusForStage(_selectedStage);
 
     _assignedToUid = iq.assignedToUid.isNotEmpty ? iq.assignedToUid : null;
     _nextFollowUpDate = iq.nextFollowUpDate;
@@ -258,12 +391,13 @@ class _ScreensAddInquiryState extends State<ScreensAddInquiry> {
         _internalNotesController.text = _firstNonEmptyString([data['internalNotes'], _internalNotesController.text]) ?? '';
         _lastFollowUpNoteController.text = _firstNonEmptyString([data['lastFollowUpNote'], _lastFollowUpNoteController.text]) ?? '';
         _linkedQuotationIdController.text = _firstNonEmptyString([data['linkedQuotationId'], _linkedQuotationIdController.text]) ?? '';
+        _lossReasonController.text = _firstNonEmptyString([data['lossReason'], _lossReasonController.text]) ?? '';
 
         _selectedSource = _firstNonEmptyString([data['source'], _selectedSource]);
         _selectedType = _firstNonEmptyString([data['inquiryType'], _selectedType]);
         _selectedPriority = _firstNonEmptyString([data['priority'], _selectedPriority]) ?? 'Warm';
-        _selectedStatus = _firstNonEmptyString([data['status'], _selectedStatus]) ?? 'Open';
         _selectedStage = _firstNonEmptyString([data['stage'], 'Lead']) ?? 'Lead';
+        _selectedStatus = _statusForStage(_selectedStage);
         _previousStage = _selectedStage;
         _followUpType = _firstNonEmptyString([data['followUpType'], 'Call']) ?? 'Call';
         _assignedToUid = _firstNonEmptyString([data['assignedToUid'], _assignedToUid]);
@@ -451,32 +585,34 @@ class _ScreensAddInquiryState extends State<ScreensAddInquiry> {
   }
 
   bool _validateForm() {
+    _setFormMessage(null);
+
     if (!_formKey.currentState!.validate()) {
-      _handleError('Validation', Exception('Please fill in all required fields marked with *'));
+      _showValidationMessage('Please fill in all required fields marked with *.');
       return false;
     }
 
     if (_selectedCustomerId == null || _selectedCustomerId!.trim().isEmpty) {
-      _handleError('Validation', Exception('Please select a valid Customer from the search list.'));
+      _showValidationMessage('Please select a valid customer from the search results.');
       return false;
     }
 
     if (_structuredProducts.isEmpty) {
-      _handleError('Validation', Exception('Please add at least one product or requirement.'));
+      _showValidationMessage('Add at least one product or requirement before saving.');
       return false;
     }
 
     for (var item in _structuredProducts) {
       double qty = double.tryParse(item['quantity'].toString()) ?? 0.0;
       if (qty <= 0) {
-        _handleError('Validation Error', Exception('Product "${item['name']}" must have a valid quantity greater than zero.'));
+        _showValidationMessage('Product "${item['name']}" must have a quantity greater than zero.');
         return false;
       }
     }
 
     final expVal = double.tryParse(_expectedValueController.text.trim()) ?? 0.0;
     if (_expectedValueController.text.trim().isNotEmpty && expVal <= 0) {
-      _handleError('Validation Error', Exception('Expected Value must be greater than zero.'));
+      _showValidationMessage('Expected value must be greater than zero.');
       return false;
     }
 
@@ -485,24 +621,40 @@ class _ScreensAddInquiryState extends State<ScreensAddInquiry> {
       final todayDate = DateTime(today.year, today.month, today.day);
       final followupDate = DateTime(_nextFollowUpDate!.year, _nextFollowUpDate!.month, _nextFollowUpDate!.day);
       if (followupDate.isBefore(todayDate)) {
-        _handleError('Validation Error', Exception('Next Follow-up Date cannot be in the past.'));
+        _showValidationMessage('Next follow-up date cannot be in the past.');
         return false;
       }
+    }
+
+    if (_selectedStage != 'Won' && _selectedStage != 'Lost' && _nextFollowUpDate == null) {
+      _showValidationMessage('Open pipeline stages require a next follow-up date.');
+      return false;
+    }
+
+    final transitionError = _getStageTransitionError(_previousStage ?? _selectedStage, _selectedStage);
+    if (transitionError != null) {
+      _showValidationMessage(transitionError);
+      return false;
     }
 
     if (_selectedStage == 'Won') {
       if (_linkedQuotationIdController.text.trim().isEmpty) {
-        _handleError('Pipeline Error', Exception('Cannot mark deal as "Won" without a Linked Quotation ID.'));
+        _showValidationMessage('Won inquiries must be linked to a quotation.');
         return false;
       }
       if (expVal <= 0) {
-        _handleError('Pipeline Error', Exception('Expected Value must be provided for a "Won" deal.'));
+        _showValidationMessage('Won inquiries must have a positive expected value.');
         return false;
       }
     }
 
+    if (_selectedStage == 'Lost' && _lossReasonController.text.trim().isEmpty) {
+      _showValidationMessage('Please capture a loss reason before closing the inquiry as Lost.');
+      return false;
+    }
+
     if (_selectedPriority == 'Hot' && _nextFollowUpDate == null && _selectedStage != 'Won' && _selectedStage != 'Lost') {
-      _handleError('Pipeline Error', Exception('High Priority (Hot) deals require a Next Follow-up Date.'));
+      _showValidationMessage('Hot inquiries require a next follow-up date.');
       return false;
     }
 
@@ -522,6 +674,7 @@ class _ScreensAddInquiryState extends State<ScreensAddInquiry> {
 
     final expText = _expectedValueController.text.trim();
     final double? expectedValue = expText.isEmpty ? null : double.tryParse(expText);
+    final budgetRange = _parseBudgetRange(_budgetController.text.trim());
 
     final now = DateTime.now();
     bool isOverdue = false;
@@ -551,17 +704,21 @@ class _ScreensAddInquiryState extends State<ScreensAddInquiry> {
 
     final subjectStr = _subjectController.text.trim();
     final subjectSearch = subjectStr.toLowerCase().trim().replaceAll(RegExp(r'\s+'), ' ');
-    final uniqueKey = '${_selectedCustomerId}_${subjectSearch.replaceAll(RegExp(r'[^a-z0-9]'), '_')}';
+    final requirementFingerprint = _buildRequirementFingerprint(subjectSearch);
+    final uniqueKey = '${_selectedCustomerId}_${requirementFingerprint.replaceAll(RegExp(r'[^a-z0-9]'), '_')}';
 
     final searchCache = '${_customerNameSnapshot.toLowerCase()} ${_customerIndustrySnapshot.toLowerCase()} ${_customerCitySnapshot.toLowerCase()} $subjectSearch'.trim();
 
     double totalQuantity = _structuredProducts.fold<double>(0.0, (sum, item) => sum + (double.tryParse(item['quantity'].toString()) ?? 0.0));
+    final status = _statusForStage(_selectedStage);
 
     return <String, dynamic>{
       'subject': subjectStr,
       'subjectSearch': subjectSearch,
       'customerSearchCache': searchCache,
       'uniqueKey': uniqueKey,
+      'requirementFingerprint': requirementFingerprint,
+      'productFingerprint': _buildProductFingerprint(),
 
       'customerId': _selectedCustomerId,
       'customerName': _customerNameSnapshot,
@@ -578,9 +735,12 @@ class _ScreensAddInquiryState extends State<ScreensAddInquiry> {
 
       'products': _structuredProducts,
       'quantityScope': totalQuantity.toString(),
+      'totalQuantity': totalQuantity,
 
       'expectedValue': expectedValue ?? 0.0,
       'budget': _budgetController.text.trim(),
+      'budgetMin': budgetRange['min'],
+      'budgetMax': budgetRange['max'],
       'competitor': _competitorController.text.trim(),
       'decisionMaker': _decisionMakerController.text.trim(),
       'deliveryTimeline': _deliveryTimelineController.text.trim(),
@@ -588,9 +748,10 @@ class _ScreensAddInquiryState extends State<ScreensAddInquiry> {
 
       'priority': _selectedPriority.trim(),
       'stage': _selectedStage.trim(),
-      'status': _selectedStatus.trim(),
+      'status': status,
       'probability': _probability,
       'dealScore': _dealScore,
+      'qualificationGuidance': _suggestedPriority,
       'leadQuality': _selectedPriority,
       'leadSourceType': _selectedSource,
       'isConverted': _selectedStage == 'Won',
@@ -606,6 +767,7 @@ class _ScreensAddInquiryState extends State<ScreensAddInquiry> {
       'lastFollowUpNote': _lastFollowUpNoteController.text.trim(),
       'notes': _notesController.text.trim(),
       'internalNotes': _internalNotesController.text.trim(),
+      'lossReason': _lossReasonController.text.trim(),
       'tags': _tags,
 
       'linkedQuotationId': _linkedQuotationIdController.text.trim(),
@@ -614,6 +776,7 @@ class _ScreensAddInquiryState extends State<ScreensAddInquiry> {
       'assignedToUid': assignedTo,
       'assignedToName': assignedToName,
       'assignedToRole': assignedToRole,
+      'recordOwnerUid': assignedTo,
       'updatedBy': widget.currentUserUid,
       'updatedAt': FieldValue.serverTimestamp(),
       'lastActivityDate': FieldValue.serverTimestamp(),
@@ -657,11 +820,6 @@ class _ScreensAddInquiryState extends State<ScreensAddInquiry> {
 
             transaction.update(docRef, payload);
           } else {
-            final duplicateCheck = await _companyInquiriesRef.where('uniqueKey', isEqualTo: payload['uniqueKey']).limit(1).get();
-            if (duplicateCheck.docs.isNotEmpty) {
-              throw Exception('Duplicate Alert: An inquiry with this subject already exists for this customer.');
-            }
-
             final docRef = _companyInquiriesRef.doc();
 
             final now = DateTime.now();
@@ -690,7 +848,6 @@ class _ScreensAddInquiryState extends State<ScreensAddInquiry> {
 
             payload.addAll({
               'companyId': widget.companyId,
-              'recordOwnerUid': widget.currentUserUid,
               'createdBy': widget.currentUserUid,
               'createdAt': FieldValue.serverTimestamp(),
               'isActive': true,
@@ -711,6 +868,32 @@ class _ScreensAddInquiryState extends State<ScreensAddInquiry> {
     }
   }
 
+  Future<void> _ensureNotDuplicate(Map<String, dynamic> payload) async {
+    final fingerprint = (payload['requirementFingerprint'] ?? '').toString().trim();
+    final customerId = (payload['customerId'] ?? '').toString().trim();
+    if (fingerprint.isEmpty || customerId.isEmpty) return;
+
+    final duplicateSnap = await _companyInquiriesRef
+        .where('customerId', isEqualTo: customerId)
+        .where('requirementFingerprint', isEqualTo: fingerprint)
+        .limit(5)
+        .get();
+
+    final duplicateExists = duplicateSnap.docs.any((doc) {
+      if (_isEditing && doc.id == widget.existingDoc?.id) {
+        return false;
+      }
+      final data = doc.data();
+      return data['isActive'] != false && (data['stage'] ?? '') != 'Lost';
+    });
+
+    if (duplicateExists) {
+      throw Exception(
+        'A similar inquiry already exists for this customer. Reuse the existing inquiry instead of creating a duplicate.',
+      );
+    }
+  }
+
   Future<void> _saveInquiry({bool createQuote = false}) async {
     if (_isSaving) return;
     FocusScope.of(context).unfocus();
@@ -721,6 +904,7 @@ class _ScreensAddInquiryState extends State<ScreensAddInquiry> {
 
     try {
       final payload = await _buildPayload();
+      await _ensureNotDuplicate(payload);
       await _executeSave(payload);
 
       if (!mounted) return;
@@ -733,13 +917,17 @@ class _ScreensAddInquiryState extends State<ScreensAddInquiry> {
         ),
       );
 
+      _previousStage = _selectedStage;
+      _setFormMessage(null);
+
       if (createQuote) {
-        int parsedUserId = widget.currentUserUid.hashCode;
         Navigator.pushReplacement(
           context,
           MaterialPageRoute(
             builder: (_) => QuotationScreenLocal(
-              userId: parsedUserId,
+              currentUserUid: widget.currentUserUid,
+              companyId: widget.companyId,
+              inquirySeed: payload,
             ),
           ),
         );
@@ -748,6 +936,7 @@ class _ScreensAddInquiryState extends State<ScreensAddInquiry> {
       }
     } catch (e) {
       if (!mounted) return;
+      _showValidationMessage(e.toString().replaceAll('Exception: ', ''));
     } finally {
       if (mounted) setState(() => _isSaving = false);
     }
@@ -775,8 +964,80 @@ class _ScreensAddInquiryState extends State<ScreensAddInquiry> {
     );
   }
 
+  Widget _buildResponsiveFields(List<Widget> children, {double breakpoint = 720, double spacing = 16}) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        if (constraints.maxWidth < breakpoint) {
+          return Column(
+            children: children
+                .map((child) => Padding(
+                      padding: EdgeInsets.only(bottom: spacing),
+                      child: child,
+                    ))
+                .toList(),
+          );
+        }
+
+        final rowChildren = <Widget>[];
+        for (var i = 0; i < children.length; i++) {
+          rowChildren.add(Expanded(child: children[i]));
+          if (i != children.length - 1) {
+            rowChildren.add(SizedBox(width: spacing));
+          }
+        }
+
+        return Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: rowChildren,
+        );
+      },
+    );
+  }
+
+  Widget _buildFormMessageBanner() {
+    if (_formMessage == null || _formMessage!.trim().isEmpty) {
+      return const SizedBox.shrink();
+    }
+
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.only(bottom: 16),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: const Color(0xFFFFF7ED),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: const Color(0xFFFDBA74)),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Padding(
+            padding: EdgeInsets.only(top: 1),
+            child: Icon(Icons.info_outline, color: Color(0xFF9A3412)),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              _formMessage!,
+              style: const TextStyle(
+                color: Color(0xFF9A3412),
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+          IconButton(
+            tooltip: 'Dismiss',
+            visualDensity: VisualDensity.compact,
+            onPressed: () => _setFormMessage(null),
+            icon: const Icon(Icons.close, size: 18, color: Color(0xFF9A3412)),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildSmartInsightsPanel() {
-    List<String> warnings = [];
+    final warnings = <String>[];
     if (_nextFollowUpDate == null && _selectedStage != 'Won' && _selectedStage != 'Lost') {
       warnings.add('⚠ No follow-up scheduled');
     }
@@ -900,57 +1161,106 @@ class _ScreensAddInquiryState extends State<ScreensAddInquiry> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Expanded(
-              child: Autocomplete<DocumentSnapshot<Map<String, dynamic>>>(
-                initialValue: TextEditingValue(text: _customerNameSnapshot),
-                displayStringForOption: (doc) {
-                  final data = doc.data() ?? {};
-                  return (data['companyName'] ?? data['name'] ?? 'Unknown').toString();
-                },
-                optionsBuilder: (TextEditingValue textEditingValue) {
-                  return _getSyncCustomerOptions(textEditingValue.text);
-                },
-                onSelected: (doc) async {
-                  setState(() {
-                    _selectedCustomerId = doc.id;
-                    _selectedContactId = null;
-                    _additionalContactIds.clear();
-                  });
-                  await _loadCustomerData(doc.id);
-                },
-                fieldViewBuilder: (context, controller, focusNode, onEditingComplete) {
-                  if (_customerSearchController.text.isNotEmpty && controller.text.isEmpty) {
-                    controller.text = _customerSearchController.text;
-                  }
-                  return TextFormField(
-                    controller: controller,
-                    focusNode: focusNode,
-                    decoration: _dec('Search Customer Database *', hint: 'Type name or phone...', prefixIcon: const Icon(Icons.business_outlined)),
-                    validator: (v) => _selectedCustomerId == null ? 'Required' : null,
-                  );
-                },
-              ),
-            ),
-            const SizedBox(width: 12),
-            SizedBox(
+        LayoutBuilder(
+          builder: (context, constraints) {
+            final isCompact = constraints.maxWidth < 720;
+            final customerField = Autocomplete<DocumentSnapshot<Map<String, dynamic>>>(
+              initialValue: TextEditingValue(text: _customerNameSnapshot),
+              displayStringForOption: (doc) {
+                final data = doc.data() ?? {};
+                return (data['companyName'] ?? data['name'] ?? 'Unknown').toString();
+              },
+              optionsBuilder: (TextEditingValue textEditingValue) {
+                return _getSyncCustomerOptions(textEditingValue.text);
+              },
+              onSelected: (doc) async {
+                setState(() {
+                  _selectedCustomerId = doc.id;
+                  _selectedContactId = null;
+                  _additionalContactIds.clear();
+                  _formMessage = null;
+                });
+                _customerSearchController.text =
+                    (doc.data()?['companyName'] ?? doc.data()?['name'] ?? '').toString();
+                await _loadCustomerData(doc.id);
+              },
+              fieldViewBuilder: (context, controller, focusNode, onEditingComplete) {
+                if (_customerSearchController.text.isNotEmpty && controller.text.isEmpty) {
+                  controller.text = _customerSearchController.text;
+                }
+                return TextFormField(
+                  controller: controller,
+                  focusNode: focusNode,
+                  decoration: _dec('Search Customer Database *', hint: 'Type name or phone...', prefixIcon: const Icon(Icons.business_outlined)),
+                  validator: (v) => _selectedCustomerId == null ? 'Required' : null,
+                  onChanged: (value) {
+                    _customerSearchController.text = value;
+                    final normalizedInput = _normalizeText(value);
+                    final normalizedSelected = _normalizeText(_customerNameSnapshot);
+                    if (_selectedCustomerId != null && normalizedInput != normalizedSelected) {
+                      setState(() {
+                        _selectedCustomerId = null;
+                        _selectedContactId = null;
+                        _additionalContactIds.clear();
+                      });
+                    }
+                  },
+                );
+              },
+            );
+
+            final newButton = SizedBox(
               height: 56,
+              width: isCompact ? double.infinity : null,
               child: OutlinedButton.icon(
                 onPressed: () async {
-                  final result = await Navigator.push(context, MaterialPageRoute(builder: (_) => ScreensAddCustomer(companyId: widget.companyId, currentUserUid: widget.currentUserUid, currentUserRole: widget.currentUserRole)));
+                  final result = await Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => ScreensAddCustomer(
+                        companyId: widget.companyId,
+                        currentUserUid: widget.currentUserUid,
+                        currentUserRole: widget.currentUserRole,
+                      ),
+                    ),
+                  );
                   if (result == true) {
-                    setState(() { _selectedCustomerId = null; });
-                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Customer Added. Please search and select.')));
+                    setState(() {
+                      _selectedCustomerId = null;
+                      _customerSearchController.clear();
+                    });
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('Customer added. Please search and select it.')),
+                    );
                   }
                 },
                 icon: const Icon(Icons.add),
                 label: const Text('New'),
-                style: OutlinedButton.styleFrom(shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
+                style: OutlinedButton.styleFrom(
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                ),
               ),
-            )
-          ],
+            );
+
+            if (isCompact) {
+              return Column(
+                children: [
+                  customerField,
+                  const SizedBox(height: 12),
+                  newButton,
+                ],
+              );
+            }
+
+            return Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(child: customerField),
+                const SizedBox(width: 12),
+                newButton,
+              ],
+            );
+          },
         ),
         if (_selectedCustomerId != null && _customerNameSnapshot.isNotEmpty) ...[
           const SizedBox(height: 16),
@@ -1065,25 +1375,20 @@ class _ScreensAddInquiryState extends State<ScreensAddInquiry> {
           onChanged: (v) => _calculateDealScore(),
         ),
         const SizedBox(height: 16),
-        Row(
-          children: [
-            Expanded(
-              child: DropdownButtonFormField<String>(
-                value: _selectedSource,
-                decoration: _dec('Source', prefixIcon: const Icon(Icons.campaign_outlined)),
-                items: ['Inbound', 'Outbound', 'Website', 'Referral', 'Cold Call', 'Exhibition', 'IndiaMART', 'Other'].map((e) => DropdownMenuItem(value: e, child: Text(e))).toList(),
-                onChanged: (v) => setState(() => _selectedSource = v),
-              ),
-            ),
-            const SizedBox(width: 16),
-            Expanded(
-              child: TextFormField(
-                controller: _sourceRefController,
-                decoration: _dec('Source Reference', hint: 'E.g. Referral Name', prefixIcon: const Icon(Icons.link)),
-              ),
-            ),
-          ],
-        ),
+        _buildResponsiveFields([
+          DropdownButtonFormField<String>(
+            value: _selectedSource,
+            decoration: _dec('Source', prefixIcon: const Icon(Icons.campaign_outlined)),
+            items: ['Whatsapp', 'E-mail', 'Website', 'Referral', 'Cold Call', 'Exhibition', 'IndiaMART', 'Other']
+                .map((e) => DropdownMenuItem(value: e, child: Text(e)))
+                .toList(),
+            onChanged: (v) => setState(() => _selectedSource = v),
+          ),
+          TextFormField(
+            controller: _sourceRefController,
+            decoration: _dec('Source Reference', hint: 'E.g. Referral Name', prefixIcon: const Icon(Icons.link)),
+          ),
+        ]),
         const SizedBox(height: 16),
         _buildAssignUserDropdown(),
         const SizedBox(height: 16),
@@ -1353,7 +1658,7 @@ class _ScreensAddInquiryState extends State<ScreensAddInquiry> {
           Color borderColor = isSelected ? const Color(0xFF2563EB) : (isCompleted ? const Color(0xFFBFDBFE) : const Color(0xFFCBD5E1));
 
           return GestureDetector(
-            onTap: () { setState(() => _selectedStage = stage); },
+            onTap: () => _applyStageSelection(stage),
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
               decoration: BoxDecoration(color: bgColor, borderRadius: BorderRadius.circular(20), border: Border.all(color: borderColor)),
@@ -1378,6 +1683,11 @@ class _ScreensAddInquiryState extends State<ScreensAddInquiry> {
         const Text('Pipeline Stage', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: Color(0xFF64748B))),
         const SizedBox(height: 12),
         _buildPipelineIndicator(),
+        const SizedBox(height: 8),
+        const Text(
+          'Move one stage at a time. Mark as Won only after quotation confirmation, and capture a loss reason for Lost.',
+          style: TextStyle(fontSize: 12, color: Color(0xFF64748B)),
+        ),
         const SizedBox(height: 24),
         Row(
           children: [
@@ -1457,27 +1767,22 @@ class _ScreensAddInquiryState extends State<ScreensAddInquiry> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Row(
-          children: [
-            Expanded(
-              child: _buildDateSelector(
-                label: 'Next Follow-up Date *',
-                value: _nextFollowUpDate,
-                onTap: () async => await _pickDate(initialValue: _nextFollowUpDate, onPicked: (d) => setState(() { _nextFollowUpDate = d; _calculateDealScore(); })),
-                onClear: () => setState(() { _nextFollowUpDate = null; _calculateDealScore(); }),
-              ),
-            ),
-            const SizedBox(width: 16),
-            Expanded(
-              child: DropdownButtonFormField<String>(
-                value: _followUpType,
-                decoration: _dec('Follow-up Type', prefixIcon: const Icon(Icons.event_outlined)),
-                items: ['Call', 'Email', 'Visit', 'Meeting', 'WhatsApp'].map((e) => DropdownMenuItem(value: e, child: Text(e))).toList(),
-                onChanged: (v) => setState(() => _followUpType = v ?? 'Call'),
-              ),
-            ),
-          ],
-        ),
+        _buildResponsiveFields([
+          _buildDateSelector(
+            label: 'Next Follow-up Date *',
+            value: _nextFollowUpDate,
+            onTap: () async => await _pickDate(initialValue: _nextFollowUpDate, onPicked: (d) => setState(() { _nextFollowUpDate = d; _calculateDealScore(); })),
+            onClear: () => setState(() { _nextFollowUpDate = null; _calculateDealScore(); }),
+          ),
+          DropdownButtonFormField<String>(
+            value: _followUpType,
+            decoration: _dec('Follow-up Type', prefixIcon: const Icon(Icons.event_outlined)),
+            items: ['Call', 'Email', 'Visit', 'Meeting', 'WhatsApp']
+                .map((e) => DropdownMenuItem(value: e, child: Text(e)))
+                .toList(),
+            onChanged: (v) => setState(() => _followUpType = v ?? 'Call'),
+          ),
+        ]),
         const SizedBox(height: 16),
         const Text('Priority Level', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: Color(0xFF64748B))),
         const SizedBox(height: 8),
@@ -1514,6 +1819,24 @@ class _ScreensAddInquiryState extends State<ScreensAddInquiry> {
           maxLines: 2,
           decoration: _dec('Latest Follow-up Remarks', hint: 'E.g. Called client, asked for quote.', prefixIcon: const Icon(Icons.history_edu)),
         ),
+        if (_selectedStage == 'Lost') ...[
+          const SizedBox(height: 16),
+          TextFormField(
+            controller: _lossReasonController,
+            maxLines: 2,
+            decoration: _dec(
+              'Loss Reason *',
+              hint: 'E.g. Lost on price, competitor preference, no budget',
+              prefixIcon: const Icon(Icons.cancel_outlined),
+            ),
+            validator: (value) {
+              if (_selectedStage == 'Lost' && (value == null || value.trim().isEmpty)) {
+                return 'Required for lost inquiries';
+              }
+              return null;
+            },
+          ),
+        ],
         const SizedBox(height: 16),
         _buildDateSelector(
           label: 'Expected Closure Date',
@@ -1654,11 +1977,16 @@ class _ScreensAddInquiryState extends State<ScreensAddInquiry> {
 
   Future<void> _pickDate({required DateTime? initialValue, required ValueChanged<DateTime> onPicked}) async {
     final now = DateTime.now();
+    final firstDate = DateTime(now.year - 2);
+    final lastDate = DateTime(now.year + 5);
+    var initialDate = initialValue ?? now;
+    if (initialDate.isBefore(firstDate)) initialDate = firstDate;
+    if (initialDate.isAfter(lastDate)) initialDate = lastDate;
     final picked = await showDatePicker(
       context: context,
-      initialDate: initialValue ?? now,
-      firstDate: DateTime(now.year - 2),
-      lastDate: DateTime(now.year + 5),
+      initialDate: initialDate,
+      firstDate: firstDate,
+      lastDate: lastDate,
     );
     if (picked != null) onPicked(picked);
   }
@@ -1696,36 +2024,53 @@ class _ScreensAddInquiryState extends State<ScreensAddInquiry> {
         border: const Border(top: BorderSide(color: Color(0xFFE2E8F0))),
       ),
       child: SafeArea(
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.end,
-          children: [
-            TextButton(
-              onPressed: _isSaving ? null : () => Navigator.pop(context),
-              style: TextButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16)),
-              child: const Text('Cancel', style: TextStyle(color: Color(0xFF64748B), fontWeight: FontWeight.w600)),
-            ),
-            const SizedBox(width: 12),
-            OutlinedButton(
-              onPressed: _isSaving ? null : () => _saveInquiry(createQuote: true),
-              style: OutlinedButton.styleFrom(
-                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-                side: const BorderSide(color: Color(0xFF2563EB)),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-              ),
-              child: const Text('Save & Quote', style: TextStyle(color: Color(0xFF2563EB), fontWeight: FontWeight.w600)),
-            ),
-            const SizedBox(width: 12),
-            FilledButton.icon(
-              onPressed: _isSaving ? null : () => _saveInquiry(),
-              style: FilledButton.styleFrom(
-                backgroundColor: const Color(0xFF2563EB),
-                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-              ),
-              icon: _isSaving ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2)) : const Icon(Icons.check),
-              label: Text(_isEditing ? 'Update Deal' : 'Save Deal', style: const TextStyle(fontWeight: FontWeight.w600)),
-            ),
-          ],
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            final compact = constraints.maxWidth < 720;
+            final buttonWidth = compact ? constraints.maxWidth : null;
+            return Wrap(
+              alignment: WrapAlignment.end,
+              runSpacing: 12,
+              spacing: 12,
+              children: [
+                SizedBox(
+                  width: buttonWidth,
+                  child: TextButton(
+                    onPressed: _isSaving ? null : () => Navigator.pop(context),
+                    style: TextButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16)),
+                    child: const Text('Cancel', style: TextStyle(color: Color(0xFF64748B), fontWeight: FontWeight.w600)),
+                  ),
+                ),
+                SizedBox(
+                  width: buttonWidth,
+                  child: OutlinedButton(
+                    onPressed: _isSaving ? null : () => _saveInquiry(createQuote: true),
+                    style: OutlinedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+                      side: const BorderSide(color: Color(0xFF2563EB)),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                    ),
+                    child: const Text('Save & Quote', style: TextStyle(color: Color(0xFF2563EB), fontWeight: FontWeight.w600)),
+                  ),
+                ),
+                SizedBox(
+                  width: buttonWidth,
+                  child: FilledButton.icon(
+                    onPressed: _isSaving ? null : () => _saveInquiry(),
+                    style: FilledButton.styleFrom(
+                      backgroundColor: const Color(0xFF2563EB),
+                      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                    ),
+                    icon: _isSaving
+                        ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                        : const Icon(Icons.check),
+                    label: Text(_isEditing ? 'Update Deal' : 'Save Deal', style: const TextStyle(fontWeight: FontWeight.w600)),
+                  ),
+                ),
+              ],
+            );
+          },
         ),
       ),
     );
@@ -1748,12 +2093,14 @@ class _ScreensAddInquiryState extends State<ScreensAddInquiry> {
       body: Form(
         key: _formKey,
         child: SingleChildScrollView(
+          controller: _scrollController,
           padding: const EdgeInsets.all(24),
           child: Center(
             child: ConstrainedBox(
               constraints: const BoxConstraints(maxWidth: 1000),
               child: Column(
                 children: [
+                  _buildFormMessageBanner(),
                   _buildSmartInsightsPanel(),
                   _buildSection(title: 'Customer & Contacts', icon: Icons.domain, child: _buildCustomerSection()),
                   _buildSection(title: 'Inquiry Basics', icon: Icons.info_outline, child: _buildInquiryBasicsSection()),
@@ -1761,7 +2108,7 @@ class _ScreensAddInquiryState extends State<ScreensAddInquiry> {
                   _buildSection(title: 'Commercial & Intelligence', icon: Icons.insights, child: _buildCommercialSection()),
                   _buildSection(title: 'Follow-up & Activity', icon: Icons.event_available, child: _buildFollowUpSection()),
                   _buildSection(title: 'Notes & Attachments', icon: Icons.note_alt_outlined, child: _buildNotesSection()),
-                  const SizedBox(height: 40),
+                  const SizedBox(height: 96),
                 ],
               ),
             ),
@@ -1796,6 +2143,7 @@ class _ERPProductSearchDialogState extends State<_ERPProductSearchDialog> {
   final TextEditingController _searchCtrl = TextEditingController();
   final ScrollController _scrollController = ScrollController();
 
+  List<DocumentSnapshot> _allItems = [];
   List<DocumentSnapshot> _items = [];
   bool _isLoading = false;
   bool _hasMore = true;
@@ -1819,9 +2167,40 @@ class _ERPProductSearchDialogState extends State<_ERPProductSearchDialog> {
   }
 
   void _onScroll() {
+    if (_currentQuery.isNotEmpty) return;
     if (_scrollController.position.pixels >= _scrollController.position.maxScrollExtent - 200) {
       _fetchItems(loadMore: true);
     }
+  }
+
+  bool _matchesQuery(DocumentSnapshot doc) {
+    final data = doc.data() as Map<String, dynamic>;
+    final q = _currentQuery.trim().toLowerCase();
+    if (q.isEmpty) return true;
+
+    final fields = [
+      data['itemName'],
+      data['name'],
+      data['category'],
+      data['subCategory'],
+      data['sku'],
+      data['itemCode'],
+      data['brand'],
+      data['model'],
+    ];
+
+    return fields.any((value) => (value ?? '').toString().toLowerCase().contains(q));
+  }
+
+  void _applyLocalFilter() {
+    final filtered = _currentQuery.isEmpty
+        ? List<DocumentSnapshot>.from(_allItems)
+        : _allItems.where(_matchesQuery).toList();
+
+    if (!mounted) return;
+    setState(() {
+      _items = filtered;
+    });
   }
 
   void _onSearchChanged(String query) {
@@ -1831,17 +2210,18 @@ class _ERPProductSearchDialogState extends State<_ERPProductSearchDialog> {
       if (q != _currentQuery) {
         setState(() {
           _currentQuery = q;
-          _items.clear();
-          _hasMore = true;
         });
-        _fetchItems();
+        _applyLocalFilter();
+        if (_currentQuery.isNotEmpty && _items.isEmpty && _hasMore) {
+          _fetchItems(loadMore: true);
+        }
       }
     });
   }
 
-  // REQUIRES FIRESTORE INDEX: collection 'products', fields: 'isActive' ASC, 'nameLower' ASC
   Future<void> _fetchItems({bool loadMore = false}) async {
     if (_isLoading || !_hasMore) return;
+    if (loadMore && _allItems.isEmpty) return;
 
     final epoch = ++_searchEpoch;
     setState(() => _isLoading = true);
@@ -1853,66 +2233,31 @@ class _ERPProductSearchDialogState extends State<_ERPProductSearchDialog> {
           .collection('products')
           .where('isActive', isEqualTo: true);
 
-      // We maintain the high-performance indexed query if they type the exact prefix
-      if (_currentQuery.isNotEmpty) {
-        ref = ref.where('nameLower', isGreaterThanOrEqualTo: _currentQuery)
-            .where('nameLower', isLessThanOrEqualTo: '$_currentQuery\uf8ff');
-      }
+      ref = ref.limit(80);
 
-      ref = ref.limit(30); // Increased initial batch
-
-      if (loadMore && _items.isNotEmpty) {
-        ref = ref.startAfterDocument(_items.last);
+      if (loadMore && _allItems.isNotEmpty) {
+        ref = ref.startAfterDocument(_allItems.last);
       }
 
       final snap = await ref.get();
 
       if (epoch != _searchEpoch) return;
 
-      List<DocumentSnapshot> finalDocs = snap.docs;
-
-      // ---------------------------------------------------------
-      // ENTERPRISE FALLBACK: LOCAL MULTI-FIELD FILTERING
-      // If the strict prefix search fails (e.g. they typed a SKU or category),
-      // we fetch a larger generic batch and filter locally.
-      // ---------------------------------------------------------
-      if (snap.docs.isEmpty && _currentQuery.isNotEmpty) {
-        final fallbackRef = FirebaseFirestore.instance
-            .collection('companies')
-            .doc(widget.companyId)
-            .collection('products')
-            .where('isActive', isEqualTo: true)
-            .limit(100); // Fetch a larger chunk for local scanning
-
-        final fallbackSnap = await fallbackRef.get();
-
-        finalDocs = fallbackSnap.docs.where((doc) {
-          final data = doc.data() as Map<String, dynamic>;
-          final name = (data['itemName'] ?? data['name'] ?? '').toString().toLowerCase();
-          final category = (data['category'] ?? '').toString().toLowerCase();
-          final subCategory = (data['subCategory'] ?? '').toString().toLowerCase();
-          final sku = (data['sku'] ?? data['itemCode'] ?? '').toString().toLowerCase();
-
-          return name.contains(_currentQuery) ||
-              category.contains(_currentQuery) ||
-              subCategory.contains(_currentQuery) ||
-              sku.contains(_currentQuery);
-        }).toList();
-
-        // In fallback mode, we disable pagination to prevent complex offset logic
-        _hasMore = false;
-      } else {
-        if (snap.docs.length < 30) _hasMore = false;
-      }
+      final fetchedDocs = snap.docs
+          .where((doc) => !_allItems.any((existing) => existing.id == doc.id))
+          .toList();
 
       if (!mounted) return;
       setState(() {
-        if (finalDocs.isEmpty && !loadMore) {
-          _items = [];
-          _hasMore = false;
+        if (!loadMore) {
+          _allItems = fetchedDocs;
         } else {
-          _items.addAll(finalDocs);
+          _allItems.addAll(fetchedDocs);
         }
+        _hasMore = snap.docs.length == 80;
+        _items = _currentQuery.isEmpty
+            ? List<DocumentSnapshot>.from(_allItems)
+            : _allItems.where(_matchesQuery).toList();
         _isLoading = false;
       });
     } catch (e) {
