@@ -14,13 +14,13 @@ class DashboardScreen extends StatefulWidget {
   final String role;
 
   const DashboardScreen({
-    Key? key,
+    super.key,
     required this.companyId,
     required this.userName,
     required this.currentUserId,
     required this.permissions,
     required this.role,
-  }) : super(key: key);
+  });
 
   @override
   State<DashboardScreen> createState() => _DashboardScreenState();
@@ -37,8 +37,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   bool hasPermission(String module, String submodule) {
     final r = widget.role.toLowerCase();
-    if (['admin', 'owner', 'ceo', 'manager', 'superadmin'].contains(r))
+    if (['admin', 'owner', 'ceo', 'manager', 'superadmin'].contains(r)) {
       return true;
+    }
 
     final moduleData = widget.permissions[module];
     if (moduleData is Map && moduleData.containsKey(submodule)) {
@@ -132,8 +133,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
     final showQuotes = hasPermission('sales', 'quotations');
     final showConversion = hasPermission('sales', 'inquiries');
 
-    if (!showRevenue && !showOutstanding && !showQuotes && !showConversion)
+    if (!showRevenue && !showOutstanding && !showQuotes && !showConversion) {
       return null;
+    }
 
     final formatter = NumberFormat.currency(
       locale: 'en_IN',
@@ -215,8 +217,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
               builder: (context, constraints) {
                 double width = constraints.maxWidth;
                 int crossAxisCount = width > 1000 ? 4 : (width > 650 ? 2 : 1);
-                if (visibleKpis.length < crossAxisCount)
+                if (visibleKpis.length < crossAxisCount) {
                   crossAxisCount = visibleKpis.length;
+                }
                 double spacing = 16;
                 double cardWidth =
                     (width - (spacing * (crossAxisCount - 1))) / crossAxisCount;

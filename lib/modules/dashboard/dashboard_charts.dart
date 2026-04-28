@@ -7,7 +7,7 @@ import 'package:intl/intl.dart';
 class SalesBarChart extends StatelessWidget {
   final Map<int, double> monthlySales;
 
-  const SalesBarChart({Key? key, required this.monthlySales}) : super(key: key);
+  const SalesBarChart({super.key, required this.monthlySales});
 
   @override
   Widget build(BuildContext context) {
@@ -157,10 +157,10 @@ class PaymentPieChart extends StatelessWidget {
   final double pendingAmount;
 
   const PaymentPieChart({
-    Key? key,
+    super.key,
     required this.paidAmount,
     required this.pendingAmount,
-  }) : super(key: key);
+  });
 
   @override
   Widget build(BuildContext context) {

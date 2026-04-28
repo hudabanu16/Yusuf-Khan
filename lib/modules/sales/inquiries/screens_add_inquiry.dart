@@ -53,7 +53,14 @@ class _ScreensAddInquiryState extends State<ScreensAddInquiry> {
   String _selectedStatus = 'Open';
   String? _previousStage;
 
-  final List<String> _pipelineStages = ['Lead', 'Qualified', 'Proposal', 'Negotiation', 'Won', 'Lost'];
+  final List<String> _pipelineStages = [
+    'Lead',
+    'Qualified',
+    'Proposal',
+    'Negotiation',
+    'Won',
+    'Lost',
+  ];
 
   // Follow-up
   DateTime? _nextFollowUpDate;
@@ -68,19 +75,27 @@ class _ScreensAddInquiryState extends State<ScreensAddInquiry> {
   // Controllers
   final TextEditingController _subjectController = TextEditingController();
   final TextEditingController _sourceRefController = TextEditingController();
-  final TextEditingController _expectedValueController = TextEditingController();
+  final TextEditingController _expectedValueController =
+      TextEditingController();
   final TextEditingController _budgetController = TextEditingController();
-  final TextEditingController _deliveryTimelineController = TextEditingController();
-  final TextEditingController _projectSiteLocationController = TextEditingController();
+  final TextEditingController _deliveryTimelineController =
+      TextEditingController();
+  final TextEditingController _projectSiteLocationController =
+      TextEditingController();
   final TextEditingController _competitorController = TextEditingController();
-  final TextEditingController _decisionMakerController = TextEditingController();
+  final TextEditingController _decisionMakerController =
+      TextEditingController();
   final TextEditingController _notesController = TextEditingController();
-  final TextEditingController _internalNotesController = TextEditingController();
-  final TextEditingController _lastFollowUpNoteController = TextEditingController();
-  final TextEditingController _linkedQuotationIdController = TextEditingController();
+  final TextEditingController _internalNotesController =
+      TextEditingController();
+  final TextEditingController _lastFollowUpNoteController =
+      TextEditingController();
+  final TextEditingController _linkedQuotationIdController =
+      TextEditingController();
   final TextEditingController _lossReasonController = TextEditingController();
   final TextEditingController _tagController = TextEditingController();
-  final TextEditingController _customerSearchController = TextEditingController();
+  final TextEditingController _customerSearchController =
+      TextEditingController();
 
   // Structured Products (ERP Grade Inventory Connection)
   List<Map<String, dynamic>> _structuredProducts = [];
@@ -104,30 +119,52 @@ class _ScreensAddInquiryState extends State<ScreensAddInquiry> {
   Map<String, dynamic>? _existingRawData;
 
   Timer? _debounceTimer;
-  final Map<String, List<QueryDocumentSnapshot<Map<String, dynamic>>>> _customerSearchCache = {};
+  final Map<String, List<QueryDocumentSnapshot<Map<String, dynamic>>>>
+  _customerSearchCache = {};
   List<DocumentSnapshot<Map<String, dynamic>>> _customerSuggestions = [];
 
   bool get _isEditing => widget.existingDoc != null;
 
   bool get _isAdminOrManager {
     final role = widget.currentUserRole.trim().toLowerCase();
-    return ['admin', 'manager', 'director', 'md', 'ceo', 'superadmin'].contains(role);
+    return [
+      'admin',
+      'manager',
+      'director',
+      'md',
+      'ceo',
+      'superadmin',
+    ].contains(role);
   }
 
   // Firestore References
   CollectionReference<Map<String, dynamic>> get _companyCustomersRef =>
-      FirebaseFirestore.instance.collection('companies').doc(widget.companyId).collection('customers');
+      FirebaseFirestore.instance
+          .collection('companies')
+          .doc(widget.companyId)
+          .collection('customers');
 
   CollectionReference<Map<String, dynamic>> get _companyUsersRef =>
-      FirebaseFirestore.instance.collection('companies').doc(widget.companyId).collection('users');
+      FirebaseFirestore.instance
+          .collection('companies')
+          .doc(widget.companyId)
+          .collection('users');
 
   CollectionReference<Map<String, dynamic>> get _companyInquiriesRef =>
-      FirebaseFirestore.instance.collection('companies').doc(widget.companyId).collection('inquiries');
+      FirebaseFirestore.instance
+          .collection('companies')
+          .doc(widget.companyId)
+          .collection('inquiries');
 
   CollectionReference<Map<String, dynamic>> get _companyCountersRef =>
-      FirebaseFirestore.instance.collection('companies').doc(widget.companyId).collection('counters');
+      FirebaseFirestore.instance
+          .collection('companies')
+          .doc(widget.companyId)
+          .collection('counters');
 
-  CollectionReference<Map<String, dynamic>> _companyContactsRef(String customerId) {
+  CollectionReference<Map<String, dynamic>> _companyContactsRef(
+    String customerId,
+  ) {
     return _companyCustomersRef.doc(customerId).collection('contacts');
   }
 
@@ -172,7 +209,12 @@ class _ScreensAddInquiryState extends State<ScreensAddInquiry> {
   // STRUCTURED ERROR HANDLING
   // ---------------------------------------------------------
   void _handleError(String contextMessage, Object error, [StackTrace? st]) {
-    developer.log('Error: $contextMessage', error: error, stackTrace: st, name: 'InquiryModule');
+    developer.log(
+      'Error: $contextMessage',
+      error: error,
+      stackTrace: st,
+      name: 'InquiryModule',
+    );
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
@@ -180,7 +222,11 @@ class _ScreensAddInquiryState extends State<ScreensAddInquiry> {
           children: [
             const Icon(Icons.error_outline, color: Colors.white),
             const SizedBox(width: 8),
-            Expanded(child: Text('$contextMessage: ${error.toString().replaceAll("Exception: ", "")}')),
+            Expanded(
+              child: Text(
+                '$contextMessage: ${error.toString().replaceAll("Exception: ", "")}',
+              ),
+            ),
           ],
         ),
         backgroundColor: Colors.redAccent.shade700,
@@ -221,12 +267,6 @@ class _ScreensAddInquiryState extends State<ScreensAddInquiry> {
     return value.toLowerCase().trim().replaceAll(RegExp(r'[^a-z0-9]+'), ' ');
   }
 
-  double? _parseMoney(String text) {
-    final cleaned = text.replaceAll(RegExp(r'[^0-9.]'), '').trim();
-    if (cleaned.isEmpty) return null;
-    return double.tryParse(cleaned);
-  }
-
   Map<String, double?> _parseBudgetRange(String text) {
     final matches = RegExp(r'\d+(?:\.\d+)?').allMatches(text);
     final values = matches
@@ -245,13 +285,21 @@ class _ScreensAddInquiryState extends State<ScreensAddInquiry> {
   }
 
   String _buildProductFingerprint() {
-    final tokens = _structuredProducts.map((item) {
-      final productId = (item['productId'] ?? '').toString().trim();
-      final name = _normalizeText((item['name'] ?? '').toString());
-      final sku = _normalizeText((item['sku'] ?? '').toString());
-      return [productId, sku, name].where((e) => e.isNotEmpty).join(':');
-    }).where((e) => e.isNotEmpty).toList()
-      ..sort();
+    final tokens =
+        _structuredProducts
+            .map((item) {
+              final productId = (item['productId'] ?? '').toString().trim();
+              final name = _normalizeText((item['name'] ?? '').toString());
+              final sku = _normalizeText((item['sku'] ?? '').toString());
+              return [
+                productId,
+                sku,
+                name,
+              ].where((e) => e.isNotEmpty).join(':');
+            })
+            .where((e) => e.isNotEmpty)
+            .toList()
+          ..sort();
 
     return tokens.join('|');
   }
@@ -339,7 +387,9 @@ class _ScreensAddInquiryState extends State<ScreensAddInquiry> {
     _selectedPriority = iq.priority.isNotEmpty ? iq.priority : 'Warm';
     _selectedSource = iq.source.isNotEmpty ? iq.source : null;
     _selectedType = iq.inquiryType.isNotEmpty ? iq.inquiryType : null;
-    _selectedStatus = iq.status.isNotEmpty ? iq.status : _statusForStage(_selectedStage);
+    _selectedStatus = iq.status.isNotEmpty
+        ? iq.status
+        : _statusForStage(_selectedStage);
 
     _assignedToUid = iq.assignedToUid.isNotEmpty ? iq.assignedToUid : null;
     _nextFollowUpDate = iq.nextFollowUpDate;
@@ -364,65 +414,146 @@ class _ScreensAddInquiryState extends State<ScreensAddInquiry> {
 
       if (!mounted) return;
       setState(() {
-        _selectedCustomerId = _firstNonEmptyString([data['customerId'], _selectedCustomerId]);
-        _selectedContactId = _firstNonEmptyString([data['contactId'], _selectedContactId]);
+        _selectedCustomerId = _firstNonEmptyString([
+          data['customerId'],
+          _selectedCustomerId,
+        ]);
+        _selectedContactId = _firstNonEmptyString([
+          data['contactId'],
+          _selectedContactId,
+        ]);
         if (data['additionalContactIds'] != null) {
-          _additionalContactIds = List<String>.from(data['additionalContactIds']);
+          _additionalContactIds = List<String>.from(
+            data['additionalContactIds'],
+          );
         }
 
         _customerNameSnapshot = (data['customerName'] ?? '').toString();
         _customerIndustrySnapshot = (data['customerIndustry'] ?? '').toString();
         _customerCitySnapshot = (data['customerCity'] ?? '').toString();
 
-        _subjectController.text = _firstNonEmptyString([data['subject'], _subjectController.text]) ?? '';
-        _sourceRefController.text = _firstNonEmptyString([data['sourceReference'], _sourceRefController.text]) ?? '';
+        _subjectController.text =
+            _firstNonEmptyString([data['subject'], _subjectController.text]) ??
+            '';
+        _sourceRefController.text =
+            _firstNonEmptyString([
+              data['sourceReference'],
+              _sourceRefController.text,
+            ]) ??
+            '';
 
-        if (data['expectedValue'] != null && (double.tryParse(data['expectedValue'].toString()) ?? 0) > 0) {
+        if (data['expectedValue'] != null &&
+            (double.tryParse(data['expectedValue'].toString()) ?? 0) > 0) {
           _expectedValueController.text = data['expectedValue'].toString();
         }
 
-        _budgetController.text = _firstNonEmptyString([data['budget'], _budgetController.text]) ?? '';
-        _competitorController.text = _firstNonEmptyString([data['competitor'], _competitorController.text]) ?? '';
-        _decisionMakerController.text = _firstNonEmptyString([data['decisionMaker'], _decisionMakerController.text]) ?? '';
+        _budgetController.text =
+            _firstNonEmptyString([data['budget'], _budgetController.text]) ??
+            '';
+        _competitorController.text =
+            _firstNonEmptyString([
+              data['competitor'],
+              _competitorController.text,
+            ]) ??
+            '';
+        _decisionMakerController.text =
+            _firstNonEmptyString([
+              data['decisionMaker'],
+              _decisionMakerController.text,
+            ]) ??
+            '';
 
-        _deliveryTimelineController.text = _firstNonEmptyString([data['deliveryTimeline'], _deliveryTimelineController.text]) ?? '';
-        _projectSiteLocationController.text = _firstNonEmptyString([data['projectSiteLocation'], data['location'], _projectSiteLocationController.text]) ?? '';
-        _notesController.text = _firstNonEmptyString([data['notes'], _notesController.text]) ?? '';
-        _internalNotesController.text = _firstNonEmptyString([data['internalNotes'], _internalNotesController.text]) ?? '';
-        _lastFollowUpNoteController.text = _firstNonEmptyString([data['lastFollowUpNote'], _lastFollowUpNoteController.text]) ?? '';
-        _linkedQuotationIdController.text = _firstNonEmptyString([data['linkedQuotationId'], _linkedQuotationIdController.text]) ?? '';
-        _lossReasonController.text = _firstNonEmptyString([data['lossReason'], _lossReasonController.text]) ?? '';
+        _deliveryTimelineController.text =
+            _firstNonEmptyString([
+              data['deliveryTimeline'],
+              _deliveryTimelineController.text,
+            ]) ??
+            '';
+        _projectSiteLocationController.text =
+            _firstNonEmptyString([
+              data['projectSiteLocation'],
+              data['location'],
+              _projectSiteLocationController.text,
+            ]) ??
+            '';
+        _notesController.text =
+            _firstNonEmptyString([data['notes'], _notesController.text]) ?? '';
+        _internalNotesController.text =
+            _firstNonEmptyString([
+              data['internalNotes'],
+              _internalNotesController.text,
+            ]) ??
+            '';
+        _lastFollowUpNoteController.text =
+            _firstNonEmptyString([
+              data['lastFollowUpNote'],
+              _lastFollowUpNoteController.text,
+            ]) ??
+            '';
+        _linkedQuotationIdController.text =
+            _firstNonEmptyString([
+              data['linkedQuotationId'],
+              _linkedQuotationIdController.text,
+            ]) ??
+            '';
+        _lossReasonController.text =
+            _firstNonEmptyString([
+              data['lossReason'],
+              _lossReasonController.text,
+            ]) ??
+            '';
 
-        _selectedSource = _firstNonEmptyString([data['source'], _selectedSource]);
-        _selectedType = _firstNonEmptyString([data['inquiryType'], _selectedType]);
-        _selectedPriority = _firstNonEmptyString([data['priority'], _selectedPriority]) ?? 'Warm';
-        _selectedStage = _firstNonEmptyString([data['stage'], 'Lead']) ?? 'Lead';
+        _selectedSource = _firstNonEmptyString([
+          data['source'],
+          _selectedSource,
+        ]);
+        _selectedType = _firstNonEmptyString([
+          data['inquiryType'],
+          _selectedType,
+        ]);
+        _selectedPriority =
+            _firstNonEmptyString([data['priority'], _selectedPriority]) ??
+            'Warm';
+        _selectedStage =
+            _firstNonEmptyString([data['stage'], 'Lead']) ?? 'Lead';
         _selectedStatus = _statusForStage(_selectedStage);
         _previousStage = _selectedStage;
-        _followUpType = _firstNonEmptyString([data['followUpType'], 'Call']) ?? 'Call';
-        _assignedToUid = _firstNonEmptyString([data['assignedToUid'], _assignedToUid]);
+        _followUpType =
+            _firstNonEmptyString([data['followUpType'], 'Call']) ?? 'Call';
+        _assignedToUid = _firstNonEmptyString([
+          data['assignedToUid'],
+          _assignedToUid,
+        ]);
 
         _probability = (data['probability'] ?? 50.0).toDouble();
         _tags = List<String>.from(data['tags'] ?? []);
 
         if (data['products'] != null && (data['products'] as List).isNotEmpty) {
-          _structuredProducts = List<Map<String, dynamic>>.from(data['products']);
-        } else if (data['requiredProducts'] != null && data['requiredProducts'].toString().isNotEmpty) {
-          _structuredProducts = [{
-            'productId': 'legacy',
-            'name': data['requiredProducts'],
-            'quantity': data['quantityScope'] ?? '1',
-            'price': 0.0,
-            'unit': 'Nos',
-            'sku': ''
-          }];
+          _structuredProducts = List<Map<String, dynamic>>.from(
+            data['products'],
+          );
+        } else if (data['requiredProducts'] != null &&
+            data['requiredProducts'].toString().isNotEmpty) {
+          _structuredProducts = [
+            {
+              'productId': 'legacy',
+              'name': data['requiredProducts'],
+              'quantity': data['quantityScope'] ?? '1',
+              'price': 0.0,
+              'unit': 'Nos',
+              'sku': '',
+            },
+          ];
         }
 
-        if (data['nextFollowUpDate'] != null && data['nextFollowUpDate'] is Timestamp) {
+        if (data['nextFollowUpDate'] != null &&
+            data['nextFollowUpDate'] is Timestamp) {
           _nextFollowUpDate = (data['nextFollowUpDate'] as Timestamp).toDate();
         }
-        if (data['expectedClosureDate'] != null && data['expectedClosureDate'] is Timestamp) {
-          _expectedClosureDate = (data['expectedClosureDate'] as Timestamp).toDate();
+        if (data['expectedClosureDate'] != null &&
+            data['expectedClosureDate'] is Timestamp) {
+          _expectedClosureDate = (data['expectedClosureDate'] as Timestamp)
+              .toDate();
         }
       });
 
@@ -445,31 +576,51 @@ class _ScreensAddInquiryState extends State<ScreensAddInquiry> {
 
   void _calculateDealScore() {
     int score = 0;
-    double expectedVal = double.tryParse(_expectedValueController.text.trim()) ?? 0;
+    double expectedVal =
+        double.tryParse(_expectedValueController.text.trim()) ?? 0;
 
-    if (expectedVal > 500000) score += 25;
-    else if (expectedVal > 50000) score += 15;
-    else if (expectedVal > 0) score += 5;
+    if (expectedVal > 500000) {
+      score += 25;
+    } else if (expectedVal > 50000) {
+      score += 15;
+    } else if (expectedVal > 0) {
+      score += 5;
+    }
 
-    if (_expectedClosureDate != null) score += 15;
-    if (_decisionMakerController.text.trim().isNotEmpty) score += 15;
+    if (_expectedClosureDate != null) {
+      score += 15;
+    }
+    if (_decisionMakerController.text.trim().isNotEmpty) {
+      score += 15;
+    }
 
-    if (_probability >= 75) score += 20;
-    else if (_probability >= 40) score += 10;
+    if (_probability >= 75) {
+      score += 20;
+    } else if (_probability >= 40) {
+      score += 10;
+    }
 
     if (_nextFollowUpDate != null) {
       final daysDiff = _nextFollowUpDate!.difference(DateTime.now()).inDays;
-      if (daysDiff >= 0 && daysDiff <= 7) score += 15;
-      else if (daysDiff > 7) score += 5;
+      if (daysDiff >= 0 && daysDiff <= 7) {
+        score += 15;
+      } else if (daysDiff > 7) {
+        score += 5;
+      }
     }
 
-    if (_structuredProducts.isNotEmpty) score += 10;
+    if (_structuredProducts.isNotEmpty) {
+      score += 10;
+    }
 
     int newScore = score.clamp(0, 100);
 
     String suggested = 'Cold';
-    if (newScore >= 70) suggested = 'Hot';
-    else if (newScore >= 40) suggested = 'Warm';
+    if (newScore >= 70) {
+      suggested = 'Hot';
+    } else if (newScore >= 40) {
+      suggested = 'Warm';
+    }
 
     if (_dealScore != newScore || _suggestedPriority != suggested) {
       if (mounted) {
@@ -491,7 +642,10 @@ class _ScreensAddInquiryState extends State<ScreensAddInquiry> {
     if (_debounceTimer?.isActive ?? false) _debounceTimer!.cancel();
     _debounceTimer = Timer(const Duration(milliseconds: 350), () async {
       try {
-        Query<Map<String, dynamic>> baseQuery = _companyCustomersRef.where('isActive', isEqualTo: true);
+        Query<Map<String, dynamic>> baseQuery = _companyCustomersRef.where(
+          'isActive',
+          isEqualTo: true,
+        );
         QuerySnapshot<Map<String, dynamic>> snap;
 
         if (q.isEmpty) {
@@ -507,7 +661,9 @@ class _ScreensAddInquiryState extends State<ScreensAddInquiry> {
             final fallbackSnap = await baseQuery.limit(50).get();
             final list = fallbackSnap.docs.where((doc) {
               final data = doc.data();
-              final name = (data['companyName'] ?? data['name'] ?? '').toString().toLowerCase();
+              final name = (data['companyName'] ?? data['name'] ?? '')
+                  .toString()
+                  .toLowerCase();
               final phone = (data['phone'] ?? '').toString();
               return name.contains(q) || phone.contains(q);
             }).toList();
@@ -534,7 +690,9 @@ class _ScreensAddInquiryState extends State<ScreensAddInquiry> {
     });
   }
 
-  Iterable<DocumentSnapshot<Map<String, dynamic>>> _getSyncCustomerOptions(String query) {
+  Iterable<DocumentSnapshot<Map<String, dynamic>>> _getSyncCustomerOptions(
+    String query,
+  ) {
     final q = query.toLowerCase().trim();
     _triggerAsyncCustomerSearch(q);
 
@@ -545,7 +703,9 @@ class _ScreensAddInquiryState extends State<ScreensAddInquiry> {
     return _customerSuggestions;
   }
 
-  Iterable<DocumentSnapshot<Map<String, dynamic>>> _filterCustomersByRole(List<QueryDocumentSnapshot<Map<String, dynamic>>> docs) {
+  Iterable<DocumentSnapshot<Map<String, dynamic>>> _filterCustomersByRole(
+    List<QueryDocumentSnapshot<Map<String, dynamic>>> docs,
+  ) {
     if (_isAdminOrManager) return docs;
     return docs.where((d) {
       final data = d.data();
@@ -563,9 +723,15 @@ class _ScreensAddInquiryState extends State<ScreensAddInquiry> {
         _selectedCustomerData = doc.data();
         if (mounted) {
           setState(() {
-            _customerNameSnapshot = (_selectedCustomerData?['companyName'] ?? _selectedCustomerData?['name'] ?? '').toString();
-            _customerIndustrySnapshot = (_selectedCustomerData?['industry'] ?? '').toString();
-            _customerCitySnapshot = (_selectedCustomerData?['city'] ?? '').toString();
+            _customerNameSnapshot =
+                (_selectedCustomerData?['companyName'] ??
+                        _selectedCustomerData?['name'] ??
+                        '')
+                    .toString();
+            _customerIndustrySnapshot =
+                (_selectedCustomerData?['industry'] ?? '').toString();
+            _customerCitySnapshot = (_selectedCustomerData?['city'] ?? '')
+                .toString();
           });
         }
       }
@@ -588,24 +754,32 @@ class _ScreensAddInquiryState extends State<ScreensAddInquiry> {
     _setFormMessage(null);
 
     if (!_formKey.currentState!.validate()) {
-      _showValidationMessage('Please fill in all required fields marked with *.');
+      _showValidationMessage(
+        'Please fill in all required fields marked with *.',
+      );
       return false;
     }
 
     if (_selectedCustomerId == null || _selectedCustomerId!.trim().isEmpty) {
-      _showValidationMessage('Please select a valid customer from the search results.');
+      _showValidationMessage(
+        'Please select a valid customer from the search results.',
+      );
       return false;
     }
 
     if (_structuredProducts.isEmpty) {
-      _showValidationMessage('Add at least one product or requirement before saving.');
+      _showValidationMessage(
+        'Add at least one product or requirement before saving.',
+      );
       return false;
     }
 
     for (var item in _structuredProducts) {
       double qty = double.tryParse(item['quantity'].toString()) ?? 0.0;
       if (qty <= 0) {
-        _showValidationMessage('Product "${item['name']}" must have a quantity greater than zero.');
+        _showValidationMessage(
+          'Product "${item['name']}" must have a quantity greater than zero.',
+        );
         return false;
       }
     }
@@ -619,19 +793,30 @@ class _ScreensAddInquiryState extends State<ScreensAddInquiry> {
     if (_nextFollowUpDate != null) {
       final today = DateTime.now();
       final todayDate = DateTime(today.year, today.month, today.day);
-      final followupDate = DateTime(_nextFollowUpDate!.year, _nextFollowUpDate!.month, _nextFollowUpDate!.day);
+      final followupDate = DateTime(
+        _nextFollowUpDate!.year,
+        _nextFollowUpDate!.month,
+        _nextFollowUpDate!.day,
+      );
       if (followupDate.isBefore(todayDate)) {
         _showValidationMessage('Next follow-up date cannot be in the past.');
         return false;
       }
     }
 
-    if (_selectedStage != 'Won' && _selectedStage != 'Lost' && _nextFollowUpDate == null) {
-      _showValidationMessage('Open pipeline stages require a next follow-up date.');
+    if (_selectedStage != 'Won' &&
+        _selectedStage != 'Lost' &&
+        _nextFollowUpDate == null) {
+      _showValidationMessage(
+        'Open pipeline stages require a next follow-up date.',
+      );
       return false;
     }
 
-    final transitionError = _getStageTransitionError(_previousStage ?? _selectedStage, _selectedStage);
+    final transitionError = _getStageTransitionError(
+      _previousStage ?? _selectedStage,
+      _selectedStage,
+    );
     if (transitionError != null) {
       _showValidationMessage(transitionError);
       return false;
@@ -643,17 +828,24 @@ class _ScreensAddInquiryState extends State<ScreensAddInquiry> {
         return false;
       }
       if (expVal <= 0) {
-        _showValidationMessage('Won inquiries must have a positive expected value.');
+        _showValidationMessage(
+          'Won inquiries must have a positive expected value.',
+        );
         return false;
       }
     }
 
     if (_selectedStage == 'Lost' && _lossReasonController.text.trim().isEmpty) {
-      _showValidationMessage('Please capture a loss reason before closing the inquiry as Lost.');
+      _showValidationMessage(
+        'Please capture a loss reason before closing the inquiry as Lost.',
+      );
       return false;
     }
 
-    if (_selectedPriority == 'Hot' && _nextFollowUpDate == null && _selectedStage != 'Won' && _selectedStage != 'Lost') {
+    if (_selectedPriority == 'Hot' &&
+        _nextFollowUpDate == null &&
+        _selectedStage != 'Won' &&
+        _selectedStage != 'Lost') {
       _showValidationMessage('Hot inquiries require a next follow-up date.');
       return false;
     }
@@ -662,29 +854,45 @@ class _ScreensAddInquiryState extends State<ScreensAddInquiry> {
   }
 
   Future<Map<String, dynamic>> _buildPayload() async {
-    final assignedTo = _isAdminOrManager ? (_assignedToUid ?? widget.currentUserUid).trim() : widget.currentUserUid;
+    final assignedTo = _isAdminOrManager
+        ? (_assignedToUid ?? widget.currentUserUid).trim()
+        : widget.currentUserUid;
     await _loadAssignedUserData(assignedTo);
 
     final contactData = _selectedContactData ?? {};
     final assignedUserData = _assignedUserData ?? {};
 
-    final contactName = (contactData['name'] ?? contactData['contactName'] ?? '').toString().trim();
-    final assignedToName = (assignedUserData['name'] ?? assignedUserData['fullName'] ?? '').toString().trim();
+    final contactName =
+        (contactData['name'] ?? contactData['contactName'] ?? '')
+            .toString()
+            .trim();
+    final assignedToName =
+        (assignedUserData['name'] ?? assignedUserData['fullName'] ?? '')
+            .toString()
+            .trim();
     final assignedToRole = (assignedUserData['role'] ?? '').toString().trim();
 
     final expText = _expectedValueController.text.trim();
-    final double? expectedValue = expText.isEmpty ? null : double.tryParse(expText);
+    final double? expectedValue = expText.isEmpty
+        ? null
+        : double.tryParse(expText);
     final budgetRange = _parseBudgetRange(_budgetController.text.trim());
 
     final now = DateTime.now();
     bool isOverdue = false;
     if (_nextFollowUpDate != null) {
       final today = DateTime(now.year, now.month, now.day);
-      final compareDate = DateTime(_nextFollowUpDate!.year, _nextFollowUpDate!.month, _nextFollowUpDate!.day);
+      final compareDate = DateTime(
+        _nextFollowUpDate!.year,
+        _nextFollowUpDate!.month,
+        _nextFollowUpDate!.day,
+      );
       isOverdue = compareDate.isBefore(today);
     }
 
-    Timestamp? createdAtTs = (_isEditing && _existingRawData != null) ? (_existingRawData!['createdAt'] as Timestamp?) : null;
+    Timestamp? createdAtTs = (_isEditing && _existingRawData != null)
+        ? (_existingRawData!['createdAt'] as Timestamp?)
+        : null;
     DateTime createdAtDate = createdAtTs?.toDate() ?? now;
 
     int? conversionTimeDays;
@@ -695,7 +903,8 @@ class _ScreensAddInquiryState extends State<ScreensAddInquiry> {
     }
 
     int? lastFollowUpGap;
-    Timestamp? lastActivityTs = _existingRawData?['lastActivityDate'] as Timestamp?;
+    Timestamp? lastActivityTs =
+        _existingRawData?['lastActivityDate'] as Timestamp?;
     if (lastActivityTs != null) {
       lastFollowUpGap = now.difference(lastActivityTs.toDate()).inDays;
     }
@@ -703,14 +912,24 @@ class _ScreensAddInquiryState extends State<ScreensAddInquiry> {
     int dealVelocityDays = now.difference(createdAtDate).inDays;
 
     final subjectStr = _subjectController.text.trim();
-    final subjectSearch = subjectStr.toLowerCase().trim().replaceAll(RegExp(r'\s+'), ' ');
+    final subjectSearch = subjectStr.toLowerCase().trim().replaceAll(
+      RegExp(r'\s+'),
+      ' ',
+    );
     final requirementFingerprint = _buildRequirementFingerprint(subjectSearch);
-    final uniqueKey = '${_selectedCustomerId}_${requirementFingerprint.replaceAll(RegExp(r'[^a-z0-9]'), '_')}';
+    final uniqueKey =
+        '${_selectedCustomerId}_${requirementFingerprint.replaceAll(RegExp(r'[^a-z0-9]'), '_')}';
 
-    final searchCache = '${_customerNameSnapshot.toLowerCase()} ${_customerIndustrySnapshot.toLowerCase()} ${_customerCitySnapshot.toLowerCase()} $subjectSearch'.trim();
+    final searchCache =
+        '${_customerNameSnapshot.toLowerCase()} ${_customerIndustrySnapshot.toLowerCase()} ${_customerCitySnapshot.toLowerCase()} $subjectSearch'
+            .trim();
 
-    double totalQuantity = _structuredProducts.fold<double>(0.0, (sum, item) => sum + (double.tryParse(item['quantity'].toString()) ?? 0.0));
-    final status = _statusForStage(_selectedStage);
+    double totalQuantity = _structuredProducts.fold<double>(
+      0.0,
+      (runningTotal, item) =>
+          runningTotal + (double.tryParse(item['quantity'].toString()) ?? 0.0),
+    );
+    _selectedStatus = _statusForStage(_selectedStage);
 
     return <String, dynamic>{
       'subject': subjectStr,
@@ -748,7 +967,7 @@ class _ScreensAddInquiryState extends State<ScreensAddInquiry> {
 
       'priority': _selectedPriority.trim(),
       'stage': _selectedStage.trim(),
-      'status': status,
+      'status': _selectedStatus,
       'probability': _probability,
       'dealScore': _dealScore,
       'qualificationGuidance': _suggestedPriority,
@@ -761,8 +980,12 @@ class _ScreensAddInquiryState extends State<ScreensAddInquiry> {
       'dealVelocityDays': dealVelocityDays,
 
       'followUpType': _followUpType,
-      'nextFollowUpDate': _nextFollowUpDate == null ? null : Timestamp.fromDate(_nextFollowUpDate!),
-      'expectedClosureDate': _expectedClosureDate == null ? null : Timestamp.fromDate(_expectedClosureDate!),
+      'nextFollowUpDate': _nextFollowUpDate == null
+          ? null
+          : Timestamp.fromDate(_nextFollowUpDate!),
+      'expectedClosureDate': _expectedClosureDate == null
+          ? null
+          : Timestamp.fromDate(_expectedClosureDate!),
       'isOverdue': isOverdue,
       'lastFollowUpNote': _lastFollowUpNoteController.text.trim(),
       'notes': _notesController.text.trim(),
@@ -771,7 +994,9 @@ class _ScreensAddInquiryState extends State<ScreensAddInquiry> {
       'tags': _tags,
 
       'linkedQuotationId': _linkedQuotationIdController.text.trim(),
-      'convertedToQuotationId': _selectedStage == 'Won' ? _linkedQuotationIdController.text.trim() : '',
+      'convertedToQuotationId': _selectedStage == 'Won'
+          ? _linkedQuotationIdController.text.trim()
+          : '',
 
       'assignedToUid': assignedTo,
       'assignedToName': assignedToName,
@@ -796,16 +1021,26 @@ class _ScreensAddInquiryState extends State<ScreensAddInquiry> {
             final docRef = widget.existingDoc!;
             final snapshot = await transaction.get(docRef);
 
-            if (!snapshot.exists) throw Exception("Inquiry document no longer exists.");
-            if (snapshot.data()?['isActive'] == false) throw Exception("Cannot edit inactive inquiry.");
+            if (!snapshot.exists) {
+              throw Exception("Inquiry document no longer exists.");
+            }
+            if (snapshot.data()?['isActive'] == false) {
+              throw Exception("Cannot edit inactive inquiry.");
+            }
 
-            final existingLog = List<dynamic>.from(snapshot.data()?['activityLog'] ?? []);
+            final existingLog = List<dynamic>.from(
+              snapshot.data()?['activityLog'] ?? [],
+            );
 
             String actionDesc = 'Updated deal details.';
             if (_previousStage != _selectedStage) {
-              actionDesc = 'Stage moved from $_previousStage to $_selectedStage.';
-            } else if (_lastFollowUpNoteController.text.isNotEmpty && _lastFollowUpNoteController.text != _existingRawData?['lastFollowUpNote']) {
-              actionDesc = 'Added follow-up: ${_lastFollowUpNoteController.text}';
+              actionDesc =
+                  'Stage moved from $_previousStage to $_selectedStage.';
+            } else if (_lastFollowUpNoteController.text.isNotEmpty &&
+                _lastFollowUpNoteController.text !=
+                    _existingRawData?['lastFollowUpNote']) {
+              actionDesc =
+                  'Added follow-up: ${_lastFollowUpNoteController.text}';
             }
 
             existingLog.add({
@@ -838,12 +1073,19 @@ class _ScreensAddInquiryState extends State<ScreensAddInquiry> {
             String formattedSequence = currentSeq.toString().padLeft(4, '0');
             String generatedNumber = 'INQ-$fy-$formattedSequence';
 
-            transaction.set(counterRef, {'sequence': currentSeq}, SetOptions(merge: true));
+            transaction.set(counterRef, {
+              'sequence': currentSeq,
+            }, SetOptions(merge: true));
 
             payload['inquiryNumber'] = generatedNumber;
             payload['lastActivityType'] = 'Created';
             payload['activityLog'] = [
-              {'action': 'Created', 'description': 'Deal pipeline initiated.', 'by': widget.currentUserUid, 'timestamp': Timestamp.now()}
+              {
+                'action': 'Created',
+                'description': 'Deal pipeline initiated.',
+                'by': widget.currentUserUid,
+                'timestamp': Timestamp.now(),
+              },
             ];
 
             payload.addAll({
@@ -858,7 +1100,10 @@ class _ScreensAddInquiryState extends State<ScreensAddInquiry> {
         });
         success = true;
       } catch (e, st) {
-        if (e.toString().contains('Duplicate') || e.toString().contains('inactive')) rethrow;
+        if (e.toString().contains('Duplicate') ||
+            e.toString().contains('inactive')) {
+          rethrow;
+        }
         if (attempts >= 2) {
           _handleError('Transaction Save Failed', e, st);
           rethrow;
@@ -869,7 +1114,9 @@ class _ScreensAddInquiryState extends State<ScreensAddInquiry> {
   }
 
   Future<void> _ensureNotDuplicate(Map<String, dynamic> payload) async {
-    final fingerprint = (payload['requirementFingerprint'] ?? '').toString().trim();
+    final fingerprint = (payload['requirementFingerprint'] ?? '')
+        .toString()
+        .trim();
     final customerId = (payload['customerId'] ?? '').toString().trim();
     if (fingerprint.isEmpty || customerId.isEmpty) return;
 
@@ -911,7 +1158,11 @@ class _ScreensAddInquiryState extends State<ScreensAddInquiry> {
 
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(_isEditing ? 'Deal successfully updated.' : 'Deal successfully created.'),
+          content: Text(
+            _isEditing
+                ? 'Deal successfully updated.'
+                : 'Deal successfully created.',
+          ),
           backgroundColor: Colors.green.shade700,
           behavior: SnackBarBehavior.floating,
         ),
@@ -946,7 +1197,12 @@ class _ScreensAddInquiryState extends State<ScreensAddInquiry> {
   // UI BUILDER METHODS
   // ==========================================
 
-  InputDecoration _dec(String label, {String? hint, Widget? prefixIcon, Widget? suffixIcon}) {
+  InputDecoration _dec(
+    String label, {
+    String? hint,
+    Widget? prefixIcon,
+    Widget? suffixIcon,
+  }) {
     return InputDecoration(
       labelText: label,
       hintText: hint,
@@ -956,24 +1212,45 @@ class _ScreensAddInquiryState extends State<ScreensAddInquiry> {
       filled: true,
       fillColor: const Color(0xFFF8FAFC),
       contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
-      border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Color(0xFFE2E8F0))),
-      enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Color(0xFFE2E8F0))),
-      focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Color(0xFF2563EB), width: 1.5)),
-      errorBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Colors.redAccent, width: 1.0)),
-      focusedErrorBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Colors.redAccent, width: 1.5)),
+      border: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(12),
+        borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
+      ),
+      enabledBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(12),
+        borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
+      ),
+      focusedBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(12),
+        borderSide: const BorderSide(color: Color(0xFF2563EB), width: 1.5),
+      ),
+      errorBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(12),
+        borderSide: const BorderSide(color: Colors.redAccent, width: 1.0),
+      ),
+      focusedErrorBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(12),
+        borderSide: const BorderSide(color: Colors.redAccent, width: 1.5),
+      ),
     );
   }
 
-  Widget _buildResponsiveFields(List<Widget> children, {double breakpoint = 720, double spacing = 16}) {
+  Widget _buildResponsiveFields(
+    List<Widget> children, {
+    double breakpoint = 720,
+    double spacing = 16,
+  }) {
     return LayoutBuilder(
       builder: (context, constraints) {
         if (constraints.maxWidth < breakpoint) {
           return Column(
             children: children
-                .map((child) => Padding(
-                      padding: EdgeInsets.only(bottom: spacing),
-                      child: child,
-                    ))
+                .map(
+                  (child) => Padding(
+                    padding: EdgeInsets.only(bottom: spacing),
+                    child: child,
+                  ),
+                )
                 .toList(),
           );
         }
@@ -1038,7 +1315,9 @@ class _ScreensAddInquiryState extends State<ScreensAddInquiry> {
 
   Widget _buildSmartInsightsPanel() {
     final warnings = <String>[];
-    if (_nextFollowUpDate == null && _selectedStage != 'Won' && _selectedStage != 'Lost') {
+    if (_nextFollowUpDate == null &&
+        _selectedStage != 'Won' &&
+        _selectedStage != 'Lost') {
       warnings.add('⚠ No follow-up scheduled');
     }
     if (_decisionMakerController.text.trim().isEmpty) {
@@ -1056,9 +1335,19 @@ class _ScreensAddInquiryState extends State<ScreensAddInquiry> {
       margin: const EdgeInsets.only(bottom: 24),
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        gradient: const LinearGradient(colors: [Color(0xFF0F172A), Color(0xFF1E3A8A)], begin: Alignment.topLeft, end: Alignment.bottomRight),
+        gradient: const LinearGradient(
+          colors: [Color(0xFF0F172A), Color(0xFF1E3A8A)],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
         borderRadius: BorderRadius.circular(16),
-        boxShadow: [BoxShadow(color: const Color(0xFF1E3A8A).withOpacity(0.3), blurRadius: 15, offset: const Offset(0, 8))],
+        boxShadow: [
+          BoxShadow(
+            color: const Color(0xFF1E3A8A).withValues(alpha: 0.3),
+            blurRadius: 15,
+            offset: const Offset(0, 8),
+          ),
+        ],
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1068,38 +1357,90 @@ class _ScreensAddInquiryState extends State<ScreensAddInquiry> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text('Deal Intelligence', style: TextStyle(color: Colors.blueAccent, fontSize: 12, fontWeight: FontWeight.bold, letterSpacing: 1.2)),
+                const Text(
+                  'Deal Intelligence',
+                  style: TextStyle(
+                    color: Colors.blueAccent,
+                    fontSize: 12,
+                    fontWeight: FontWeight.bold,
+                    letterSpacing: 1.2,
+                  ),
+                ),
                 const SizedBox(height: 12),
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    _buildInsightMetric('Deal Score', '$_dealScore/100', Icons.score, _dealScore > 70 ? Colors.greenAccent : (_dealScore > 40 ? Colors.orangeAccent : Colors.redAccent)),
-                    _buildInsightMetric('Win Prob.', '${_probability.toInt()}%', Icons.trending_up, Colors.white),
-                    _buildInsightMetric('Exp. Value', expVal > 0 ? '₹${NumberFormat.compact().format(expVal)}' : 'TBD', Icons.currency_rupee, Colors.white),
+                    _buildInsightMetric(
+                      'Deal Score',
+                      '$_dealScore/100',
+                      Icons.score,
+                      _dealScore > 70
+                          ? Colors.greenAccent
+                          : (_dealScore > 40
+                                ? Colors.orangeAccent
+                                : Colors.redAccent),
+                    ),
+                    _buildInsightMetric(
+                      'Win Prob.',
+                      '${_probability.toInt()}%',
+                      Icons.trending_up,
+                      Colors.white,
+                    ),
+                    _buildInsightMetric(
+                      'Exp. Value',
+                      expVal > 0
+                          ? '₹${NumberFormat.compact().format(expVal)}'
+                          : 'TBD',
+                      Icons.currency_rupee,
+                      Colors.white,
+                    ),
                   ],
                 ),
               ],
             ),
           ),
           if (warnings.isNotEmpty) ...[
-            Container(width: 1, height: 60, color: Colors.white24, margin: const EdgeInsets.symmetric(horizontal: 24)),
+            Container(
+              width: 1,
+              height: 60,
+              color: Colors.white24,
+              margin: const EdgeInsets.symmetric(horizontal: 24),
+            ),
             Expanded(
               flex: 1,
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
-                children: warnings.map((w) => Padding(
-                  padding: const EdgeInsets.only(bottom: 6),
-                  child: Text(w, style: TextStyle(color: w.contains('🔥') ? Colors.orangeAccent : Colors.redAccent.shade100, fontSize: 13, fontWeight: FontWeight.w500)),
-                )).toList(),
+                children: warnings
+                    .map(
+                      (w) => Padding(
+                        padding: const EdgeInsets.only(bottom: 6),
+                        child: Text(
+                          w,
+                          style: TextStyle(
+                            color: w.contains('🔥')
+                                ? Colors.orangeAccent
+                                : Colors.redAccent.shade100,
+                            fontSize: 13,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ),
+                    )
+                    .toList(),
               ),
-            )
-          ]
+            ),
+          ],
         ],
       ),
     );
   }
 
-  Widget _buildInsightMetric(String label, String value, IconData icon, Color color) {
+  Widget _buildInsightMetric(
+    String label,
+    String value,
+    IconData icon,
+    Color color,
+  ) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -1107,16 +1448,30 @@ class _ScreensAddInquiryState extends State<ScreensAddInquiry> {
           children: [
             Icon(icon, size: 14, color: Colors.grey.shade400),
             const SizedBox(width: 6),
-            Text(label, style: TextStyle(color: Colors.grey.shade400, fontSize: 12)),
+            Text(
+              label,
+              style: TextStyle(color: Colors.grey.shade400, fontSize: 12),
+            ),
           ],
         ),
         const SizedBox(height: 4),
-        Text(value, style: TextStyle(color: color, fontSize: 20, fontWeight: FontWeight.w800)),
+        Text(
+          value,
+          style: TextStyle(
+            color: color,
+            fontSize: 20,
+            fontWeight: FontWeight.w800,
+          ),
+        ),
       ],
     );
   }
 
-  Widget _buildSection({required String title, required IconData icon, required Widget child}) {
+  Widget _buildSection({
+    required String title,
+    required IconData icon,
+    required Widget child,
+  }) {
     final isExpanded = _sectionExpanded[title] ?? true;
     return Container(
       margin: const EdgeInsets.only(bottom: 20),
@@ -1124,26 +1479,52 @@ class _ScreensAddInquiryState extends State<ScreensAddInquiry> {
         color: Colors.white,
         borderRadius: BorderRadius.circular(16),
         border: Border.all(color: const Color(0xFFE2E8F0)),
-        boxShadow: const [BoxShadow(color: Color(0x05000000), blurRadius: 10, offset: Offset(0, 4))],
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x05000000),
+            blurRadius: 10,
+            offset: Offset(0, 4),
+          ),
+        ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           InkWell(
             onTap: () => setState(() => _sectionExpanded[title] = !isExpanded),
-            borderRadius: BorderRadius.vertical(top: const Radius.circular(16), bottom: Radius.circular(isExpanded ? 0 : 16)),
+            borderRadius: BorderRadius.vertical(
+              top: const Radius.circular(16),
+              bottom: Radius.circular(isExpanded ? 0 : 16),
+            ),
             child: Padding(
               padding: const EdgeInsets.all(20),
               child: Row(
                 children: [
                   Container(
                     padding: const EdgeInsets.all(10),
-                    decoration: BoxDecoration(color: const Color(0xFFF1F5F9), borderRadius: BorderRadius.circular(10)),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFF1F5F9),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
                     child: Icon(icon, color: const Color(0xFF334155), size: 20),
                   ),
                   const SizedBox(width: 16),
-                  Expanded(child: Text(title, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: Color(0xFF0F172A)))),
-                  Icon(isExpanded ? Icons.keyboard_arrow_up : Icons.keyboard_arrow_down, color: const Color(0xFF94A3B8)),
+                  Expanded(
+                    child: Text(
+                      title,
+                      style: const TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w700,
+                        color: Color(0xFF0F172A),
+                      ),
+                    ),
+                  ),
+                  Icon(
+                    isExpanded
+                        ? Icons.keyboard_arrow_up
+                        : Icons.keyboard_arrow_down,
+                    color: const Color(0xFF94A3B8),
+                  ),
                 ],
               ),
             ),
@@ -1151,7 +1532,7 @@ class _ScreensAddInquiryState extends State<ScreensAddInquiry> {
           if (isExpanded) ...[
             const Divider(height: 1, color: Color(0xFFF1F5F9)),
             Padding(padding: const EdgeInsets.all(24), child: child),
-          ]
+          ],
         ],
       ),
     );
@@ -1164,50 +1545,65 @@ class _ScreensAddInquiryState extends State<ScreensAddInquiry> {
         LayoutBuilder(
           builder: (context, constraints) {
             final isCompact = constraints.maxWidth < 720;
-            final customerField = Autocomplete<DocumentSnapshot<Map<String, dynamic>>>(
-              initialValue: TextEditingValue(text: _customerNameSnapshot),
-              displayStringForOption: (doc) {
-                final data = doc.data() ?? {};
-                return (data['companyName'] ?? data['name'] ?? 'Unknown').toString();
-              },
-              optionsBuilder: (TextEditingValue textEditingValue) {
-                return _getSyncCustomerOptions(textEditingValue.text);
-              },
-              onSelected: (doc) async {
-                setState(() {
-                  _selectedCustomerId = doc.id;
-                  _selectedContactId = null;
-                  _additionalContactIds.clear();
-                  _formMessage = null;
-                });
-                _customerSearchController.text =
-                    (doc.data()?['companyName'] ?? doc.data()?['name'] ?? '').toString();
-                await _loadCustomerData(doc.id);
-              },
-              fieldViewBuilder: (context, controller, focusNode, onEditingComplete) {
-                if (_customerSearchController.text.isNotEmpty && controller.text.isEmpty) {
-                  controller.text = _customerSearchController.text;
-                }
-                return TextFormField(
-                  controller: controller,
-                  focusNode: focusNode,
-                  decoration: _dec('Search Customer Database *', hint: 'Type name or phone...', prefixIcon: const Icon(Icons.business_outlined)),
-                  validator: (v) => _selectedCustomerId == null ? 'Required' : null,
-                  onChanged: (value) {
-                    _customerSearchController.text = value;
-                    final normalizedInput = _normalizeText(value);
-                    final normalizedSelected = _normalizeText(_customerNameSnapshot);
-                    if (_selectedCustomerId != null && normalizedInput != normalizedSelected) {
-                      setState(() {
-                        _selectedCustomerId = null;
-                        _selectedContactId = null;
-                        _additionalContactIds.clear();
-                      });
-                    }
+            final customerField =
+                Autocomplete<DocumentSnapshot<Map<String, dynamic>>>(
+                  initialValue: TextEditingValue(text: _customerNameSnapshot),
+                  displayStringForOption: (doc) {
+                    final data = doc.data() ?? {};
+                    return (data['companyName'] ?? data['name'] ?? 'Unknown')
+                        .toString();
                   },
+                  optionsBuilder: (TextEditingValue textEditingValue) {
+                    return _getSyncCustomerOptions(textEditingValue.text);
+                  },
+                  onSelected: (doc) async {
+                    setState(() {
+                      _selectedCustomerId = doc.id;
+                      _selectedContactId = null;
+                      _additionalContactIds.clear();
+                      _formMessage = null;
+                    });
+                    _customerSearchController.text =
+                        (doc.data()?['companyName'] ??
+                                doc.data()?['name'] ??
+                                '')
+                            .toString();
+                    await _loadCustomerData(doc.id);
+                  },
+                  fieldViewBuilder:
+                      (context, controller, focusNode, onEditingComplete) {
+                        if (_customerSearchController.text.isNotEmpty &&
+                            controller.text.isEmpty) {
+                          controller.text = _customerSearchController.text;
+                        }
+                        return TextFormField(
+                          controller: controller,
+                          focusNode: focusNode,
+                          decoration: _dec(
+                            'Search Customer Database *',
+                            hint: 'Type name or phone...',
+                            prefixIcon: const Icon(Icons.business_outlined),
+                          ),
+                          validator: (v) =>
+                              _selectedCustomerId == null ? 'Required' : null,
+                          onChanged: (value) {
+                            _customerSearchController.text = value;
+                            final normalizedInput = _normalizeText(value);
+                            final normalizedSelected = _normalizeText(
+                              _customerNameSnapshot,
+                            );
+                            if (_selectedCustomerId != null &&
+                                normalizedInput != normalizedSelected) {
+                              setState(() {
+                                _selectedCustomerId = null;
+                                _selectedContactId = null;
+                                _additionalContactIds.clear();
+                              });
+                            }
+                          },
+                        );
+                      },
                 );
-              },
-            );
 
             final newButton = SizedBox(
               height: 56,
@@ -1230,14 +1626,20 @@ class _ScreensAddInquiryState extends State<ScreensAddInquiry> {
                       _customerSearchController.clear();
                     });
                     ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('Customer added. Please search and select it.')),
+                      const SnackBar(
+                        content: Text(
+                          'Customer added. Please search and select it.',
+                        ),
+                      ),
                     );
                   }
                 },
                 icon: const Icon(Icons.add),
                 label: const Text('New'),
                 style: OutlinedButton.styleFrom(
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
                 ),
               ),
             );
@@ -1262,29 +1664,52 @@ class _ScreensAddInquiryState extends State<ScreensAddInquiry> {
             );
           },
         ),
-        if (_selectedCustomerId != null && _customerNameSnapshot.isNotEmpty) ...[
+        if (_selectedCustomerId != null &&
+            _customerNameSnapshot.isNotEmpty) ...[
           const SizedBox(height: 16),
           _buildContactDropdown(),
           const SizedBox(height: 16),
           Container(
             padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(color: const Color(0xFFF8FAFC), borderRadius: BorderRadius.circular(12), border: Border.all(color: const Color(0xFFE2E8F0))),
+            decoration: BoxDecoration(
+              color: const Color(0xFFF8FAFC),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: const Color(0xFFE2E8F0)),
+            ),
             child: Row(
               children: [
-                const Icon(Icons.verified_user_outlined, size: 20, color: Color(0xFF10B981)),
+                const Icon(
+                  Icons.verified_user_outlined,
+                  size: 20,
+                  color: Color(0xFF10B981),
+                ),
                 const SizedBox(width: 12),
-                Expanded(child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(_customerNameSnapshot, style: const TextStyle(fontWeight: FontWeight.w700, color: Color(0xFF0F172A))),
-                    const SizedBox(height: 4),
-                    Text('Industry: ${_customerIndustrySnapshot.isEmpty ? 'N/A' : _customerIndustrySnapshot} • City: ${_customerCitySnapshot.isEmpty ? 'N/A' : _customerCitySnapshot}', style: const TextStyle(fontSize: 13, color: Color(0xFF475569))),
-                  ],
-                )),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        _customerNameSnapshot,
+                        style: const TextStyle(
+                          fontWeight: FontWeight.w700,
+                          color: Color(0xFF0F172A),
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        'Industry: ${_customerIndustrySnapshot.isEmpty ? 'N/A' : _customerIndustrySnapshot} • City: ${_customerCitySnapshot.isEmpty ? 'N/A' : _customerCitySnapshot}',
+                        style: const TextStyle(
+                          fontSize: 13,
+                          color: Color(0xFF475569),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
               ],
             ),
-          )
-        ]
+          ),
+        ],
       ],
     );
   }
@@ -1295,72 +1720,114 @@ class _ScreensAddInquiryState extends State<ScreensAddInquiry> {
     }
 
     return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-      stream: _companyContactsRef(_selectedCustomerId!).where('isActive', isEqualTo: true).snapshots(),
+      stream: _companyContactsRef(
+        _selectedCustomerId!,
+      ).where('isActive', isEqualTo: true).snapshots(),
       builder: (context, snap) {
-        if (!snap.hasData || snap.data!.docs.isEmpty) return const SizedBox.shrink();
+        if (!snap.hasData || snap.data!.docs.isEmpty) {
+          return const SizedBox.shrink();
+        }
         final contacts = snap.data!.docs;
         return Row(
           children: [
             Expanded(
               child: DropdownButtonFormField<String>(
-                value: contacts.any((d) => d.id == _selectedContactId) ? _selectedContactId : null,
-                decoration: _dec('Primary Contact Person', prefixIcon: const Icon(Icons.person_outline)),
+                initialValue: contacts.any((d) => d.id == _selectedContactId)
+                    ? _selectedContactId
+                    : null,
+                decoration: _dec(
+                  'Primary Contact Person',
+                  prefixIcon: const Icon(Icons.person_outline),
+                ),
                 items: contacts.map((doc) {
                   final data = doc.data();
-                  return DropdownMenuItem<String>(value: doc.id, child: Text((data['name'] ?? data['contactName'] ?? '').toString()));
+                  return DropdownMenuItem<String>(
+                    value: doc.id,
+                    child: Text(
+                      (data['name'] ?? data['contactName'] ?? '').toString(),
+                    ),
+                  );
                 }).toList(),
                 onChanged: (v) => setState(() => _selectedContactId = v),
               ),
             ),
             const SizedBox(width: 12),
             OutlinedButton(
-              onPressed: _selectedContactId == null ? null : () {
-                _showMultiContactPicker(contacts);
-              },
-              style: OutlinedButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: 18, horizontal: 16), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
+              onPressed: _selectedContactId == null
+                  ? null
+                  : () {
+                      _showMultiContactPicker(contacts);
+                    },
+              style: OutlinedButton.styleFrom(
+                padding: const EdgeInsets.symmetric(
+                  vertical: 18,
+                  horizontal: 16,
+                ),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
               child: Text('+ ${_additionalContactIds.length} More'),
-            )
+            ),
           ],
         );
       },
     );
   }
 
-  void _showMultiContactPicker(List<DocumentSnapshot<Map<String, dynamic>>> contacts) {
+  void _showMultiContactPicker(
+    List<DocumentSnapshot<Map<String, dynamic>>> contacts,
+  ) {
     showDialog(
-        context: context,
-        builder: (context) {
-          return StatefulBuilder(
-              builder: (context, setDialogState) {
-                return AlertDialog(
-                  title: const Text('Additional Contacts'),
-                  content: SizedBox(
-                    width: double.maxFinite,
-                    child: ListView(
-                      shrinkWrap: true,
-                      children: contacts.where((c) => c.id != _selectedContactId).map((doc) {
-                        final isSelected = _additionalContactIds.contains(doc.id);
+      context: context,
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            return AlertDialog(
+              title: const Text('Additional Contacts'),
+              content: SizedBox(
+                width: double.maxFinite,
+                child: ListView(
+                  shrinkWrap: true,
+                  children: contacts
+                      .where((c) => c.id != _selectedContactId)
+                      .map((doc) {
+                        final isSelected = _additionalContactIds.contains(
+                          doc.id,
+                        );
                         return CheckboxListTile(
-                          title: Text((doc.data()?['name'] ?? doc.data()?['contactName'] ?? '').toString()),
+                          title: Text(
+                            (doc.data()?['name'] ??
+                                    doc.data()?['contactName'] ??
+                                    '')
+                                .toString(),
+                          ),
                           value: isSelected,
                           onChanged: (bool? val) {
                             setDialogState(() {
-                              if (val == true) _additionalContactIds.add(doc.id);
-                              else _additionalContactIds.remove(doc.id);
+                              if (val == true) {
+                                _additionalContactIds.add(doc.id);
+                              } else {
+                                _additionalContactIds.remove(doc.id);
+                              }
                             });
                             setState(() {});
                           },
                         );
-                      }).toList(),
-                    ),
-                  ),
-                  actions: [
-                    TextButton(onPressed: () => Navigator.pop(context), child: const Text('Done')),
-                  ],
-                );
-              }
-          );
-        }
+                      })
+                      .toList(),
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: const Text('Done'),
+                ),
+              ],
+            );
+          },
+        );
+      },
     );
   }
 
@@ -1370,23 +1837,41 @@ class _ScreensAddInquiryState extends State<ScreensAddInquiry> {
       children: [
         TextFormField(
           controller: _subjectController,
-          decoration: _dec('Deal / Inquiry Subject *', hint: 'E.g. Requirement for 50 Laptops', prefixIcon: const Icon(Icons.title)),
+          decoration: _dec(
+            'Deal / Inquiry Subject *',
+            hint: 'E.g. Requirement for 50 Laptops',
+            prefixIcon: const Icon(Icons.title),
+          ),
           validator: (v) => v == null || v.trim().isEmpty ? 'Required' : null,
           onChanged: (v) => _calculateDealScore(),
         ),
         const SizedBox(height: 16),
         _buildResponsiveFields([
           DropdownButtonFormField<String>(
-            value: _selectedSource,
-            decoration: _dec('Source', prefixIcon: const Icon(Icons.campaign_outlined)),
-            items: ['Whatsapp', 'E-mail', 'Website', 'Referral', 'Cold Call', 'Exhibition', 'IndiaMART', 'Other']
-                .map((e) => DropdownMenuItem(value: e, child: Text(e)))
-                .toList(),
+            initialValue: _selectedSource,
+            decoration: _dec(
+              'Source',
+              prefixIcon: const Icon(Icons.campaign_outlined),
+            ),
+            items: [
+              'Whatsapp',
+              'E-mail',
+              'Website',
+              'Referral',
+              'Cold Call',
+              'Exhibition',
+              'IndiaMART',
+              'Other',
+            ].map((e) => DropdownMenuItem(value: e, child: Text(e))).toList(),
             onChanged: (v) => setState(() => _selectedSource = v),
           ),
           TextFormField(
             controller: _sourceRefController,
-            decoration: _dec('Source Reference', hint: 'E.g. Referral Name', prefixIcon: const Icon(Icons.link)),
+            decoration: _dec(
+              'Source Reference',
+              hint: 'E.g. Referral Name',
+              prefixIcon: const Icon(Icons.link),
+            ),
           ),
         ]),
         const SizedBox(height: 16),
@@ -1403,7 +1888,11 @@ class _ScreensAddInquiryState extends State<ScreensAddInquiry> {
       children: [
         TextFormField(
           controller: _tagController,
-          decoration: _dec('Tags', hint: 'Type tag and press Enter', prefixIcon: const Icon(Icons.label_outline)),
+          decoration: _dec(
+            'Tags',
+            hint: 'Type tag and press Enter',
+            prefixIcon: const Icon(Icons.label_outline),
+          ),
           onFieldSubmitted: (val) {
             if (val.trim().isNotEmpty && !_tags.contains(val.trim())) {
               setState(() => _tags.add(val.trim()));
@@ -1416,15 +1905,24 @@ class _ScreensAddInquiryState extends State<ScreensAddInquiry> {
           Wrap(
             spacing: 8,
             runSpacing: 8,
-            children: _tags.map((tag) => Chip(
-              label: Text(tag, style: const TextStyle(fontSize: 12, color: Colors.white)),
-              backgroundColor: const Color(0xFF64748B),
-              deleteIconColor: Colors.white70,
-              onDeleted: () => setState(() => _tags.remove(tag)),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
-            )).toList(),
+            children: _tags
+                .map(
+                  (tag) => Chip(
+                    label: Text(
+                      tag,
+                      style: const TextStyle(fontSize: 12, color: Colors.white),
+                    ),
+                    backgroundColor: const Color(0xFF64748B),
+                    deleteIconColor: Colors.white70,
+                    onDeleted: () => setState(() => _tags.remove(tag)),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                  ),
+                )
+                .toList(),
           ),
-        ]
+        ],
       ],
     );
   }
@@ -1437,13 +1935,33 @@ class _ScreensAddInquiryState extends State<ScreensAddInquiry> {
           Container(
             width: double.infinity,
             padding: const EdgeInsets.symmetric(vertical: 32, horizontal: 16),
-            decoration: BoxDecoration(color: const Color(0xFFF8FAFC), borderRadius: BorderRadius.circular(12), border: Border.all(color: const Color(0xFFE2E8F0), style: BorderStyle.solid)),
+            decoration: BoxDecoration(
+              color: const Color(0xFFF8FAFC),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(
+                color: const Color(0xFFE2E8F0),
+                style: BorderStyle.solid,
+              ),
+            ),
             child: const Column(
               children: [
-                Icon(Icons.inventory_2_outlined, size: 32, color: Color(0xFF94A3B8)),
+                Icon(
+                  Icons.inventory_2_outlined,
+                  size: 32,
+                  color: Color(0xFF94A3B8),
+                ),
                 SizedBox(height: 12),
-                Text('No products added yet.', style: TextStyle(color: Color(0xFF64748B), fontWeight: FontWeight.w600)),
-                Text('Click \'Add Product from Inventory\' to continue.', style: TextStyle(color: Color(0xFF94A3B8), fontSize: 13)),
+                Text(
+                  'No products added yet.',
+                  style: TextStyle(
+                    color: Color(0xFF64748B),
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                Text(
+                  'Click \'Add Product from Inventory\' to continue.',
+                  style: TextStyle(color: Color(0xFF94A3B8), fontSize: 13),
+                ),
               ],
             ),
           )
@@ -1457,31 +1975,85 @@ class _ScreensAddInquiryState extends State<ScreensAddInquiry> {
               final item = _structuredProducts[index];
               return Container(
                 padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(12), border: Border.all(color: const Color(0xFFE2E8F0))),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: const Color(0xFFE2E8F0)),
+                ),
                 child: Row(
                   children: [
-                    Container(padding: const EdgeInsets.all(10), decoration: BoxDecoration(color: const Color(0xFFEFF6FF), borderRadius: BorderRadius.circular(8)), child: const Icon(Icons.widgets_outlined, color: Color(0xFF2563EB), size: 20)),
+                    Container(
+                      padding: const EdgeInsets.all(10),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFEFF6FF),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: const Icon(
+                        Icons.widgets_outlined,
+                        color: Color(0xFF2563EB),
+                        size: 20,
+                      ),
+                    ),
                     const SizedBox(width: 16),
                     Expanded(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text(item['name'], style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15)),
+                          Text(
+                            item['name'],
+                            style: const TextStyle(
+                              fontWeight: FontWeight.w700,
+                              fontSize: 15,
+                            ),
+                          ),
                           const SizedBox(height: 4),
-                          Text('Category: ${item['category'] ?? 'N/A'}  •  Unit: ${item['unit'] ?? 'Nos'}', style: const TextStyle(fontSize: 12, color: Color(0xFF64748B))),
+                          Text(
+                            'Category: ${item['category'] ?? 'N/A'}  •  Unit: ${item['unit'] ?? 'Nos'}',
+                            style: const TextStyle(
+                              fontSize: 12,
+                              color: Color(0xFF64748B),
+                            ),
+                          ),
                         ],
                       ),
                     ),
                     Column(
                       crossAxisAlignment: CrossAxisAlignment.end,
                       children: [
-                        Text('Qty: ${item['quantity']}', style: const TextStyle(fontWeight: FontWeight.w700)),
-                        Text('₹${item['price'] ?? 0}', style: const TextStyle(fontSize: 13, color: Color(0xFF10B981), fontWeight: FontWeight.w600)),
+                        Text(
+                          'Qty: ${item['quantity']}',
+                          style: const TextStyle(fontWeight: FontWeight.w700),
+                        ),
+                        Text(
+                          '₹${item['price'] ?? 0}',
+                          style: const TextStyle(
+                            fontSize: 13,
+                            color: Color(0xFF10B981),
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
                       ],
                     ),
                     const SizedBox(width: 16),
-                    IconButton(icon: const Icon(Icons.edit_outlined, color: Color(0xFF64748B), size: 20), onPressed: () => _editProduct(index)),
-                    IconButton(icon: const Icon(Icons.delete_outline, color: Colors.redAccent, size: 20), onPressed: () { setState(() => _structuredProducts.removeAt(index)); _calculateDealScore(); }),
+                    IconButton(
+                      icon: const Icon(
+                        Icons.edit_outlined,
+                        color: Color(0xFF64748B),
+                        size: 20,
+                      ),
+                      onPressed: () => _editProduct(index),
+                    ),
+                    IconButton(
+                      icon: const Icon(
+                        Icons.delete_outline,
+                        color: Colors.redAccent,
+                        size: 20,
+                      ),
+                      onPressed: () {
+                        setState(() => _structuredProducts.removeAt(index));
+                        _calculateDealScore();
+                      },
+                    ),
                   ],
                 ),
               );
@@ -1491,31 +2063,55 @@ class _ScreensAddInquiryState extends State<ScreensAddInquiry> {
         OutlinedButton.icon(
           onPressed: () {
             showDialog(
-                context: context,
-                builder: (context) {
-                  return _ERPProductSearchDialog(
-                    companyId: widget.companyId,
-                    onProductSelected: (docData, docId) {
-                      Navigator.pop(context);
-                      _showProductDetailEntry(
-                        productId: docId,
-                        name: (docData['itemName'] ?? docData['name'] ?? 'Unknown').toString(),
-                        sku: (docData['sku'] ?? docData['itemCode'] ?? '').toString(),
-                        defaultPrice: double.tryParse(docData['sellingPrice']?.toString() ?? docData['price']?.toString() ?? '0') ?? 0.0,
-                        unit: (docData['unit'] ?? 'Nos').toString(),
-                        category: (docData['category'] ?? '').toString(),
-                        subCategory: (docData['subCategory'] ?? '').toString(),
-                        brand: (docData['brand'] ?? '').toString(),
-                        model: (docData['model'] ?? '').toString(),
-                        costPrice: double.tryParse(docData['costPrice']?.toString() ?? '0') ?? 0.0,
-                      );
-                    },
-                    onManualAdd: (String query) {
-                      Navigator.pop(context);
-                      _showProductDetailEntry(productId: 'manual', name: query, sku: '', defaultPrice: 0.0, unit: 'Nos', category: 'General', subCategory: '', brand: '', model: '', costPrice: 0.0);
-                    },
-                  );
-                }
+              context: context,
+              builder: (context) {
+                return _ERPProductSearchDialog(
+                  companyId: widget.companyId,
+                  onProductSelected: (docData, docId) {
+                    Navigator.pop(context);
+                    _showProductDetailEntry(
+                      productId: docId,
+                      name:
+                          (docData['itemName'] ?? docData['name'] ?? 'Unknown')
+                              .toString(),
+                      sku: (docData['sku'] ?? docData['itemCode'] ?? '')
+                          .toString(),
+                      defaultPrice:
+                          double.tryParse(
+                            docData['sellingPrice']?.toString() ??
+                                docData['price']?.toString() ??
+                                '0',
+                          ) ??
+                          0.0,
+                      unit: (docData['unit'] ?? 'Nos').toString(),
+                      category: (docData['category'] ?? '').toString(),
+                      subCategory: (docData['subCategory'] ?? '').toString(),
+                      brand: (docData['brand'] ?? '').toString(),
+                      model: (docData['model'] ?? '').toString(),
+                      costPrice:
+                          double.tryParse(
+                            docData['costPrice']?.toString() ?? '0',
+                          ) ??
+                          0.0,
+                    );
+                  },
+                  onManualAdd: (String query) {
+                    Navigator.pop(context);
+                    _showProductDetailEntry(
+                      productId: 'manual',
+                      name: query,
+                      sku: '',
+                      defaultPrice: 0.0,
+                      unit: 'Nos',
+                      category: 'General',
+                      subCategory: '',
+                      brand: '',
+                      model: '',
+                      costPrice: 0.0,
+                    );
+                  },
+                );
+              },
             );
           },
           icon: const Icon(Icons.add_shopping_cart, size: 18),
@@ -1524,9 +2120,11 @@ class _ScreensAddInquiryState extends State<ScreensAddInquiry> {
             foregroundColor: const Color(0xFF2563EB),
             side: const BorderSide(color: Color(0xFF2563EB), width: 1.5),
             padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 20),
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(10),
+            ),
           ),
-        )
+        ),
       ],
     );
   }
@@ -1542,80 +2140,125 @@ class _ScreensAddInquiryState extends State<ScreensAddInquiry> {
     required String brand,
     required String model,
     required double costPrice,
-    int? editIndex
+    int? editIndex,
   }) {
     final nameCtrl = TextEditingController(text: name);
-    final qtyCtrl = TextEditingController(text: editIndex != null ? _structuredProducts[editIndex]['quantity'].toString() : '1');
-    final priceCtrl = TextEditingController(text: editIndex != null ? _structuredProducts[editIndex]['price'].toString() : defaultPrice.toString());
-    final unitCtrl = TextEditingController(text: editIndex != null ? _structuredProducts[editIndex]['unit'] : unit);
+    final qtyCtrl = TextEditingController(
+      text: editIndex != null
+          ? _structuredProducts[editIndex]['quantity'].toString()
+          : '1',
+    );
+    final priceCtrl = TextEditingController(
+      text: editIndex != null
+          ? _structuredProducts[editIndex]['price'].toString()
+          : defaultPrice.toString(),
+    );
+    final unitCtrl = TextEditingController(
+      text: editIndex != null ? _structuredProducts[editIndex]['unit'] : unit,
+    );
 
     showDialog(
-        context: context,
-        builder: (context) => AlertDialog(
-          backgroundColor: Colors.white,
-          title: Text(editIndex != null ? 'Edit Product' : 'Add to Inquiry', style: const TextStyle(fontWeight: FontWeight.w700)),
-          content: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                TextField(controller: nameCtrl, decoration: _dec('Product / Description *'), enabled: productId == 'manual' || editIndex != null),
-                const SizedBox(height: 16),
-                Row(
-                  children: [
-                    Expanded(child: TextField(controller: qtyCtrl, decoration: _dec('Quantity *'), keyboardType: const TextInputType.numberWithOptions(decimal: true))),
-                    const SizedBox(width: 12),
-                    Expanded(child: TextField(controller: unitCtrl, decoration: _dec('Unit (e.g. Nos, Kg)'))),
-                  ],
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: Colors.white,
+        title: Text(
+          editIndex != null ? 'Edit Product' : 'Add to Inquiry',
+          style: const TextStyle(fontWeight: FontWeight.w700),
+        ),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                controller: nameCtrl,
+                decoration: _dec('Product / Description *'),
+                enabled: productId == 'manual' || editIndex != null,
+              ),
+              const SizedBox(height: 16),
+              Row(
+                children: [
+                  Expanded(
+                    child: TextField(
+                      controller: qtyCtrl,
+                      decoration: _dec('Quantity *'),
+                      keyboardType: const TextInputType.numberWithOptions(
+                        decimal: true,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: TextField(
+                      controller: unitCtrl,
+                      decoration: _dec('Unit (e.g. Nos, Kg)'),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),
+              TextField(
+                controller: priceCtrl,
+                decoration: _dec('Expected Unit Price (₹)'),
+                keyboardType: const TextInputType.numberWithOptions(
+                  decimal: true,
                 ),
-                const SizedBox(height: 16),
-                TextField(controller: priceCtrl, decoration: _dec('Expected Unit Price (₹)'), keyboardType: const TextInputType.numberWithOptions(decimal: true)),
-              ],
-            ),
+              ),
+            ],
           ),
-          actions: [
-            TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
-            FilledButton(
-              onPressed: () {
-                if (nameCtrl.text.trim().isEmpty || qtyCtrl.text.trim().isEmpty) return;
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () {
+              if (nameCtrl.text.trim().isEmpty || qtyCtrl.text.trim().isEmpty) {
+                return;
+              }
 
-                double sPrice = double.tryParse(priceCtrl.text.trim()) ?? 0.0;
-                double margin = sPrice - costPrice;
+              double sPrice = double.tryParse(priceCtrl.text.trim()) ?? 0.0;
+              double margin = sPrice - costPrice;
 
-                double parsedQty = double.tryParse(qtyCtrl.text.trim()) ?? 0.0;
-                if (parsedQty <= 0) {
-                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Quantity must be greater than 0.')));
-                  return;
+              double parsedQty = double.tryParse(qtyCtrl.text.trim()) ?? 0.0;
+              if (parsedQty <= 0) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('Quantity must be greater than 0.'),
+                  ),
+                );
+                return;
+              }
+
+              final productMap = {
+                'productId': productId,
+                'name': nameCtrl.text.trim(),
+                'sku': sku,
+                'quantity': parsedQty,
+                'unit': unitCtrl.text.trim(),
+                'price': sPrice,
+                'costPrice': costPrice,
+                'margin': margin,
+                'category': category,
+                'subCategory': subCategory,
+                'brand': brand,
+                'model': model,
+              };
+
+              setState(() {
+                if (editIndex != null) {
+                  _structuredProducts[editIndex] = productMap;
+                } else {
+                  _structuredProducts.add(productMap);
                 }
-
-                final productMap = {
-                  'productId': productId,
-                  'name': nameCtrl.text.trim(),
-                  'sku': sku,
-                  'quantity': parsedQty,
-                  'unit': unitCtrl.text.trim(),
-                  'price': sPrice,
-                  'costPrice': costPrice,
-                  'margin': margin,
-                  'category': category,
-                  'subCategory': subCategory,
-                  'brand': brand,
-                  'model': model,
-                };
-
-                setState(() {
-                  if (editIndex != null) {
-                    _structuredProducts[editIndex] = productMap;
-                  } else {
-                    _structuredProducts.add(productMap);
-                  }
-                });
-                _calculateDealScore();
-                Navigator.pop(context);
-              },
-              child: const Text('Confirm'),
-            )
-          ],
-        )
+              });
+              _calculateDealScore();
+              Navigator.pop(context);
+            },
+            child: const Text('Confirm'),
+          ),
+        ],
+      ),
     );
   }
 
@@ -1642,7 +2285,11 @@ class _ScreensAddInquiryState extends State<ScreensAddInquiry> {
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
-      decoration: BoxDecoration(color: const Color(0xFFF8FAFC), borderRadius: BorderRadius.circular(12), border: Border.all(color: const Color(0xFFE2E8F0))),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF8FAFC),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: const Color(0xFFE2E8F0)),
+      ),
       child: Wrap(
         alignment: WrapAlignment.center,
         spacing: 4,
@@ -1653,20 +2300,51 @@ class _ScreensAddInquiryState extends State<ScreensAddInquiry> {
           bool isSelected = idx == currentIndex;
           bool isCompleted = idx < currentIndex;
 
-          Color bgColor = isSelected ? const Color(0xFF2563EB) : (isCompleted ? const Color(0xFFDBEAFE) : Colors.white);
-          Color textColor = isSelected ? Colors.white : (isCompleted ? const Color(0xFF1E3A8A) : const Color(0xFF64748B));
-          Color borderColor = isSelected ? const Color(0xFF2563EB) : (isCompleted ? const Color(0xFFBFDBFE) : const Color(0xFFCBD5E1));
+          Color bgColor = isSelected
+              ? const Color(0xFF2563EB)
+              : (isCompleted ? const Color(0xFFDBEAFE) : Colors.white);
+          Color textColor = isSelected
+              ? Colors.white
+              : (isCompleted
+                    ? const Color(0xFF1E3A8A)
+                    : const Color(0xFF64748B));
+          Color borderColor = isSelected
+              ? const Color(0xFF2563EB)
+              : (isCompleted
+                    ? const Color(0xFFBFDBFE)
+                    : const Color(0xFFCBD5E1));
 
           return GestureDetector(
             onTap: () => _applyStageSelection(stage),
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-              decoration: BoxDecoration(color: bgColor, borderRadius: BorderRadius.circular(20), border: Border.all(color: borderColor)),
+              decoration: BoxDecoration(
+                color: bgColor,
+                borderRadius: BorderRadius.circular(20),
+                border: Border.all(color: borderColor),
+              ),
               child: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  if (isCompleted) const Padding(padding: EdgeInsets.only(right: 6), child: Icon(Icons.check_circle, size: 14, color: Color(0xFF2563EB))),
-                  Text(stage, style: TextStyle(color: textColor, fontWeight: isSelected ? FontWeight.w700 : FontWeight.w600, fontSize: 12)),
+                  if (isCompleted)
+                    const Padding(
+                      padding: EdgeInsets.only(right: 6),
+                      child: Icon(
+                        Icons.check_circle,
+                        size: 14,
+                        color: Color(0xFF2563EB),
+                      ),
+                    ),
+                  Text(
+                    stage,
+                    style: TextStyle(
+                      color: textColor,
+                      fontWeight: isSelected
+                          ? FontWeight.w700
+                          : FontWeight.w600,
+                      fontSize: 12,
+                    ),
+                  ),
                 ],
               ),
             ),
@@ -1680,7 +2358,14 @@ class _ScreensAddInquiryState extends State<ScreensAddInquiry> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text('Pipeline Stage', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: Color(0xFF64748B))),
+        const Text(
+          'Pipeline Stage',
+          style: TextStyle(
+            fontSize: 13,
+            fontWeight: FontWeight.w600,
+            color: Color(0xFF64748B),
+          ),
+        ),
         const SizedBox(height: 12),
         _buildPipelineIndicator(),
         const SizedBox(height: 8),
@@ -1694,8 +2379,13 @@ class _ScreensAddInquiryState extends State<ScreensAddInquiry> {
             Expanded(
               child: TextFormField(
                 controller: _expectedValueController,
-                keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                decoration: _dec('Expected Deal Value (₹)', prefixIcon: const Icon(Icons.monetization_on_outlined)),
+                keyboardType: const TextInputType.numberWithOptions(
+                  decimal: true,
+                ),
+                decoration: _dec(
+                  'Expected Deal Value (₹)',
+                  prefixIcon: const Icon(Icons.monetization_on_outlined),
+                ),
                 onChanged: (v) => _calculateDealScore(),
               ),
             ),
@@ -1703,7 +2393,11 @@ class _ScreensAddInquiryState extends State<ScreensAddInquiry> {
             Expanded(
               child: TextFormField(
                 controller: _budgetController,
-                decoration: _dec('Customer Budget Range', hint: 'E.g. 50k - 60k', prefixIcon: const Icon(Icons.account_balance_wallet_outlined)),
+                decoration: _dec(
+                  'Customer Budget Range',
+                  hint: 'E.g. 50k - 60k',
+                  prefixIcon: const Icon(Icons.account_balance_wallet_outlined),
+                ),
               ),
             ),
           ],
@@ -1715,7 +2409,14 @@ class _ScreensAddInquiryState extends State<ScreensAddInquiry> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text('Win Probability: ${_probability.toInt()}%', style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: Color(0xFF475569))),
+                  Text(
+                    'Win Probability: ${_probability.toInt()}%',
+                    style: const TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                      color: Color(0xFF475569),
+                    ),
+                  ),
                   Slider(
                     value: _probability,
                     min: 0,
@@ -1735,7 +2436,10 @@ class _ScreensAddInquiryState extends State<ScreensAddInquiry> {
             Expanded(
               child: TextFormField(
                 controller: _competitorController,
-                decoration: _dec('Known Competitors', prefixIcon: const Icon(Icons.shield_outlined)),
+                decoration: _dec(
+                  'Known Competitors',
+                  prefixIcon: const Icon(Icons.shield_outlined),
+                ),
               ),
             ),
           ],
@@ -1746,7 +2450,10 @@ class _ScreensAddInquiryState extends State<ScreensAddInquiry> {
             Expanded(
               child: TextFormField(
                 controller: _decisionMakerController,
-                decoration: _dec('Decision Maker Name / Info', prefixIcon: const Icon(Icons.how_to_reg_outlined)),
+                decoration: _dec(
+                  'Decision Maker Name / Info',
+                  prefixIcon: const Icon(Icons.how_to_reg_outlined),
+                ),
                 onChanged: (v) => _calculateDealScore(),
               ),
             ),
@@ -1754,11 +2461,15 @@ class _ScreensAddInquiryState extends State<ScreensAddInquiry> {
             Expanded(
               child: TextFormField(
                 controller: _projectSiteLocationController,
-                decoration: _dec('Project / Site Location', hint: 'E.g. Mumbai Plant', prefixIcon: const Icon(Icons.location_on_outlined)),
+                decoration: _dec(
+                  'Project / Site Location',
+                  hint: 'E.g. Mumbai Plant',
+                  prefixIcon: const Icon(Icons.location_on_outlined),
+                ),
               ),
             ),
           ],
-        )
+        ),
       ],
     );
   }
@@ -1771,53 +2482,116 @@ class _ScreensAddInquiryState extends State<ScreensAddInquiry> {
           _buildDateSelector(
             label: 'Next Follow-up Date *',
             value: _nextFollowUpDate,
-            onTap: () async => await _pickDate(initialValue: _nextFollowUpDate, onPicked: (d) => setState(() { _nextFollowUpDate = d; _calculateDealScore(); })),
-            onClear: () => setState(() { _nextFollowUpDate = null; _calculateDealScore(); }),
+            onTap: () async => await _pickDate(
+              initialValue: _nextFollowUpDate,
+              onPicked: (d) => setState(() {
+                _nextFollowUpDate = d;
+                _calculateDealScore();
+              }),
+            ),
+            onClear: () => setState(() {
+              _nextFollowUpDate = null;
+              _calculateDealScore();
+            }),
           ),
           DropdownButtonFormField<String>(
-            value: _followUpType,
-            decoration: _dec('Follow-up Type', prefixIcon: const Icon(Icons.event_outlined)),
-            items: ['Call', 'Email', 'Visit', 'Meeting', 'WhatsApp']
-                .map((e) => DropdownMenuItem(value: e, child: Text(e)))
-                .toList(),
+            initialValue: _followUpType,
+            decoration: _dec(
+              'Follow-up Type',
+              prefixIcon: const Icon(Icons.event_outlined),
+            ),
+            items: [
+              'Call',
+              'Email',
+              'Visit',
+              'Meeting',
+              'WhatsApp',
+            ].map((e) => DropdownMenuItem(value: e, child: Text(e))).toList(),
             onChanged: (v) => setState(() => _followUpType = v ?? 'Call'),
           ),
         ]),
         const SizedBox(height: 16),
-        const Text('Priority Level', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: Color(0xFF64748B))),
+        const Text(
+          'Priority Level',
+          style: TextStyle(
+            fontSize: 13,
+            fontWeight: FontWeight.w600,
+            color: Color(0xFF64748B),
+          ),
+        ),
         const SizedBox(height: 8),
         Row(
           children: ['Cold', 'Warm', 'Hot'].map((p) {
             final isSelected = _selectedPriority == p;
-            final color = p == 'Hot' ? Colors.red : (p == 'Warm' ? Colors.orange : Colors.blue);
+            final color = p == 'Hot'
+                ? Colors.red
+                : (p == 'Warm' ? Colors.orange : Colors.blue);
             return Padding(
               padding: const EdgeInsets.only(right: 12.0),
               child: ChoiceChip(
-                label: Text(p, style: TextStyle(color: isSelected ? Colors.white : Colors.grey.shade700, fontWeight: FontWeight.bold)),
+                label: Text(
+                  p,
+                  style: TextStyle(
+                    color: isSelected ? Colors.white : Colors.grey.shade700,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
                 selected: isSelected,
-                onSelected: (v) { if(v) { setState(() => _selectedPriority = p); _calculateDealScore(); } },
+                onSelected: (v) {
+                  if (v) {
+                    setState(() => _selectedPriority = p);
+                    _calculateDealScore();
+                  }
+                },
                 selectedColor: color,
                 backgroundColor: Colors.white,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8), side: BorderSide(color: isSelected ? color : Colors.grey.shade300)),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(8),
+                  side: BorderSide(
+                    color: isSelected ? color : Colors.grey.shade300,
+                  ),
+                ),
               ),
             );
           }).toList(),
         ),
-        if (_dealScore > 70 && _selectedPriority != 'Hot' && _suggestedPriority == 'Hot')
+        if (_dealScore > 70 &&
+            _selectedPriority != 'Hot' &&
+            _suggestedPriority == 'Hot')
           Padding(
             padding: const EdgeInsets.only(top: 8.0),
-            child: Text('💡 High deal score! Consider marking as Hot.', style: TextStyle(fontSize: 12, color: Colors.orange.shade700, fontWeight: FontWeight.w600)),
+            child: Text(
+              '💡 High deal score! Consider marking as Hot.',
+              style: TextStyle(
+                fontSize: 12,
+                color: Colors.orange.shade700,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
           ),
-        if (_dealScore < 40 && _selectedPriority != 'Cold' && _structuredProducts.isNotEmpty)
+        if (_dealScore < 40 &&
+            _selectedPriority != 'Cold' &&
+            _structuredProducts.isNotEmpty)
           Padding(
             padding: const EdgeInsets.only(top: 8.0),
-            child: Text('💡 Low deal score. Consider marking as Cold until better qualified.', style: TextStyle(fontSize: 12, color: Colors.blue.shade700, fontWeight: FontWeight.w600)),
+            child: Text(
+              '💡 Low deal score. Consider marking as Cold until better qualified.',
+              style: TextStyle(
+                fontSize: 12,
+                color: Colors.blue.shade700,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
           ),
         const SizedBox(height: 16),
         TextFormField(
           controller: _lastFollowUpNoteController,
           maxLines: 2,
-          decoration: _dec('Latest Follow-up Remarks', hint: 'E.g. Called client, asked for quote.', prefixIcon: const Icon(Icons.history_edu)),
+          decoration: _dec(
+            'Latest Follow-up Remarks',
+            hint: 'E.g. Called client, asked for quote.',
+            prefixIcon: const Icon(Icons.history_edu),
+          ),
         ),
         if (_selectedStage == 'Lost') ...[
           const SizedBox(height: 16),
@@ -1830,7 +2604,8 @@ class _ScreensAddInquiryState extends State<ScreensAddInquiry> {
               prefixIcon: const Icon(Icons.cancel_outlined),
             ),
             validator: (value) {
-              if (_selectedStage == 'Lost' && (value == null || value.trim().isEmpty)) {
+              if (_selectedStage == 'Lost' &&
+                  (value == null || value.trim().isEmpty)) {
                 return 'Required for lost inquiries';
               }
               return null;
@@ -1841,22 +2616,41 @@ class _ScreensAddInquiryState extends State<ScreensAddInquiry> {
         _buildDateSelector(
           label: 'Expected Closure Date',
           value: _expectedClosureDate,
-          onTap: () async => await _pickDate(initialValue: _expectedClosureDate, onPicked: (d) { setState(() { _expectedClosureDate = d; _calculateDealScore(); }); }),
-          onClear: () => setState(() { _expectedClosureDate = null; _calculateDealScore(); }),
+          onTap: () async => await _pickDate(
+            initialValue: _expectedClosureDate,
+            onPicked: (d) {
+              setState(() {
+                _expectedClosureDate = d;
+                _calculateDealScore();
+              });
+            },
+          ),
+          onClear: () => setState(() {
+            _expectedClosureDate = null;
+            _calculateDealScore();
+          }),
         ),
         if (_isEditing && _existingRawData?['activityLog'] != null) ...[
           const SizedBox(height: 24),
-          const Text('Activity Timeline', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700)),
+          const Text(
+            'Activity Timeline',
+            style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700),
+          ),
           const SizedBox(height: 12),
           _buildActivityTimeline(),
-        ]
+        ],
       ],
     );
   }
 
   Widget _buildActivityTimeline() {
     List<dynamic> logs = _existingRawData?['activityLog'] ?? [];
-    if (logs.isEmpty) return const Text('No activity yet.', style: TextStyle(color: Colors.grey));
+    if (logs.isEmpty) {
+      return const Text(
+        'No activity yet.',
+        style: TextStyle(color: Colors.grey),
+      );
+    }
 
     logs.sort((a, b) {
       final tA = a['timestamp'] as Timestamp?;
@@ -1867,12 +2661,18 @@ class _ScreensAddInquiryState extends State<ScreensAddInquiry> {
 
     return Container(
       padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(color: const Color(0xFFF8FAFC), borderRadius: BorderRadius.circular(12), border: Border.all(color: const Color(0xFFE2E8F0))),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF8FAFC),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: const Color(0xFFE2E8F0)),
+      ),
       child: Column(
         children: [
           ...logs.take(5).map((log) {
             final time = log['timestamp'] as Timestamp?;
-            final dateStr = time != null ? DateFormat('dd MMM yy, hh:mm a').format(time.toDate()) : '';
+            final dateStr = time != null
+                ? DateFormat('dd MMM yy, hh:mm a').format(time.toDate())
+                : '';
             return Padding(
               padding: const EdgeInsets.only(bottom: 12),
               child: Row(
@@ -1880,19 +2680,43 @@ class _ScreensAddInquiryState extends State<ScreensAddInquiry> {
                 children: [
                   const Padding(
                     padding: EdgeInsets.only(top: 4.0),
-                    child: Icon(Icons.circle, size: 8, color: Color(0xFF94A3B8)),
+                    child: Icon(
+                      Icons.circle,
+                      size: 8,
+                      color: Color(0xFF94A3B8),
+                    ),
                   ),
                   const SizedBox(width: 12),
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(log['action'] ?? 'Action', style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13, color: Color(0xFF1E293B))),
-                        if (log['description'] != null) Text(log['description'], style: const TextStyle(color: Color(0xFF475569), fontSize: 12)),
-                        Text(dateStr, style: const TextStyle(color: Color(0xFF94A3B8), fontSize: 11)),
+                        Text(
+                          log['action'] ?? 'Action',
+                          style: const TextStyle(
+                            fontWeight: FontWeight.w600,
+                            fontSize: 13,
+                            color: Color(0xFF1E293B),
+                          ),
+                        ),
+                        if (log['description'] != null)
+                          Text(
+                            log['description'],
+                            style: const TextStyle(
+                              color: Color(0xFF475569),
+                              fontSize: 12,
+                            ),
+                          ),
+                        Text(
+                          dateStr,
+                          style: const TextStyle(
+                            color: Color(0xFF94A3B8),
+                            fontSize: 11,
+                          ),
+                        ),
                       ],
                     ),
-                  )
+                  ),
                 ],
               ),
             );
@@ -1906,7 +2730,7 @@ class _ScreensAddInquiryState extends State<ScreensAddInquiry> {
                 },
                 child: const Text('View All Activity'),
               ),
-            )
+            ),
         ],
       ),
     );
@@ -1914,46 +2738,82 @@ class _ScreensAddInquiryState extends State<ScreensAddInquiry> {
 
   void _showFullTimelineDialog(List<dynamic> logs) {
     showDialog(
-        context: context,
-        builder: (_) => AlertDialog(
-          title: const Text('Full Activity Timeline'),
-          content: SizedBox(
-            width: double.maxFinite,
-            child: ListView.builder(
-              shrinkWrap: true,
-              itemCount: logs.length,
-              itemBuilder: (ctx, i) {
-                final log = logs[i];
-                final time = log['timestamp'] as Timestamp?;
-                final dateStr = time != null ? DateFormat('dd MMM yy, hh:mm a').format(time.toDate()) : '';
-                return ListTile(
-                  contentPadding: EdgeInsets.zero,
-                  leading: const Icon(Icons.check_circle_outline, color: Color(0xFF2563EB)),
-                  title: Text(log['action'] ?? 'Action', style: const TextStyle(fontWeight: FontWeight.bold)),
-                  subtitle: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      if (log['description'] != null) Text(log['description']),
-                      Text(dateStr, style: const TextStyle(fontSize: 11, color: Colors.grey)),
-                    ],
-                  ),
-                );
-              },
-            ),
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text('Full Activity Timeline'),
+        content: SizedBox(
+          width: double.maxFinite,
+          child: ListView.builder(
+            shrinkWrap: true,
+            itemCount: logs.length,
+            itemBuilder: (ctx, i) {
+              final log = logs[i];
+              final time = log['timestamp'] as Timestamp?;
+              final dateStr = time != null
+                  ? DateFormat('dd MMM yy, hh:mm a').format(time.toDate())
+                  : '';
+              return ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading: const Icon(
+                  Icons.check_circle_outline,
+                  color: Color(0xFF2563EB),
+                ),
+                title: Text(
+                  log['action'] ?? 'Action',
+                  style: const TextStyle(fontWeight: FontWeight.bold),
+                ),
+                subtitle: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    if (log['description'] != null) Text(log['description']),
+                    Text(
+                      dateStr,
+                      style: const TextStyle(fontSize: 11, color: Colors.grey),
+                    ),
+                  ],
+                ),
+              );
+            },
           ),
-          actions: [
-            TextButton(onPressed: () => Navigator.pop(context), child: const Text('Close'))
-          ],
-        )
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Close'),
+          ),
+        ],
+      ),
     );
   }
 
-  Widget _buildDateSelector({required String label, required DateTime? value, required VoidCallback onTap, VoidCallback? onClear}) {
+  Widget _buildDateSelector({
+    required String label,
+    required DateTime? value,
+    required VoidCallback onTap,
+    VoidCallback? onClear,
+  }) {
     return InkWell(
       onTap: onTap,
       child: InputDecorator(
-        decoration: _dec(label, prefixIcon: const Icon(Icons.calendar_today, size: 18), suffixIcon: value != null ? IconButton(icon: const Icon(Icons.close, size: 16), onPressed: onClear) : const Icon(Icons.arrow_drop_down)),
-        child: Text(value == null ? 'Select Date' : DateFormat('dd/MM/yyyy').format(value), style: TextStyle(color: value == null ? Colors.grey.shade500 : Colors.black87, fontSize: 14)),
+        decoration: _dec(
+          label,
+          prefixIcon: const Icon(Icons.calendar_today, size: 18),
+          suffixIcon: value != null
+              ? IconButton(
+                  icon: const Icon(Icons.close, size: 16),
+                  onPressed: onClear,
+                )
+              : const Icon(Icons.arrow_drop_down),
+        ),
+        child: Text(
+          value == null
+              ? 'Select Date'
+              : DateFormat('dd/MM/yyyy').format(value),
+          style: TextStyle(
+            color: value == null ? Colors.grey.shade500 : Colors.black87,
+            fontSize: 14,
+          ),
+        ),
       ),
     );
   }
@@ -1965,17 +2825,36 @@ class _ScreensAddInquiryState extends State<ScreensAddInquiry> {
         if (!snap.hasData) return const LinearProgressIndicator();
         final docs = snap.data!.docs;
         return DropdownButtonFormField<String>(
-          value: docs.any((d) => d.id == _assignedToUid) ? _assignedToUid : null,
-          decoration: _dec('Assigned Record Owner *', prefixIcon: const Icon(Icons.assignment_ind_outlined)),
-          items: docs.map((doc) => DropdownMenuItem(value: doc.id, child: Text(doc.data()['name'] ?? doc.data()['fullName'] ?? 'Unknown'))).toList(),
-          onChanged: _isAdminOrManager ? (v) => setState(() => _assignedToUid = v) : null,
+          initialValue: docs.any((d) => d.id == _assignedToUid)
+              ? _assignedToUid
+              : null,
+          decoration: _dec(
+            'Assigned Record Owner *',
+            prefixIcon: const Icon(Icons.assignment_ind_outlined),
+          ),
+          items: docs
+              .map(
+                (doc) => DropdownMenuItem(
+                  value: doc.id,
+                  child: Text(
+                    doc.data()['name'] ?? doc.data()['fullName'] ?? 'Unknown',
+                  ),
+                ),
+              )
+              .toList(),
+          onChanged: _isAdminOrManager
+              ? (v) => setState(() => _assignedToUid = v)
+              : null,
           validator: (v) => v == null ? 'Required' : null,
         );
       },
     );
   }
 
-  Future<void> _pickDate({required DateTime? initialValue, required ValueChanged<DateTime> onPicked}) async {
+  Future<void> _pickDate({
+    required DateTime? initialValue,
+    required ValueChanged<DateTime> onPicked,
+  }) async {
     final now = DateTime.now();
     final firstDate = DateTime(now.year - 2);
     final lastDate = DateTime(now.year + 5);
@@ -1997,19 +2876,29 @@ class _ScreensAddInquiryState extends State<ScreensAddInquiry> {
       children: [
         TextFormField(
           controller: _linkedQuotationIdController,
-          decoration: _dec('Linked Quotation ID', hint: 'E.g. QT-2425-001 (Required for Won deals)', prefixIcon: const Icon(Icons.receipt_long_outlined)),
+          decoration: _dec(
+            'Linked Quotation ID',
+            hint: 'E.g. QT-2425-001 (Required for Won deals)',
+            prefixIcon: const Icon(Icons.receipt_long_outlined),
+          ),
         ),
         const SizedBox(height: 16),
         TextFormField(
           controller: _notesController,
           maxLines: 3,
-          decoration: _dec('External Notes (Customer visible)', hint: 'Special delivery instructions...'),
+          decoration: _dec(
+            'External Notes (Customer visible)',
+            hint: 'Special delivery instructions...',
+          ),
         ),
         const SizedBox(height: 16),
         TextFormField(
           controller: _internalNotesController,
           maxLines: 2,
-          decoration: _dec('Internal Private Notes', hint: 'Pricing constraints...'),
+          decoration: _dec(
+            'Internal Private Notes',
+            hint: 'Pricing constraints...',
+          ),
         ),
       ],
     );
@@ -2020,7 +2909,13 @@ class _ScreensAddInquiryState extends State<ScreensAddInquiry> {
       padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
       decoration: BoxDecoration(
         color: Colors.white,
-        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10, offset: const Offset(0, -4))],
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.05),
+            blurRadius: 10,
+            offset: const Offset(0, -4),
+          ),
+        ],
         border: const Border(top: BorderSide(color: Color(0xFFE2E8F0))),
       ),
       child: SafeArea(
@@ -2037,20 +2932,44 @@ class _ScreensAddInquiryState extends State<ScreensAddInquiry> {
                   width: buttonWidth,
                   child: TextButton(
                     onPressed: _isSaving ? null : () => Navigator.pop(context),
-                    style: TextButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16)),
-                    child: const Text('Cancel', style: TextStyle(color: Color(0xFF64748B), fontWeight: FontWeight.w600)),
+                    style: TextButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 24,
+                        vertical: 16,
+                      ),
+                    ),
+                    child: const Text(
+                      'Cancel',
+                      style: TextStyle(
+                        color: Color(0xFF64748B),
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
                   ),
                 ),
                 SizedBox(
                   width: buttonWidth,
                   child: OutlinedButton(
-                    onPressed: _isSaving ? null : () => _saveInquiry(createQuote: true),
+                    onPressed: _isSaving
+                        ? null
+                        : () => _saveInquiry(createQuote: true),
                     style: OutlinedButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 20,
+                        vertical: 16,
+                      ),
                       side: const BorderSide(color: Color(0xFF2563EB)),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(10),
+                      ),
                     ),
-                    child: const Text('Save & Quote', style: TextStyle(color: Color(0xFF2563EB), fontWeight: FontWeight.w600)),
+                    child: const Text(
+                      'Save & Quote',
+                      style: TextStyle(
+                        color: Color(0xFF2563EB),
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
                   ),
                 ),
                 SizedBox(
@@ -2059,13 +2978,28 @@ class _ScreensAddInquiryState extends State<ScreensAddInquiry> {
                     onPressed: _isSaving ? null : () => _saveInquiry(),
                     style: FilledButton.styleFrom(
                       backgroundColor: const Color(0xFF2563EB),
-                      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 24,
+                        vertical: 16,
+                      ),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(10),
+                      ),
                     ),
                     icon: _isSaving
-                        ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                        ? const SizedBox(
+                            width: 16,
+                            height: 16,
+                            child: CircularProgressIndicator(
+                              color: Colors.white,
+                              strokeWidth: 2,
+                            ),
+                          )
                         : const Icon(Icons.check),
-                    label: Text(_isEditing ? 'Update Deal' : 'Save Deal', style: const TextStyle(fontWeight: FontWeight.w600)),
+                    label: Text(
+                      _isEditing ? 'Update Deal' : 'Save Deal',
+                      style: const TextStyle(fontWeight: FontWeight.w600),
+                    ),
                   ),
                 ),
               ],
@@ -2081,7 +3015,10 @@ class _ScreensAddInquiryState extends State<ScreensAddInquiry> {
     return Scaffold(
       backgroundColor: const Color(0xFFF1F5F9),
       appBar: AppBar(
-        title: Text(_isEditing ? 'Edit Deal / Inquiry' : 'Create Deal / Inquiry', style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 18)),
+        title: Text(
+          _isEditing ? 'Edit Deal / Inquiry' : 'Create Deal / Inquiry',
+          style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 18),
+        ),
         backgroundColor: Colors.white,
         surfaceTintColor: Colors.white,
         elevation: 0,
@@ -2102,12 +3039,36 @@ class _ScreensAddInquiryState extends State<ScreensAddInquiry> {
                 children: [
                   _buildFormMessageBanner(),
                   _buildSmartInsightsPanel(),
-                  _buildSection(title: 'Customer & Contacts', icon: Icons.domain, child: _buildCustomerSection()),
-                  _buildSection(title: 'Inquiry Basics', icon: Icons.info_outline, child: _buildInquiryBasicsSection()),
-                  _buildSection(title: 'Products & Scope', icon: Icons.inventory_2_outlined, child: _buildProductsSection()),
-                  _buildSection(title: 'Commercial & Intelligence', icon: Icons.insights, child: _buildCommercialSection()),
-                  _buildSection(title: 'Follow-up & Activity', icon: Icons.event_available, child: _buildFollowUpSection()),
-                  _buildSection(title: 'Notes & Attachments', icon: Icons.note_alt_outlined, child: _buildNotesSection()),
+                  _buildSection(
+                    title: 'Customer & Contacts',
+                    icon: Icons.domain,
+                    child: _buildCustomerSection(),
+                  ),
+                  _buildSection(
+                    title: 'Inquiry Basics',
+                    icon: Icons.info_outline,
+                    child: _buildInquiryBasicsSection(),
+                  ),
+                  _buildSection(
+                    title: 'Products & Scope',
+                    icon: Icons.inventory_2_outlined,
+                    child: _buildProductsSection(),
+                  ),
+                  _buildSection(
+                    title: 'Commercial & Intelligence',
+                    icon: Icons.insights,
+                    child: _buildCommercialSection(),
+                  ),
+                  _buildSection(
+                    title: 'Follow-up & Activity',
+                    icon: Icons.event_available,
+                    child: _buildFollowUpSection(),
+                  ),
+                  _buildSection(
+                    title: 'Notes & Attachments',
+                    icon: Icons.note_alt_outlined,
+                    child: _buildNotesSection(),
+                  ),
                   const SizedBox(height: 96),
                 ],
               ),
@@ -2129,14 +3090,14 @@ class _ERPProductSearchDialog extends StatefulWidget {
   final Function(String query) onManualAdd;
 
   const _ERPProductSearchDialog({
-    Key? key,
     required this.companyId,
     required this.onProductSelected,
     required this.onManualAdd,
-  }) : super(key: key);
+  });
 
   @override
-  State<_ERPProductSearchDialog> createState() => _ERPProductSearchDialogState();
+  State<_ERPProductSearchDialog> createState() =>
+      _ERPProductSearchDialogState();
 }
 
 class _ERPProductSearchDialogState extends State<_ERPProductSearchDialog> {
@@ -2168,7 +3129,8 @@ class _ERPProductSearchDialogState extends State<_ERPProductSearchDialog> {
 
   void _onScroll() {
     if (_currentQuery.isNotEmpty) return;
-    if (_scrollController.position.pixels >= _scrollController.position.maxScrollExtent - 200) {
+    if (_scrollController.position.pixels >=
+        _scrollController.position.maxScrollExtent - 200) {
       _fetchItems(loadMore: true);
     }
   }
@@ -2189,7 +3151,9 @@ class _ERPProductSearchDialogState extends State<_ERPProductSearchDialog> {
       data['model'],
     ];
 
-    return fields.any((value) => (value ?? '').toString().toLowerCase().contains(q));
+    return fields.any(
+      (value) => (value ?? '').toString().toLowerCase().contains(q),
+    );
   }
 
   void _applyLocalFilter() {
@@ -2270,7 +3234,10 @@ class _ERPProductSearchDialogState extends State<_ERPProductSearchDialog> {
     return AlertDialog(
       backgroundColor: Colors.white,
       surfaceTintColor: Colors.white,
-      title: const Text('Select Product', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 18)),
+      title: const Text(
+        'Select Product',
+        style: TextStyle(fontWeight: FontWeight.w700, fontSize: 18),
+      ),
       content: SizedBox(
         width: 600,
         height: 500,
@@ -2283,7 +3250,10 @@ class _ERPProductSearchDialogState extends State<_ERPProductSearchDialog> {
                 prefixIcon: const Icon(Icons.search),
                 filled: true,
                 fillColor: const Color(0xFFF8FAFC),
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: BorderSide.none,
+                ),
               ),
               onChanged: _onSearchChanged,
             ),
@@ -2291,55 +3261,84 @@ class _ERPProductSearchDialogState extends State<_ERPProductSearchDialog> {
             Expanded(
               child: _items.isEmpty && !_isLoading
                   ? Center(
-                child: Text(
-                  'No products found matching "$_currentQuery".\nYou can add manually below.',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(color: Colors.grey.shade600),
-                ),
-              )
+                      child: Text(
+                        'No products found matching "$_currentQuery".\nYou can add manually below.',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(color: Colors.grey.shade600),
+                      ),
+                    )
                   : ListView.separated(
-                controller: _scrollController,
-                itemCount: _items.length + (_hasMore ? 1 : 0),
-                separatorBuilder: (_, __) => const Divider(height: 1, color: Color(0xFFF1F5F9)),
-                itemBuilder: (context, index) {
-                  if (index == _items.length) {
-                    return const Padding(
-                      padding: EdgeInsets.all(16),
-                      child: Center(child: CircularProgressIndicator()),
-                    );
-                  }
+                      controller: _scrollController,
+                      itemCount: _items.length + (_hasMore ? 1 : 0),
+                      separatorBuilder: (_, __) =>
+                          const Divider(height: 1, color: Color(0xFFF1F5F9)),
+                      itemBuilder: (context, index) {
+                        if (index == _items.length) {
+                          return const Padding(
+                            padding: EdgeInsets.all(16),
+                            child: Center(child: CircularProgressIndicator()),
+                          );
+                        }
 
-                  final doc = _items[index];
-                  final data = doc.data() as Map<String, dynamic>;
-                  final name = (data['itemName'] ?? data['name'] ?? 'Unknown').toString();
-                  final sku = (data['sku'] ?? data['itemCode'] ?? '').toString();
-                  final price = double.tryParse(data['sellingPrice']?.toString() ?? data['price']?.toString() ?? '0') ?? 0.0;
-                  final category = (data['category'] ?? '').toString();
+                        final doc = _items[index];
+                        final data = doc.data() as Map<String, dynamic>;
+                        final name =
+                            (data['itemName'] ?? data['name'] ?? 'Unknown')
+                                .toString();
+                        final sku = (data['sku'] ?? data['itemCode'] ?? '')
+                            .toString();
+                        final price =
+                            double.tryParse(
+                              data['sellingPrice']?.toString() ??
+                                  data['price']?.toString() ??
+                                  '0',
+                            ) ??
+                            0.0;
+                        final category = (data['category'] ?? '').toString();
 
-                  return ListTile(
-                    leading: Container(
-                      padding: const EdgeInsets.all(8),
-                      decoration: BoxDecoration(color: Colors.blue.shade50, borderRadius: BorderRadius.circular(8)),
-                      child: const Icon(Icons.inventory_2, color: Colors.blue, size: 20),
+                        return ListTile(
+                          leading: Container(
+                            padding: const EdgeInsets.all(8),
+                            decoration: BoxDecoration(
+                              color: Colors.blue.shade50,
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: const Icon(
+                              Icons.inventory_2,
+                              color: Colors.blue,
+                              size: 20,
+                            ),
+                          ),
+                          title: Text(
+                            name,
+                            style: const TextStyle(fontWeight: FontWeight.w600),
+                          ),
+                          subtitle: Text('Cat: $category | SKU: $sku'),
+                          trailing: Text(
+                            '₹$price',
+                            style: const TextStyle(
+                              color: Colors.green,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                          onTap: () => widget.onProductSelected(data, doc.id),
+                        );
+                      },
                     ),
-                    title: Text(name, style: const TextStyle(fontWeight: FontWeight.w600)),
-                    subtitle: Text('Cat: $category | SKU: $sku'),
-                    trailing: Text('₹$price', style: const TextStyle(color: Colors.green, fontWeight: FontWeight.bold)),
-                    onTap: () => widget.onProductSelected(data, doc.id),
-                  );
-                },
-              ),
             ),
           ],
         ),
       ),
       actions: [
-        TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('Cancel'),
+        ),
         FilledButton.icon(
           onPressed: () => widget.onManualAdd(_searchCtrl.text),
           icon: const Icon(Icons.edit_note, size: 18),
           label: const Text('Add Manually'),
-        )
+        ),
       ],
     );
   }

@@ -597,12 +597,14 @@ class _QuickFilterChip extends StatelessWidget {
     return Padding(
       padding: const EdgeInsets.only(right: 8.0),
       child: Material(
-        color: isSelected ? themeColor.withOpacity(0.08) : Colors.transparent,
+        color: isSelected
+            ? themeColor.withValues(alpha: 0.08)
+            : Colors.transparent,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(20),
           side: BorderSide(
             color: isSelected
-                ? themeColor.withOpacity(0.5)
+                ? themeColor.withValues(alpha: 0.5)
                 : Colors.transparent,
           ),
         ),
@@ -754,7 +756,7 @@ class _OverviewTab extends StatelessWidget {
         border: Border.all(color: const Color(0xFFFECACA)),
         boxShadow: [
           BoxShadow(
-            color: const Color(0xFFDC2626).withOpacity(0.05),
+            color: const Color(0xFFDC2626).withValues(alpha: 0.05),
             blurRadius: 10,
             offset: const Offset(0, 4),
           ),
@@ -958,7 +960,7 @@ class _OverviewTab extends StatelessWidget {
             barTouchData: BarTouchData(
               enabled: true,
               touchTooltipData: BarTouchTooltipData(
-                tooltipBgColor: const Color(0xFF1E293B).withOpacity(0.9),
+                tooltipBgColor: const Color(0xFF1E293B).withValues(alpha: 0.9),
                 tooltipPadding: const EdgeInsets.all(12),
                 tooltipMargin: 8,
                 getTooltipItem: (group, groupIndex, rod, rodIndex) {
@@ -1154,8 +1156,9 @@ class _OverviewTab extends StatelessWidget {
                   interval: 1,
                   reservedSize: 40,
                   getTitlesWidget: (value, meta) {
-                    if (value.toInt() >= data.length || value < 0)
+                    if (value.toInt() >= data.length || value < 0) {
                       return const SizedBox.shrink();
+                    }
                     return Padding(
                       padding: const EdgeInsets.only(top: 12.0),
                       child: Text(
@@ -1175,8 +1178,9 @@ class _OverviewTab extends StatelessWidget {
                   showTitles: true,
                   reservedSize: 60,
                   getTitlesWidget: (value, meta) {
-                    if (value == 0 || value == maxY)
+                    if (value == 0 || value == maxY) {
                       return const SizedBox.shrink();
+                    }
                     return Text(
                       NumberFormat.compactCurrency(
                         symbol: '₹',
@@ -1207,7 +1211,7 @@ class _OverviewTab extends StatelessWidget {
                 dotData: const FlDotData(show: true),
                 belowBarData: BarAreaData(
                   show: true,
-                  color: const Color(0xFF3B82F6).withOpacity(0.06),
+                  color: const Color(0xFF3B82F6).withValues(alpha: 0.06),
                 ),
               ),
               LineChartBarData(
@@ -1265,7 +1269,7 @@ class _OverviewTab extends StatelessWidget {
                           alignment: Alignment.center,
                           decoration: BoxDecoration(
                             color: index == 0
-                                ? const Color(0xFFFEF08A).withOpacity(0.4)
+                                ? const Color(0xFFFEF08A).withValues(alpha: 0.4)
                                 : const Color(0xFFEFF6FF),
                             shape: BoxShape.circle,
                           ),
@@ -1392,7 +1396,7 @@ class _InvoicesTabState extends State<_InvoicesTab> {
               border: Border.all(color: const Color(0xFFE2E8F0)),
               boxShadow: [
                 BoxShadow(
-                  color: Colors.black.withOpacity(0.02),
+                  color: Colors.black.withValues(alpha: 0.02),
                   blurRadius: 10,
                   offset: const Offset(0, 4),
                 ),
@@ -1401,7 +1405,7 @@ class _InvoicesTabState extends State<_InvoicesTab> {
             child: SingleChildScrollView(
               scrollDirection: Axis.horizontal,
               child: DataTable(
-                headingRowColor: MaterialStateProperty.all(
+                headingRowColor: WidgetStateProperty.all(
                   const Color(0xFFF8FAFC),
                 ),
                 dataRowMinHeight: 52,
@@ -1503,12 +1507,13 @@ class _InvoicesTabState extends State<_InvoicesTab> {
                   final isHovered = _hoveredIndex == idx;
 
                   return DataRow(
-                    color: MaterialStateProperty.resolveWith<Color?>((states) {
-                      if (states.contains(MaterialState.hovered) || isHovered)
+                    color: WidgetStateProperty.resolveWith<Color?>((states) {
+                      if (states.contains(WidgetState.hovered) || isHovered) {
                         return const Color(0xFFF1F5F9);
+                      }
                       return idx % 2 == 0
                           ? Colors.white
-                          : const Color(0xFFF8FAFC).withOpacity(0.5);
+                          : const Color(0xFFF8FAFC).withValues(alpha: 0.5);
                     }),
                     cells: [
                       DataCell(
@@ -1634,7 +1639,7 @@ class _CustomersTabState extends State<_CustomersTab> {
               border: Border.all(color: const Color(0xFFE2E8F0)),
               boxShadow: [
                 BoxShadow(
-                  color: Colors.black.withOpacity(0.02),
+                  color: Colors.black.withValues(alpha: 0.02),
                   blurRadius: 10,
                   offset: const Offset(0, 4),
                 ),
@@ -1643,7 +1648,7 @@ class _CustomersTabState extends State<_CustomersTab> {
             child: SingleChildScrollView(
               scrollDirection: Axis.horizontal,
               child: DataTable(
-                headingRowColor: MaterialStateProperty.all(
+                headingRowColor: WidgetStateProperty.all(
                   const Color(0xFFF8FAFC),
                 ),
                 dataRowMinHeight: 52,
@@ -1701,12 +1706,13 @@ class _CustomersTabState extends State<_CustomersTab> {
                   var cust = entry.value;
                   final isHovered = _hoveredIndex == idx;
                   return DataRow(
-                    color: MaterialStateProperty.resolveWith<Color?>((states) {
-                      if (states.contains(MaterialState.hovered) || isHovered)
+                    color: WidgetStateProperty.resolveWith<Color?>((states) {
+                      if (states.contains(WidgetState.hovered) || isHovered) {
                         return const Color(0xFFF1F5F9);
+                      }
                       return idx % 2 == 0
                           ? Colors.white
-                          : const Color(0xFFF8FAFC).withOpacity(0.5);
+                          : const Color(0xFFF8FAFC).withValues(alpha: 0.5);
                     }),
                     cells: [
                       DataCell(
@@ -1808,24 +1814,24 @@ class _KpiCardState extends State<_KpiCard> {
             borderRadius: BorderRadius.circular(16),
             border: Border.all(
               color: _isHovered
-                  ? widget.color.withOpacity(0.5)
+                  ? widget.color.withValues(alpha: 0.5)
                   : const Color(0xFFE2E8F0),
             ),
             gradient: LinearGradient(
-              colors: [Colors.white, widget.color.withOpacity(0.02)],
+              colors: [Colors.white, widget.color.withValues(alpha: 0.02)],
               begin: Alignment.topLeft,
               end: Alignment.bottomRight,
             ),
             boxShadow: [
               if (_isHovered)
                 BoxShadow(
-                  color: widget.color.withOpacity(0.12),
+                  color: widget.color.withValues(alpha: 0.12),
                   blurRadius: 16,
                   offset: const Offset(0, 8),
                 )
               else
                 BoxShadow(
-                  color: Colors.black.withOpacity(0.02),
+                  color: Colors.black.withValues(alpha: 0.02),
                   blurRadius: 10,
                   offset: const Offset(0, 4),
                 ),
@@ -1846,7 +1852,7 @@ class _KpiCardState extends State<_KpiCard> {
                         Container(
                           padding: const EdgeInsets.all(10),
                           decoration: BoxDecoration(
-                            color: widget.color.withOpacity(0.1),
+                            color: widget.color.withValues(alpha: 0.1),
                             borderRadius: BorderRadius.circular(10),
                           ),
                           child: Icon(
@@ -1964,13 +1970,13 @@ class _ChartCardContainerState extends State<_ChartCardContainer> {
             boxShadow: [
               if (_isHovered)
                 BoxShadow(
-                  color: Colors.black.withOpacity(0.04),
+                  color: Colors.black.withValues(alpha: 0.04),
                   blurRadius: 20,
                   offset: const Offset(0, 8),
                 )
               else
                 BoxShadow(
-                  color: Colors.black.withOpacity(0.02),
+                  color: Colors.black.withValues(alpha: 0.02),
                   blurRadius: 10,
                   offset: const Offset(0, 4),
                 ),

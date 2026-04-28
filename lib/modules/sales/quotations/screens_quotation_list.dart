@@ -113,8 +113,9 @@ class _ScreensQuotationListState extends State<ScreensQuotationList> {
       Map<String, dynamic> userData = rootUserDoc.data() ?? {};
 
       String resolvedCompanyId = _safeString(userData['activeCompanyId']);
-      if (resolvedCompanyId.isEmpty)
+      if (resolvedCompanyId.isEmpty) {
         resolvedCompanyId = _safeString(userData['companyId']);
+      }
       if (resolvedCompanyId.isEmpty &&
           userData['companyIds'] is List &&
           (userData['companyIds'] as List).isNotEmpty) {
@@ -709,7 +710,7 @@ class _ScreensQuotationListState extends State<ScreensQuotationList> {
                         label: Text(s),
                         selected: tempStatus == s,
                         onSelected: (v) => setModalState(() => tempStatus = s),
-                        selectedColor: primaryColor.withOpacity(0.1),
+                        selectedColor: primaryColor.withValues(alpha: 0.1),
                         labelStyle: TextStyle(
                           color: tempStatus == s
                               ? primaryColor
@@ -729,7 +730,7 @@ class _ScreensQuotationListState extends State<ScreensQuotationList> {
               ),
               const SizedBox(height: 8),
               DropdownButtonFormField<String>(
-                value: tempSort,
+                initialValue: tempSort,
                 decoration: InputDecoration(
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(8),
@@ -772,9 +773,10 @@ class _ScreensQuotationListState extends State<ScreensQuotationList> {
 
   @override
   Widget build(BuildContext context) {
-    if (_isLoadingContext)
+    if (_isLoadingContext) {
       return const Scaffold(body: Center(child: CircularProgressIndicator()));
-    if (_errorMessage != null)
+    }
+    if (_errorMessage != null) {
       return Scaffold(
         body: Center(
           child: Text(
@@ -786,10 +788,12 @@ class _ScreensQuotationListState extends State<ScreensQuotationList> {
           ),
         ),
       );
-    if (_primaryQuery == null)
+    }
+    if (_primaryQuery == null) {
       return const Scaffold(
         body: Center(child: Text('System initialization failed')),
       );
+    }
 
     return Scaffold(
       backgroundColor: backgroundLight,
@@ -824,10 +828,12 @@ class _ScreensQuotationListState extends State<ScreensQuotationList> {
       body: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
         stream: _primaryQuery!.snapshots(),
         builder: (context, snapshot) {
-          if (snapshot.hasError)
+          if (snapshot.hasError) {
             return Center(child: Text('Error: ${snapshot.error}'));
-          if (snapshot.connectionState == ConnectionState.waiting)
+          }
+          if (snapshot.connectionState == ConnectionState.waiting) {
             return const Center(child: CircularProgressIndicator());
+          }
 
           final docs = snapshot.data?.docs ?? [];
           final filteredDocs = _applyLocalFilters(docs);
@@ -859,45 +865,57 @@ class _ScreensQuotationListState extends State<ScreensQuotationList> {
           return Column(
             children: [
               Container(
+                width: double.infinity,
                 color: Colors.white,
                 padding: const EdgeInsets.symmetric(
                   horizontal: 16,
                   vertical: 12,
                 ),
-                child: SingleChildScrollView(
-                  scrollDirection: Axis.horizontal,
-                  child: Row(
-                    children: [
-                      _buildKpiCard(
-                        'Total Value',
-                        '₹${(totalValue / 100000).toStringAsFixed(2)}L',
-                        Icons.account_balance_wallet,
-                        Colors.blue,
+                child: LayoutBuilder(
+                  builder: (context, constraints) {
+                    return SingleChildScrollView(
+                      scrollDirection: Axis.horizontal,
+                      child: ConstrainedBox(
+                        constraints: BoxConstraints(
+                          minWidth: constraints.maxWidth,
+                        ),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            _buildKpiCard(
+                              'Total Value',
+                              '₹${(totalValue / 100000).toStringAsFixed(2)}L',
+                              Icons.account_balance_wallet,
+                              Colors.blue,
+                            ),
+                            _buildKpiCard(
+                              'Approved Val',
+                              '₹${(approvedValue / 100000).toStringAsFixed(2)}L',
+                              Icons.verified,
+                              Colors.green,
+                            ),
+                            _buildKpiCard(
+                              'Conv. Rate',
+                              '${convRate.toStringAsFixed(1)}%',
+                              Icons.insights,
+                              Colors.purple,
+                            ),
+                            _buildKpiCard(
+                              'Avg Value',
+                              '₹${(avgValue / 1000).toStringAsFixed(1)}K',
+                              Icons.bar_chart,
+                              Colors.orange,
+                            ),
+                          ],
+                        ),
                       ),
-                      _buildKpiCard(
-                        'Approved Val',
-                        '₹${(approvedValue / 100000).toStringAsFixed(2)}L',
-                        Icons.verified,
-                        Colors.green,
-                      ),
-                      _buildKpiCard(
-                        'Conv. Rate',
-                        '${convRate.toStringAsFixed(1)}%',
-                        Icons.insights,
-                        Colors.purple,
-                      ),
-                      _buildKpiCard(
-                        'Avg Value',
-                        '₹${(avgValue / 1000).toStringAsFixed(1)}K',
-                        Icons.bar_chart,
-                        Colors.orange,
-                      ),
-                    ],
-                  ),
+                    );
+                  },
                 ),
               ),
 
               Container(
+                width: double.infinity,
                 color: Colors.white,
                 padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
                 child: Row(
@@ -1033,7 +1051,7 @@ class _ScreensQuotationListState extends State<ScreensQuotationList> {
                               border: Border.all(color: Colors.grey.shade200),
                               boxShadow: [
                                 BoxShadow(
-                                  color: Colors.black.withOpacity(0.02),
+                                  color: Colors.black.withValues(alpha: 0.02),
                                   blurRadius: 4,
                                   offset: const Offset(0, 2),
                                 ),
@@ -1398,9 +1416,9 @@ class _ScreensQuotationListState extends State<ScreensQuotationList> {
       margin: const EdgeInsets.only(right: 12),
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       decoration: BoxDecoration(
-        color: color.withOpacity(0.05),
+        color: color.withValues(alpha: 0.05),
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: color.withOpacity(0.2)),
+        border: Border.all(color: color.withValues(alpha: 0.2)),
       ),
       child: Row(
         children: [

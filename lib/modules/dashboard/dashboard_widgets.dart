@@ -10,11 +10,11 @@ class DashboardCard extends StatelessWidget {
   final Widget? trailing;
 
   const DashboardCard({
-    Key? key,
+    super.key,
     required this.title,
     required this.child,
     this.trailing,
-  }) : super(key: key);
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -26,7 +26,7 @@ class DashboardCard extends StatelessWidget {
         border: Border.all(color: const Color(0xFFE2E8F0)),
         boxShadow: [
           BoxShadow(
-            color: const Color(0xFF0F172A).withOpacity(0.02),
+            color: const Color(0xFF0F172A).withValues(alpha: 0.02),
             blurRadius: 10,
             offset: const Offset(0, 4),
           ),
@@ -65,7 +65,7 @@ class DashboardCard extends StatelessWidget {
 class SectionHeader extends StatelessWidget {
   final String title;
 
-  const SectionHeader({Key? key, required this.title}) : super(key: key);
+  const SectionHeader({super.key, required this.title});
 
   @override
   Widget build(BuildContext context) {
@@ -93,14 +93,14 @@ class KpiCard extends StatelessWidget {
   final bool isPositive;
 
   const KpiCard({
-    Key? key,
+    super.key,
     required this.title,
     required this.value,
     required this.icon,
     required this.color,
     required this.trendText,
     required this.isPositive,
-  }) : super(key: key);
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -119,7 +119,7 @@ class KpiCard extends StatelessWidget {
         border: Border.all(color: const Color(0xFFE2E8F0)),
         boxShadow: [
           BoxShadow(
-            color: const Color(0xFF0F172A).withOpacity(0.02),
+            color: const Color(0xFF0F172A).withValues(alpha: 0.02),
             blurRadius: 10,
             offset: const Offset(0, 4),
           ),
@@ -146,7 +146,7 @@ class KpiCard extends StatelessWidget {
               Container(
                 padding: const EdgeInsets.all(8),
                 decoration: BoxDecoration(
-                  color: color.withOpacity(0.1),
+                  color: color.withValues(alpha: 0.1),
                   borderRadius: BorderRadius.circular(8),
                 ),
                 child: Icon(icon, size: 18, color: color),
@@ -194,11 +194,11 @@ class ActionCard extends StatelessWidget {
   final VoidCallback onTap;
 
   const ActionCard({
-    Key? key,
+    super.key,
     required this.icon,
     required this.label,
     required this.onTap,
-  }) : super(key: key);
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -243,7 +243,7 @@ class ActionCard extends StatelessWidget {
 class ActivityItem extends StatelessWidget {
   final String text;
 
-  const ActivityItem({Key? key, required this.text}) : super(key: key);
+  const ActivityItem({super.key, required this.text});
 
   @override
   Widget build(BuildContext context) {
@@ -274,7 +274,7 @@ class ActivityItem extends StatelessWidget {
 class TaskItem extends StatelessWidget {
   final String text;
 
-  const TaskItem({Key? key, required this.text}) : super(key: key);
+  const TaskItem({super.key, required this.text});
 
   @override
   Widget build(BuildContext context) {
@@ -314,13 +314,13 @@ class TransactionItem extends StatelessWidget {
   final String status;
 
   const TransactionItem({
-    Key? key,
+    super.key,
     required this.title,
     required this.subtitle,
     required this.amount,
     required this.isPositive,
     required this.status,
-  }) : super(key: key);
+  });
 
   @override
   Widget build(BuildContext context) {

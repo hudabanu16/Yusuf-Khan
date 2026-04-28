@@ -124,10 +124,12 @@ class ExportInvoiceDocumentView extends StatelessWidget {
       if (n < 1000) {
         return '${units[n ~/ 100]} Hundred${n % 100 != 0 ? ' and ${convertDigit(n % 100)}' : ''}';
       }
-      if (n < 1000000)
+      if (n < 1000000) {
         return '${convertDigit(n ~/ 1000)} Thousand${n % 1000 != 0 ? ' ${convertDigit(n % 1000)}' : ''}';
-      if (n < 1000000000)
+      }
+      if (n < 1000000000) {
         return '${convertDigit(n ~/ 1000000)} Million${n % 1000000 != 0 ? ' ${convertDigit(n % 1000000)}' : ''}';
+      }
       return '${convertDigit(n ~/ 1000000000)} Billion${n % 1000000000 != 0 ? ' ${convertDigit(n % 1000000000)}' : ''}';
     }
 
@@ -209,8 +211,9 @@ class ExportInvoiceDocumentView extends StatelessWidget {
   // ================= PDF COMPACT WIDGET HELPERS =================
 
   pw.Widget _metaRow(String label, String value, {bool boldValue = true}) {
-    if (value.isEmpty || value == '0' || value == '0.0')
+    if (value.isEmpty || value == '0' || value == '0.0') {
       value = 'Not Available';
+    }
     return pw.Padding(
       padding: const pw.EdgeInsets.only(bottom: 2),
       child: pw.Row(

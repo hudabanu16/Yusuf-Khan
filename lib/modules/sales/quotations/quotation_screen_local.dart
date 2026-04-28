@@ -293,10 +293,12 @@ class _QuotationScreenLocalState extends State<QuotationScreenLocal> {
           .toString()
           .trim();
 
-      if (_signNameController.text.isEmpty)
+      if (_signNameController.text.isEmpty) {
         _signNameController.text = _currentUserName;
-      if (_signDesignationController.text.isEmpty)
+      }
+      if (_signDesignationController.text.isEmpty) {
         _signDesignationController.text = _currentUserRole.toUpperCase();
+      }
     } catch (e) {
       _setError('Failed to load user context.');
     }
@@ -417,11 +419,13 @@ class _QuotationScreenLocalState extends State<QuotationScreenLocal> {
         if (pDoc.exists && pDoc.data() != null) {
           final pData = pDoc.data()!;
           if (name.isEmpty) name = (pData['name'] ?? '').toString();
-          if (desc.isEmpty)
+          if (desc.isEmpty) {
             desc = (pData['description'] ?? pData['details'] ?? '').toString();
-          if (hsn.isEmpty)
+          }
+          if (hsn.isEmpty) {
             hsn = (pData['hsnCode'] ?? pData['hsn'] ?? '').toString();
-          if (totalGst == 0)
+          }
+          if (totalGst == 0) {
             totalGst =
                 double.tryParse(
                   pData['gstPercentage']?.toString() ??
@@ -429,7 +433,8 @@ class _QuotationScreenLocalState extends State<QuotationScreenLocal> {
                       '18',
                 ) ??
                 18.0;
-          if (price == 0)
+          }
+          if (price == 0) {
             price =
                 double.tryParse(
                   pData['unitPrice']?.toString() ??
@@ -437,8 +442,10 @@ class _QuotationScreenLocalState extends State<QuotationScreenLocal> {
                       '0',
                 ) ??
                 0.0;
-          if (uom == 'Nos' || uom.isEmpty)
+          }
+          if (uom == 'Nos' || uom.isEmpty) {
             uom = (pData['uom'] ?? 'Nos').toString();
+          }
           stock =
               double.tryParse(
                 pData['availableStock']?.toString() ??
@@ -620,15 +627,18 @@ class _QuotationScreenLocalState extends State<QuotationScreenLocal> {
         _balancePercent =
             double.tryParse(data['balancePercent']?.toString() ?? '50') ?? 50.0;
 
-        if (_signNameController.text.isEmpty)
+        if (_signNameController.text.isEmpty) {
           _signNameController.text =
               data['signatureName']?.toString() ?? _currentUserName;
-        if (_signDesignationController.text.isEmpty)
+        }
+        if (_signDesignationController.text.isEmpty) {
           _signDesignationController.text =
               data['signatureDesignation']?.toString() ??
               _currentUserRole.toUpperCase();
-        if (_signPhoneController.text.isEmpty)
+        }
+        if (_signPhoneController.text.isEmpty) {
           _signPhoneController.text = data['signaturePhone']?.toString() ?? '';
+        }
 
         if (widget.existingQuotation == null) {
           if (data['dynamicTerms'] != null &&
@@ -1185,12 +1195,6 @@ class _QuotationScreenLocalState extends State<QuotationScreenLocal> {
     }
   }
 
-  void _triggerFollowUpReminderLogic() {
-    if (_nextFollowUpDate != null) {
-      debugPrint("Reminder scheduled for $_nextFollowUpDate");
-    }
-  }
-
   Map<String, dynamic> _buildPreviewData() {
     return {
       'quoteNumber': _quoteNumberController.text.contains('Auto')
@@ -1287,7 +1291,7 @@ class _QuotationScreenLocalState extends State<QuotationScreenLocal> {
     border: Border.all(color: Colors.grey.shade200),
     boxShadow: [
       BoxShadow(
-        color: Colors.black.withOpacity(0.02),
+        color: Colors.black.withValues(alpha: 0.02),
         blurRadius: 8,
         offset: const Offset(0, 2),
       ),
@@ -1302,7 +1306,7 @@ class _QuotationScreenLocalState extends State<QuotationScreenLocal> {
           Container(
             padding: const EdgeInsets.all(8),
             decoration: BoxDecoration(
-              color: accentColor.withOpacity(0.1),
+              color: accentColor.withValues(alpha: 0.1),
               borderRadius: BorderRadius.circular(8),
             ),
             child: Icon(icon, color: accentColor, size: 20),
@@ -1368,8 +1372,9 @@ class _QuotationScreenLocalState extends State<QuotationScreenLocal> {
                   child: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
                     stream: query.snapshots(),
                     builder: (context, snapshot) {
-                      if (snapshot.connectionState == ConnectionState.waiting)
+                      if (snapshot.connectionState == ConnectionState.waiting) {
                         return const Center(child: CircularProgressIndicator());
+                      }
                       final docs = snapshot.data?.docs ?? [];
                       final filtered = docs.where((doc) {
                         final data = doc.data();
@@ -1380,8 +1385,9 @@ class _QuotationScreenLocalState extends State<QuotationScreenLocal> {
                             searchStr.contains(searchText);
                       }).toList();
 
-                      if (filtered.isEmpty)
+                      if (filtered.isEmpty) {
                         return const Center(child: Text('No customers found.'));
+                      }
 
                       return ListView.separated(
                         itemCount: filtered.length,
@@ -1471,8 +1477,9 @@ class _QuotationScreenLocalState extends State<QuotationScreenLocal> {
                   child: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
                     stream: query.snapshots(),
                     builder: (context, snapshot) {
-                      if (snapshot.connectionState == ConnectionState.waiting)
+                      if (snapshot.connectionState == ConnectionState.waiting) {
                         return const Center(child: CircularProgressIndicator());
+                      }
                       final docs = snapshot.data?.docs ?? [];
                       final filtered = docs.where((doc) {
                         final data = doc.data();
@@ -1483,10 +1490,11 @@ class _QuotationScreenLocalState extends State<QuotationScreenLocal> {
                             searchStr.contains(searchText);
                       }).toList();
 
-                      if (filtered.isEmpty)
+                      if (filtered.isEmpty) {
                         return const Center(
                           child: Text('No products found in inventory.'),
                         );
+                      }
 
                       return ListView.separated(
                         itemCount: filtered.length,
@@ -1625,14 +1633,17 @@ class _QuotationScreenLocalState extends State<QuotationScreenLocal> {
                                 setModalState(() {
                                   productId = p['id'];
 
-                                  if (nameCtrl.text.trim().isEmpty)
+                                  if (nameCtrl.text.trim().isEmpty) {
                                     nameCtrl.text = p['name'] ?? '';
-                                  if (descCtrl.text.trim().isEmpty)
+                                  }
+                                  if (descCtrl.text.trim().isEmpty) {
                                     descCtrl.text =
                                         p['description'] ?? p['details'] ?? '';
-                                  if (hsnCtrl.text.trim().isEmpty)
+                                  }
+                                  if (hsnCtrl.text.trim().isEmpty) {
                                     hsnCtrl.text =
                                         p['hsnCode'] ?? p['hsn'] ?? '';
+                                  }
 
                                   if (priceCtrl.text.trim().isEmpty ||
                                       priceCtrl.text == '0' ||
@@ -1796,10 +1807,11 @@ class _QuotationScreenLocalState extends State<QuotationScreenLocal> {
                           );
 
                           setState(() {
-                            if (index != null)
+                            if (index != null) {
                               _items[index] = newItem;
-                            else
+                            } else {
                               _items.add(newItem);
+                            }
                             _calculateTotals();
                           });
                           Navigator.pop(context);
@@ -1894,8 +1906,9 @@ class _QuotationScreenLocalState extends State<QuotationScreenLocal> {
 
   @override
   Widget build(BuildContext context) {
-    if (_isLoading)
+    if (_isLoading) {
       return const Scaffold(body: Center(child: CircularProgressIndicator()));
+    }
 
     return Scaffold(
       backgroundColor: backgroundLight,
@@ -2179,8 +2192,9 @@ class _QuotationScreenLocalState extends State<QuotationScreenLocal> {
                                               firstDate: DateTime(2000),
                                               lastDate: DateTime(2100),
                                             );
-                                            if (d != null)
+                                            if (d != null) {
                                               setState(() => _quoteDate = d);
+                                            }
                                           },
                                     child: InputDecorator(
                                       decoration: InputDecoration(
@@ -2572,10 +2586,11 @@ class _QuotationScreenLocalState extends State<QuotationScreenLocal> {
                                               firstDate: DateTime.now(),
                                               lastDate: DateTime(2100),
                                             );
-                                            if (d != null)
+                                            if (d != null) {
                                               setState(
                                                 () => _nextFollowUpDate = d,
                                               );
+                                            }
                                           },
                                     child: InputDecorator(
                                       decoration: InputDecoration(

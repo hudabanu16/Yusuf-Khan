@@ -82,12 +82,22 @@ class _ScreensInquiryListState extends State<ScreensInquiryList> {
   // --- DRY: Reusable Role Checking Logic ---
   bool _isAdminOrManager(String role) {
     final r = role.trim().toLowerCase();
-    return ['admin', 'manager', 'owner', 'founder', 'ceo', 'superadmin'].contains(r);
+    return [
+      'admin',
+      'manager',
+      'owner',
+      'founder',
+      'ceo',
+      'superadmin',
+    ].contains(r);
   }
 
   // --- FULL MULTI-TENANT PROFILE LOADER ---
   Future<Map<String, dynamic>?> _loadCurrentUserProfile(String uid) async {
-    final globalDoc = await FirebaseFirestore.instance.collection('users').doc(uid).get();
+    final globalDoc = await FirebaseFirestore.instance
+        .collection('users')
+        .doc(uid)
+        .get();
 
     if (!globalDoc.exists) return null;
 
@@ -100,12 +110,18 @@ class _ScreensInquiryListState extends State<ScreensInquiryList> {
       resolvedCompanyId = _getString(userData, 'companyId');
     }
 
-    if (resolvedCompanyId.isEmpty && userData['companyIds'] is List && (userData['companyIds'] as List).isNotEmpty) {
+    if (resolvedCompanyId.isEmpty &&
+        userData['companyIds'] is List &&
+        (userData['companyIds'] as List).isNotEmpty) {
       resolvedCompanyId = _safeString((userData['companyIds'] as List).first);
     }
 
-    if (resolvedCompanyId.isEmpty && userData['memberships'] is Map && (userData['memberships'] as Map).isNotEmpty) {
-      resolvedCompanyId = _safeString((userData['memberships'] as Map).keys.first);
+    if (resolvedCompanyId.isEmpty &&
+        userData['memberships'] is Map &&
+        (userData['memberships'] as Map).isNotEmpty) {
+      resolvedCompanyId = _safeString(
+        (userData['memberships'] as Map).keys.first,
+      );
     }
 
     userData['companyId'] = resolvedCompanyId;
@@ -161,7 +177,9 @@ class _ScreensInquiryListState extends State<ScreensInquiryList> {
   }
 
   // --- SMART FIRESTORE AUTO-FALLBACK QUERY ---
-  Future<Query<Map<String, dynamic>>> _resolveInquiryQuery(String companyId) async {
+  Future<Query<Map<String, dynamic>>> _resolveInquiryQuery(
+    String companyId,
+  ) async {
     final scopedQuery = FirebaseFirestore.instance
         .collection('companies')
         .doc(companyId)
@@ -207,7 +225,8 @@ class _ScreensInquiryListState extends State<ScreensInquiryList> {
             ? _getString(data, 'createdBy')
             : _getString(data, 'createdByUid');
 
-        matchesRole = assignedToUid == currentUserUid || createdByUid == currentUserUid;
+        matchesRole =
+            assignedToUid == currentUserUid || createdByUid == currentUserUid;
       }
 
       final inquiryCode = _getString(data, 'inquiryCode').isEmpty
@@ -230,18 +249,22 @@ class _ScreensInquiryListState extends State<ScreensInquiryList> {
 
       final mobile = _getString(data, 'contactMobile').isEmpty
           ? (_getString(data, 'contactPhone').isEmpty
-          ? _getString(data, 'mobile').toLowerCase()
-          : _getString(data, 'contactPhone').toLowerCase())
+                ? _getString(data, 'mobile').toLowerCase()
+                : _getString(data, 'contactPhone').toLowerCase())
           : _getString(data, 'contactMobile').toLowerCase();
 
       final projectName = _getString(data, 'projectName').toLowerCase();
       final source = _getString(data, 'source').toLowerCase();
-      final requiredProducts = _getString(data, 'requiredProducts').toLowerCase();
+      final requiredProducts = _getString(
+        data,
+        'requiredProducts',
+      ).toLowerCase();
 
       final status = _getString(data, 'status');
       final priority = _getString(data, 'priority');
 
-      final matchesSearch = normalizedSearch.isEmpty ||
+      final matchesSearch =
+          normalizedSearch.isEmpty ||
           inquiryCode.contains(normalizedSearch) ||
           customerCode.contains(normalizedSearch) ||
           customerName.contains(normalizedSearch) ||
@@ -253,7 +276,8 @@ class _ScreensInquiryListState extends State<ScreensInquiryList> {
           requiredProducts.contains(normalizedSearch);
 
       final matchesStatus = _statusFilter == 'All' || status == _statusFilter;
-      final matchesPriority = _priorityFilter == 'All' || priority == _priorityFilter;
+      final matchesPriority =
+          _priorityFilter == 'All' || priority == _priorityFilter;
 
       return matchesRole && matchesSearch && matchesStatus && matchesPriority;
     }).toList();
@@ -275,7 +299,8 @@ class _ScreensInquiryListState extends State<ScreensInquiryList> {
     return filtered;
   }
 
-  bool get _hasActiveFilters => _statusFilter != 'All' || _priorityFilter != 'All';
+  bool get _hasActiveFilters =>
+      _statusFilter != 'All' || _priorityFilter != 'All';
 
   void _resetFilters() {
     setState(() {
@@ -330,13 +355,17 @@ class _ScreensInquiryListState extends State<ScreensInquiryList> {
                     ),
                     const SizedBox(height: 14),
                     DropdownButtonFormField<String>(
-                      value: tempStatus,
+                      initialValue: tempStatus,
                       decoration: const InputDecoration(
                         labelText: 'Status',
                         isDense: true,
                         border: OutlineInputBorder(),
                       ),
-                      items: statuses.map((e) => DropdownMenuItem(value: e, child: Text(e))).toList(),
+                      items: statuses
+                          .map(
+                            (e) => DropdownMenuItem(value: e, child: Text(e)),
+                          )
+                          .toList(),
                       onChanged: (value) {
                         setModalState(() {
                           tempStatus = value ?? 'All';
@@ -345,13 +374,17 @@ class _ScreensInquiryListState extends State<ScreensInquiryList> {
                     ),
                     const SizedBox(height: 10),
                     DropdownButtonFormField<String>(
-                      value: tempPriority,
+                      initialValue: tempPriority,
                       decoration: const InputDecoration(
                         labelText: 'Priority',
                         isDense: true,
                         border: OutlineInputBorder(),
                       ),
-                      items: priorities.map((e) => DropdownMenuItem(value: e, child: Text(e))).toList(),
+                      items: priorities
+                          .map(
+                            (e) => DropdownMenuItem(value: e, child: Text(e)),
+                          )
+                          .toList(),
                       onChanged: (value) {
                         setModalState(() {
                           tempPriority = value ?? 'All';
@@ -404,11 +437,16 @@ class _ScreensInquiryListState extends State<ScreensInquiryList> {
     required String currentUserUid,
     required String role,
   }) async {
-    final targetCompanyId = inquiry.companyId.isNotEmpty ? inquiry.companyId : (_companyId ?? '');
+    final targetCompanyId = inquiry.companyId.isNotEmpty
+        ? inquiry.companyId
+        : (_companyId ?? '');
 
     if (targetCompanyId.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Error: Company ID is missing.'), backgroundColor: Colors.red),
+        const SnackBar(
+          content: Text('Error: Company ID is missing.'),
+          backgroundColor: Colors.red,
+        ),
       );
       return;
     }
@@ -443,12 +481,18 @@ class _ScreensInquiryListState extends State<ScreensInquiryList> {
     required Inquiry inquiry,
     required Map<String, dynamic> inquiryData,
   }) async {
-    final targetCompanyId = inquiry.companyId.isNotEmpty ? inquiry.companyId : (_companyId ?? '');
+    final targetCompanyId = inquiry.companyId.isNotEmpty
+        ? inquiry.companyId
+        : (_companyId ?? '');
 
     if (targetCompanyId.isEmpty) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Error: Company ID is missing.'), backgroundColor: Colors.red));
+          const SnackBar(
+            content: Text('Error: Company ID is missing.'),
+            backgroundColor: Colors.red,
+          ),
+        );
       }
       return;
     }
@@ -486,15 +530,26 @@ class _ScreensInquiryListState extends State<ScreensInquiryList> {
       'inquiryId': inquiry.id,
       'inquiryNumber': inquiry.inquiryNumber,
       'customerId': inquiry.customerId,
-      'customerName': customerData['companyName'] ?? customerData['name'] ?? inquiry.customerName,
+      'customerName':
+          customerData['companyName'] ??
+          customerData['name'] ??
+          inquiry.customerName,
       'contactPerson': customerData['contactPerson'] ?? inquiry.contactName,
-      'mobile': customerData['mobile'] ?? customerData['phone'] ?? inquiry.contactPhone,
+      'mobile':
+          customerData['mobile'] ??
+          customerData['phone'] ??
+          inquiry.contactPhone,
       'email': customerData['email'] ?? inquiry.contactEmail,
-      'address': customerData['address'] ?? customerData['billingAddress'] ?? '',
+      'address':
+          customerData['address'] ?? customerData['billingAddress'] ?? '',
       'state': customerData['state'] ?? '',
       'gstNo': customerData['gstNo'] ?? customerData['gst'] ?? '',
       'subject': inquiry.subject,
-      'notes': inquiryData['notes'] ?? inquiryData['description'] ?? inquiry.notes ?? '',
+      'notes':
+          inquiryData['notes'] ??
+          inquiryData['description'] ??
+          inquiry.notes ??
+          '',
       'location': inquiry.location,
       'source': inquiry.source,
       // Pass the raw array whether it was saved as 'items' or 'products'
@@ -554,7 +609,9 @@ class _ScreensInquiryListState extends State<ScreensInquiryList> {
 
         final userData = userSnap.data!;
         final compId = _companyId ?? _getString(userData, 'companyId');
-        final role = _getString(userData, 'role').isEmpty ? 'sales' : _getString(userData, 'role');
+        final role = _getString(userData, 'role').isEmpty
+            ? 'sales'
+            : _getString(userData, 'role');
 
         if (compId.isEmpty || !_hasInquiryPermission(userData)) {
           return const Scaffold(
@@ -665,15 +722,15 @@ class _ScreensInquiryListState extends State<ScreensInquiryList> {
                                 suffixIcon: _searchText.trim().isEmpty
                                     ? null
                                     : IconButton(
-                                  tooltip: 'Clear',
-                                  icon: const Icon(Icons.close, size: 17),
-                                  onPressed: () {
-                                    _searchController.clear();
-                                    setState(() {
-                                      _searchText = '';
-                                    });
-                                  },
-                                ),
+                                        tooltip: 'Clear',
+                                        icon: const Icon(Icons.close, size: 17),
+                                        onPressed: () {
+                                          _searchController.clear();
+                                          setState(() {
+                                            _searchText = '';
+                                          });
+                                        },
+                                      ),
                                 isDense: true,
                                 filled: true,
                                 fillColor: Colors.grey.shade100,
@@ -738,7 +795,10 @@ class _ScreensInquiryListState extends State<ScreensInquiryList> {
                         const SizedBox(width: 10),
                         _MiniStatText(label: 'Open', value: open.toString()),
                         const SizedBox(width: 10),
-                        _MiniStatText(label: 'Follow-up', value: followUp.toString()),
+                        _MiniStatText(
+                          label: 'Follow-up',
+                          value: followUp.toString(),
+                        ),
                         const SizedBox(width: 10),
                         _MiniStatText(label: 'Won', value: won.toString()),
                       ],
@@ -769,242 +829,287 @@ class _ScreensInquiryListState extends State<ScreensInquiryList> {
                   Expanded(
                     child: filteredDocs.isEmpty
                         ? _EmptyInquiriesState(
-                      hasSearch: _searchText.trim().isNotEmpty || _hasActiveFilters,
-                      onReset: () {
-                        _searchController.clear();
-                        setState(() {
-                          _searchText = '';
-                        });
-                        _resetFilters();
-                      },
-                    )
+                            hasSearch:
+                                _searchText.trim().isNotEmpty ||
+                                _hasActiveFilters,
+                            onReset: () {
+                              _searchController.clear();
+                              setState(() {
+                                _searchText = '';
+                              });
+                              _resetFilters();
+                            },
+                          )
                         : ListView.separated(
-                      padding: const EdgeInsets.fromLTRB(16, 4, 16, 90),
-                      itemCount: filteredDocs.length,
-                      separatorBuilder: (_, __) => const SizedBox(height: 8),
-                      itemBuilder: (context, index) {
-                        final doc = filteredDocs[index];
-                        final inquiry = Inquiry.fromSnapshot(doc);
+                            padding: const EdgeInsets.fromLTRB(16, 4, 16, 90),
+                            itemCount: filteredDocs.length,
+                            separatorBuilder: (_, __) =>
+                                const SizedBox(height: 8),
+                            itemBuilder: (context, index) {
+                              final doc = filteredDocs[index];
+                              final inquiry = Inquiry.fromSnapshot(doc);
 
-                        final priority = inquiry.priority.isEmpty ? 'Warm' : inquiry.priority;
-                        final status = inquiry.status.isEmpty ? 'Open' : inquiry.status;
-                        final subject = inquiry.subject;
-                        final customerName = inquiry.customerName.isEmpty ? 'Unknown Customer' : inquiry.customerName;
-                        final inquiryNumber = inquiry.inquiryNumber.isEmpty ? '-' : inquiry.inquiryNumber;
-                        final assignedToName = inquiry.assignedToName.isEmpty ? 'Unassigned' : inquiry.assignedToName;
-                        final contactName = inquiry.contactName;
-                        final phone = inquiry.contactPhone.isEmpty ? 'No Phone' : inquiry.contactPhone;
+                              final priority = inquiry.priority.isEmpty
+                                  ? 'Warm'
+                                  : inquiry.priority;
+                              final status = inquiry.status.isEmpty
+                                  ? 'Open'
+                                  : inquiry.status;
+                              final subject = inquiry.subject;
+                              final customerName = inquiry.customerName.isEmpty
+                                  ? 'Unknown Customer'
+                                  : inquiry.customerName;
+                              final inquiryNumber =
+                                  inquiry.inquiryNumber.isEmpty
+                                  ? '-'
+                                  : inquiry.inquiryNumber;
+                              final assignedToName =
+                                  inquiry.assignedToName.isEmpty
+                                  ? 'Unassigned'
+                                  : inquiry.assignedToName;
+                              final contactName = inquiry.contactName;
+                              final phone = inquiry.contactPhone.isEmpty
+                                  ? 'No Phone'
+                                  : inquiry.contactPhone;
 
-                        return Container(
-                          decoration: BoxDecoration(
-                            color: Colors.white,
-                            borderRadius: BorderRadius.circular(14),
-                            border: Border.all(
-                              color: Colors.grey.shade200,
-                              width: 0.8,
-                            ),
-                          ),
-                          child: Padding(
-                            padding: const EdgeInsets.all(12),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Row(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    CircleAvatar(
-                                      radius: 20,
-                                      backgroundColor: Colors.blue.shade50,
-                                      child: Text(
-                                        customerName.isNotEmpty ? customerName[0].toUpperCase() : '?',
-                                        style: TextStyle(
-                                          fontSize: 15,
-                                          fontWeight: FontWeight.w700,
-                                          color: Colors.blue.shade800,
-                                        ),
-                                      ),
-                                    ),
-                                    const SizedBox(width: 10),
-                                    Expanded(
-                                      child: Column(
-                                        crossAxisAlignment: CrossAxisAlignment.start,
-                                        children: [
-                                          Text(
-                                            subject.isEmpty ? 'No Subject' : subject,
-                                            maxLines: 1,
-                                            overflow: TextOverflow.ellipsis,
-                                            style: const TextStyle(
-                                              fontSize: 15,
-                                              fontWeight: FontWeight.w700,
-                                            ),
-                                          ),
-                                          const SizedBox(height: 3),
-                                          Text(
-                                            customerName,
-                                            maxLines: 1,
-                                            overflow: TextOverflow.ellipsis,
-                                            style: TextStyle(
-                                              fontSize: 12.5,
-                                              color: Colors.grey.shade700,
-                                              fontWeight: FontWeight.w500,
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                                    ),
-                                    PopupMenuButton<String>(
-                                      tooltip: 'Actions',
-                                      onSelected: (value) {
-                                        if (value == 'open') {
-                                          _openEditInquiry(
-                                            context: context,
-                                            doc: doc,
-                                            inquiry: inquiry,
-                                            currentUserUid: firebaseUser.uid,
-                                            role: role,
-                                          );
-                                        } else if (value == 'quote') {
-                                          _openQuotationFromInquiry(
-                                            context: context,
-                                            inquiry: inquiry,
-                                            inquiryData: doc.data(),
-                                          );
-                                        }
-                                      },
-                                      itemBuilder: (context) => [
-                                        const PopupMenuItem(
-                                          value: 'open',
-                                          child: Text('Open Inquiry'),
-                                        ),
-                                        const PopupMenuItem(
-                                          value: 'quote',
-                                          child: Text('Create Quotation'),
-                                        ),
-                                      ],
-                                    ),
-                                  ],
-                                ),
-                                const SizedBox(height: 10),
-                                Wrap(
-                                  spacing: 8,
-                                  runSpacing: 8,
-                                  children: [
-                                    _InfoChip(
-                                      label: status,
-                                      backgroundColor: _statusBg(status),
-                                      textColor: _statusFg(status),
-                                    ),
-                                    _InfoChip(
-                                      label: priority,
-                                      backgroundColor: _priorityBg(priority),
-                                      textColor: _priorityFg(priority),
-                                    ),
-                                    if (inquiry.source.isNotEmpty)
-                                      _InfoChip(
-                                        label: inquiry.source,
-                                        backgroundColor: Colors.grey.shade100,
-                                        textColor: Colors.grey.shade800,
-                                      ),
-                                    if (inquiry.inquiryType.isNotEmpty)
-                                      _InfoChip(
-                                        label: inquiry.inquiryType,
-                                        backgroundColor: Colors.blue.shade50,
-                                        textColor: Colors.blue.shade800,
-                                      ),
-                                    if (inquiry.location.isNotEmpty)
-                                      _InfoChip(
-                                        label: inquiry.location,
-                                        backgroundColor: Colors.grey.shade100,
-                                        textColor: Colors.grey.shade800,
-                                      ),
-                                  ],
-                                ),
-                                const SizedBox(height: 10),
-                                Wrap(
-                                  spacing: 14,
-                                  runSpacing: 8,
-                                  children: [
-                                    _InlineInfo(
-                                      icon: Icons.tag_outlined,
-                                      text: inquiryNumber,
-                                    ),
-                                    _InlineInfo(
-                                      icon: Icons.person_outline,
-                                      text: contactName.isEmpty ? 'No Contact' : contactName,
-                                    ),
-                                    _InlineInfo(
-                                      icon: Icons.phone_outlined,
-                                      text: phone,
-                                    ),
-                                    if (inquiry.expectedValue.isNotEmpty)
-                                      _InlineInfo(
-                                        icon: Icons.currency_rupee_outlined,
-                                        text: inquiry.expectedValue,
-                                      ),
-                                    if (inquiry.quantityScope.isNotEmpty)
-                                      _InlineInfo(
-                                        icon: Icons.numbers_outlined,
-                                        text: inquiry.quantityScope,
-                                      ),
-                                    _InlineInfo(
-                                      icon: Icons.assignment_ind_outlined,
-                                      text: assignedToName,
-                                    ),
-                                  ],
-                                ),
-                                const SizedBox(height: 12),
-                                Container(
-                                  width: double.infinity,
-                                  padding: const EdgeInsets.all(12),
-                                  decoration: BoxDecoration(
-                                    color: Colors.grey.shade50,
-                                    borderRadius: BorderRadius.circular(12),
-                                    border: Border.all(
-                                      color: Colors.grey.shade200,
-                                    ),
+                              return Container(
+                                decoration: BoxDecoration(
+                                  color: Colors.white,
+                                  borderRadius: BorderRadius.circular(14),
+                                  border: Border.all(
+                                    color: Colors.grey.shade200,
+                                    width: 0.8,
                                   ),
+                                ),
+                                child: Padding(
+                                  padding: const EdgeInsets.all(12),
                                   child: Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
                                     children: [
                                       Row(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
                                         children: [
-                                          Icon(
-                                            Icons.timeline_outlined,
-                                            size: 16,
-                                            color: Colors.grey.shade800,
-                                          ),
-                                          const SizedBox(width: 6),
-                                          Text(
-                                            'Timeline',
-                                            style: TextStyle(
-                                              fontSize: 12.8,
-                                              fontWeight: FontWeight.w700,
-                                              color: Colors.grey.shade800,
+                                          CircleAvatar(
+                                            radius: 20,
+                                            backgroundColor:
+                                                Colors.blue.shade50,
+                                            child: Text(
+                                              customerName.isNotEmpty
+                                                  ? customerName[0]
+                                                        .toUpperCase()
+                                                  : '?',
+                                              style: TextStyle(
+                                                fontSize: 15,
+                                                fontWeight: FontWeight.w700,
+                                                color: Colors.blue.shade800,
+                                              ),
                                             ),
+                                          ),
+                                          const SizedBox(width: 10),
+                                          Expanded(
+                                            child: Column(
+                                              crossAxisAlignment:
+                                                  CrossAxisAlignment.start,
+                                              children: [
+                                                Text(
+                                                  subject.isEmpty
+                                                      ? 'No Subject'
+                                                      : subject,
+                                                  maxLines: 1,
+                                                  overflow:
+                                                      TextOverflow.ellipsis,
+                                                  style: const TextStyle(
+                                                    fontSize: 15,
+                                                    fontWeight: FontWeight.w700,
+                                                  ),
+                                                ),
+                                                const SizedBox(height: 3),
+                                                Text(
+                                                  customerName,
+                                                  maxLines: 1,
+                                                  overflow:
+                                                      TextOverflow.ellipsis,
+                                                  style: TextStyle(
+                                                    fontSize: 12.5,
+                                                    color: Colors.grey.shade700,
+                                                    fontWeight: FontWeight.w500,
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
+                                          ),
+                                          PopupMenuButton<String>(
+                                            tooltip: 'Actions',
+                                            onSelected: (value) {
+                                              if (value == 'open') {
+                                                _openEditInquiry(
+                                                  context: context,
+                                                  doc: doc,
+                                                  inquiry: inquiry,
+                                                  currentUserUid:
+                                                      firebaseUser.uid,
+                                                  role: role,
+                                                );
+                                              } else if (value == 'quote') {
+                                                _openQuotationFromInquiry(
+                                                  context: context,
+                                                  inquiry: inquiry,
+                                                  inquiryData: doc.data(),
+                                                );
+                                              }
+                                            },
+                                            itemBuilder: (context) => [
+                                              const PopupMenuItem(
+                                                value: 'open',
+                                                child: Text('Open Inquiry'),
+                                              ),
+                                              const PopupMenuItem(
+                                                value: 'quote',
+                                                child: Text('Create Quotation'),
+                                              ),
+                                            ],
                                           ),
                                         ],
                                       ),
-                                      const SizedBox(height: 8),
-                                      _InlineInfo(
-                                        icon: Icons.add_circle_outline,
-                                        text: 'Created: ${_formatCompactDate(inquiry.createdAt)}',
+                                      const SizedBox(height: 10),
+                                      Wrap(
+                                        spacing: 8,
+                                        runSpacing: 8,
+                                        children: [
+                                          _InfoChip(
+                                            label: status,
+                                            backgroundColor: _statusBg(status),
+                                            textColor: _statusFg(status),
+                                          ),
+                                          _InfoChip(
+                                            label: priority,
+                                            backgroundColor: _priorityBg(
+                                              priority,
+                                            ),
+                                            textColor: _priorityFg(priority),
+                                          ),
+                                          if (inquiry.source.isNotEmpty)
+                                            _InfoChip(
+                                              label: inquiry.source,
+                                              backgroundColor:
+                                                  Colors.grey.shade100,
+                                              textColor: Colors.grey.shade800,
+                                            ),
+                                          if (inquiry.inquiryType.isNotEmpty)
+                                            _InfoChip(
+                                              label: inquiry.inquiryType,
+                                              backgroundColor:
+                                                  Colors.blue.shade50,
+                                              textColor: Colors.blue.shade800,
+                                            ),
+                                          if (inquiry.location.isNotEmpty)
+                                            _InfoChip(
+                                              label: inquiry.location,
+                                              backgroundColor:
+                                                  Colors.grey.shade100,
+                                              textColor: Colors.grey.shade800,
+                                            ),
+                                        ],
                                       ),
-                                      Padding(
-                                        padding: const EdgeInsets.only(top: 8),
-                                        child: _InlineInfo(
-                                          icon: Icons.event_repeat_outlined,
-                                          text: 'Next Follow-up: ${_formatCompactDate(inquiry.nextFollowUpDate)}',
+                                      const SizedBox(height: 10),
+                                      Wrap(
+                                        spacing: 14,
+                                        runSpacing: 8,
+                                        children: [
+                                          _InlineInfo(
+                                            icon: Icons.tag_outlined,
+                                            text: inquiryNumber,
+                                          ),
+                                          _InlineInfo(
+                                            icon: Icons.person_outline,
+                                            text: contactName.isEmpty
+                                                ? 'No Contact'
+                                                : contactName,
+                                          ),
+                                          _InlineInfo(
+                                            icon: Icons.phone_outlined,
+                                            text: phone,
+                                          ),
+                                          if (inquiry.expectedValue.isNotEmpty)
+                                            _InlineInfo(
+                                              icon:
+                                                  Icons.currency_rupee_outlined,
+                                              text: inquiry.expectedValue,
+                                            ),
+                                          if (inquiry.quantityScope.isNotEmpty)
+                                            _InlineInfo(
+                                              icon: Icons.numbers_outlined,
+                                              text: inquiry.quantityScope,
+                                            ),
+                                          _InlineInfo(
+                                            icon: Icons.assignment_ind_outlined,
+                                            text: assignedToName,
+                                          ),
+                                        ],
+                                      ),
+                                      const SizedBox(height: 12),
+                                      Container(
+                                        width: double.infinity,
+                                        padding: const EdgeInsets.all(12),
+                                        decoration: BoxDecoration(
+                                          color: Colors.grey.shade50,
+                                          borderRadius: BorderRadius.circular(
+                                            12,
+                                          ),
+                                          border: Border.all(
+                                            color: Colors.grey.shade200,
+                                          ),
+                                        ),
+                                        child: Column(
+                                          crossAxisAlignment:
+                                              CrossAxisAlignment.start,
+                                          children: [
+                                            Row(
+                                              children: [
+                                                Icon(
+                                                  Icons.timeline_outlined,
+                                                  size: 16,
+                                                  color: Colors.grey.shade800,
+                                                ),
+                                                const SizedBox(width: 6),
+                                                Text(
+                                                  'Timeline',
+                                                  style: TextStyle(
+                                                    fontSize: 12.8,
+                                                    fontWeight: FontWeight.w700,
+                                                    color: Colors.grey.shade800,
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
+                                            const SizedBox(height: 8),
+                                            _InlineInfo(
+                                              icon: Icons.add_circle_outline,
+                                              text:
+                                                  'Created: ${_formatCompactDate(inquiry.createdAt)}',
+                                            ),
+                                            Padding(
+                                              padding: const EdgeInsets.only(
+                                                top: 8,
+                                              ),
+                                              child: _InlineInfo(
+                                                icon:
+                                                    Icons.event_repeat_outlined,
+                                                text:
+                                                    'Next Follow-up: ${_formatCompactDate(inquiry.nextFollowUpDate)}',
+                                              ),
+                                            ),
+                                          ],
                                         ),
                                       ),
                                     ],
                                   ),
                                 ),
-                              ],
-                            ),
+                              );
+                            },
                           ),
-                        );
-                      },
-                    ),
                   ),
                 ],
               );
@@ -1020,10 +1125,7 @@ class _MiniStatText extends StatelessWidget {
   final String label;
   final String value;
 
-  const _MiniStatText({
-    required this.label,
-    required this.value,
-  });
+  const _MiniStatText({required this.label, required this.value});
 
   @override
   Widget build(BuildContext context) {
@@ -1042,10 +1144,7 @@ class _InlineInfo extends StatelessWidget {
   final IconData icon;
   final String text;
 
-  const _InlineInfo({
-    required this.icon,
-    required this.text,
-  });
+  const _InlineInfo({required this.icon, required this.text});
 
   @override
   Widget build(BuildContext context) {
@@ -1108,10 +1207,7 @@ class _EmptyInquiriesState extends StatelessWidget {
   final bool hasSearch;
   final VoidCallback onReset;
 
-  const _EmptyInquiriesState({
-    required this.hasSearch,
-    required this.onReset,
-  });
+  const _EmptyInquiriesState({required this.hasSearch, required this.onReset});
 
   @override
   Widget build(BuildContext context) {
@@ -1120,9 +1216,7 @@ class _EmptyInquiriesState extends StatelessWidget {
         return SingleChildScrollView(
           padding: const EdgeInsets.all(28),
           child: ConstrainedBox(
-            constraints: BoxConstraints(
-              minHeight: constraints.maxHeight - 40,
-            ),
+            constraints: BoxConstraints(minHeight: constraints.maxHeight - 40),
             child: IntrinsicHeight(
               child: Center(
                 child: Column(
