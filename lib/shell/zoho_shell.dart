@@ -26,6 +26,7 @@ import 'package:QUIK/modules/service/screens_service_home.dart';
 import 'package:QUIK/modules/finance/invoice/screens/invoice_list_screen.dart';
 import 'package:QUIK/modules/finance/invoice/screens/export_invoice_screen.dart';
 import 'package:QUIK/modules/finance/invoice/screens/tax_invoice_screen.dart';
+import 'package:QUIK/modules/finance/proforma_invoice/proforma_list_screen.dart'; // UPDATED IMPORT
 
 // Payments & Outstanding Sub-Modules
 import 'package:QUIK/modules/finance/payments_received/screens/payments_list_screen.dart';
@@ -451,12 +452,12 @@ class _ZohoShellState extends State<ZohoShell> {
       if (doc.exists && doc.data() != null) {
         final data = doc.data()!;
         final raw =
-            (data['industryType'] ??
-                    data['businessCategory'] ??
-                    data['industry'] ??
-                    '')
-                .toString()
-                .toLowerCase();
+        (data['industryType'] ??
+            data['businessCategory'] ??
+            data['industry'] ??
+            '')
+            .toString()
+            .toLowerCase();
 
         if (raw.contains('export') && raw.contains('import')) {
           _resolvedIndustry = 'export_import';
@@ -488,10 +489,10 @@ class _ZohoShellState extends State<ZohoShell> {
   }
 
   bool _hasPermission(
-    String module,
-    String submodule, {
-    String action = 'view',
-  }) {
+      String module,
+      String submodule, {
+        String action = 'view',
+      }) {
     if (isAdminOrManager) return true;
 
     final moduleData = _currentPermissions[module];
@@ -519,19 +520,17 @@ class _ZohoShellState extends State<ZohoShell> {
     return false;
   }
 
-  // 🔥 NEW: Adjusted canInquiries to cleanly block dashboard widgets for export_import
   bool get canInquiries {
     if (_resolvedIndustry == 'export_import') return false;
     return _hasPermission('sales', 'inquiries');
   }
 
   bool _canViewPage(ShellPage page) {
-    // 🔥 NEW: HARD BLOCK for export_import industry modules
     if (_resolvedIndustry == 'export_import') {
       if (page == ShellPage.salesInquiries ||
           page == ShellPage.salesQuotations ||
           page == ShellPage.reportsInquiry) {
-        return false; // Blocks even admins and direct routing
+        return false;
       }
     }
 
@@ -569,7 +568,7 @@ class _ZohoShellState extends State<ZohoShell> {
         return widget.isPlatformAdmin;
       case ShellPage.settingsGeneral:
         return true;
-      // Sales
+    // Sales
       case ShellPage.salesInquiries:
         return _hasPermission('sales', 'inquiries');
       case ShellPage.salesQuotations:
@@ -582,10 +581,10 @@ class _ZohoShellState extends State<ZohoShell> {
         return _hasPermission('sales', 'tasks');
       case ShellPage.salesMeetings:
         return _hasPermission('sales', 'meetings');
-      // Service
+    // Service
       case ShellPage.service:
         return true;
-      // CRM
+    // CRM
       case ShellPage.crmCustomers:
         return _hasPermission('crm', 'customers');
       case ShellPage.crmContacts:
@@ -594,7 +593,7 @@ class _ZohoShellState extends State<ZohoShell> {
         return _hasPermission('crm', 'customerVisits');
       case ShellPage.crmCommunication:
         return _hasPermission('crm', 'communicationHistory');
-      // Purchase
+    // Purchase
       case ShellPage.purchaseVendors:
         return _hasPermission('purchase', 'vendors');
       case ShellPage.purchaseOrders:
@@ -603,7 +602,7 @@ class _ZohoShellState extends State<ZohoShell> {
         return _hasPermission('purchase', 'grnMaterialReceipt');
       case ShellPage.purchaseLedger:
         return _hasPermission('purchase', 'vendorLedger');
-      // Inventory
+    // Inventory
       case ShellPage.inventoryProducts:
         return _hasPermission('inventory', 'products');
       case ShellPage.inventoryStockSummary:
@@ -620,7 +619,7 @@ class _ZohoShellState extends State<ZohoShell> {
       case ShellPage.inventoryMaterialInward:
       case ShellPage.inventoryMaterialIssue:
         return _hasPermission('inventory', 'products');
-      // Dispatch
+    // Dispatch
       case ShellPage.dispatchReady:
         return _hasPermission('dispatch', 'readyForDispatch');
       case ShellPage.dispatchChallans:
@@ -629,7 +628,7 @@ class _ZohoShellState extends State<ZohoShell> {
         return _hasPermission('dispatch', 'shipmentTracking');
       case ShellPage.dispatchDelivered:
         return _hasPermission('dispatch', 'deliveredOrders');
-      // Production
+    // Production
       case ShellPage.productionItems:
       case ShellPage.productionProcesses:
       case ShellPage.productionWorkCenters:
@@ -641,7 +640,7 @@ class _ZohoShellState extends State<ZohoShell> {
         return _hasPermission('hr', 'employees') ||
             _hasPermission('hr', 'attendance') ||
             _hasPermission('hr', 'wages');
-      // Finance
+    // Finance
       case ShellPage.financeProforma:
         return _hasPermission('finance', 'proformaInvoice');
       case ShellPage.financeTaxInvoice:
@@ -654,7 +653,7 @@ class _ZohoShellState extends State<ZohoShell> {
         return _hasPermission('finance', 'outstanding');
       case ShellPage.financeExpenses:
         return _hasPermission('finance', 'expenseEntries');
-      // Reports
+    // Reports
       case ShellPage.reportsSales:
         return _hasPermission('reports', 'salesReport');
       case ShellPage.reportsInquiry:
@@ -665,7 +664,7 @@ class _ZohoShellState extends State<ZohoShell> {
         return _hasPermission('reports', 'productReport');
       case ShellPage.reportsPayment:
         return _hasPermission('reports', 'paymentReport');
-      // Administration
+    // Administration
       case ShellPage.adminUsers:
         return _hasPermission('administration', 'users');
       case ShellPage.adminRoles:
@@ -731,7 +730,6 @@ class _ZohoShellState extends State<ZohoShell> {
   }
 
   List<SidebarGroup> get _allSidebarGroups {
-    // 🔥 NEW: Cleaned up export_import group list. Sales completely removed, Inquiry Report removed.
     if (_resolvedIndustry == 'export_import') {
       return [
         if (widget.isPlatformAdmin)
@@ -758,6 +756,7 @@ class _ZohoShellState extends State<ZohoShell> {
           title: 'Finance',
           icon: Icons.account_balance_wallet_outlined,
           children: [
+            ShellPage.financeProforma, // Added it here so it's accessible for export users too
             ShellPage.financeTaxInvoice,
             ShellPage.financePaymentsReceived,
             ShellPage.financeOutstanding,
@@ -1015,6 +1014,7 @@ class _ZohoShellState extends State<ZohoShell> {
       case ShellPage.adminModules:
       case ShellPage.adminInventoryProfile:
       case ShellPage.settingsGeneral:
+      case ShellPage.financeProforma:
       case ShellPage.financeTaxInvoice:
       case ShellPage.financeTaxInvoiceCreate:
       case ShellPage.financeExportInvoiceCreate:
@@ -1053,10 +1053,10 @@ class _ZohoShellState extends State<ZohoShell> {
     }
 
     if (_currentSidebarGroups.any(
-      (group) => group.children.contains(activePage),
+          (group) => group.children.contains(activePage),
     )) {
       final group = _currentSidebarGroups.firstWhere(
-        (g) => g.children.contains(activePage),
+            (g) => g.children.contains(activePage),
       );
       return '${group.title} • ${activePage.label}';
     }
@@ -1515,9 +1515,9 @@ class _ZohoShellState extends State<ZohoShell> {
   Widget _subNavItem(ShellPage page) {
     final bool selected =
         activePage == page ||
-        (page == ShellPage.financeTaxInvoice &&
-            (activePage == ShellPage.financeExportInvoiceCreate ||
-                activePage == ShellPage.financeTaxInvoiceCreate));
+            (page == ShellPage.financeTaxInvoice &&
+                (activePage == ShellPage.financeExportInvoiceCreate ||
+                    activePage == ShellPage.financeTaxInvoiceCreate));
 
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 2),
@@ -1694,9 +1694,9 @@ class _ZohoShellState extends State<ZohoShell> {
         );
 
       case ShellPage.salesOrders:
-        return const Padding(
-          padding: EdgeInsets.all(14),
-          child: SalesOrderListScreen(),
+        return Padding(
+          padding: const EdgeInsets.all(14),
+          child: SalesOrderListScreen(companyId: widget.companyId),
         );
 
       case ShellPage.adminUsers:
@@ -1723,6 +1723,14 @@ class _ZohoShellState extends State<ZohoShell> {
           child: ScreenInventoryProfileSettings(
             companyId: widget.companyId,
             companyName: widget.companyName,
+          ),
+        );
+
+      case ShellPage.financeProforma: // 🟢 NOW ROUTES TO THE NEW LIST SCREEN
+        return Padding(
+          padding: const EdgeInsets.all(14),
+          child: ProformaListScreen(
+            companyId: widget.companyId,
           ),
         );
 
@@ -1893,8 +1901,8 @@ class _ZohoShellState extends State<ZohoShell> {
                     : 'Restricted',
                 icon: allowed
                     ? (implemented
-                          ? Icons.check_circle_outline
-                          : Icons.construction_outlined)
+                    ? Icons.check_circle_outline
+                    : Icons.construction_outlined)
                     : Icons.lock_outline,
                 tint: allowed
                     ? (implemented ? zSuccessSoft : zBlueSoft)
@@ -2215,30 +2223,30 @@ class _ZohoShellState extends State<ZohoShell> {
               children: lines
                   .map(
                     (e) => Padding(
-                      padding: const EdgeInsets.only(bottom: 10),
-                      child: Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const Padding(
-                            padding: EdgeInsets.only(top: 5),
-                            child: Icon(Icons.circle, size: 6, color: zBlue),
-                          ),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: Text(
-                              e,
-                              style: const TextStyle(
-                                color: zMuted,
-                                fontSize: 13.2,
-                                height: 1.45,
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                          ),
-                        ],
+                  padding: const EdgeInsets.only(bottom: 10),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Padding(
+                        padding: EdgeInsets.only(top: 5),
+                        child: Icon(Icons.circle, size: 6, color: zBlue),
                       ),
-                    ),
-                  )
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          e,
+                          style: const TextStyle(
+                            color: zMuted,
+                            fontSize: 13.2,
+                            height: 1.45,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              )
                   .toList(),
             ),
           ),
@@ -2257,11 +2265,11 @@ class _ZohoShellState extends State<ZohoShell> {
 
     final inquiryStream = canShowInquiryDashboard
         ? FirebaseFirestore.instance
-              .collection('companies')
-              .doc(widget.companyId)
-              .collection('inquiries')
-              .where('assignedToUid', isEqualTo: widget.userUid)
-              .snapshots()
+        .collection('companies')
+        .doc(widget.companyId)
+        .collection('inquiries')
+        .where('assignedToUid', isEqualTo: widget.userUid)
+        .snapshots()
         : null;
 
     if (!canShowInquiryDashboard) {
@@ -2328,7 +2336,7 @@ class _ZohoShellState extends State<ZohoShell> {
                   child: _Panel(
                     title: 'Next Build Suggestion',
                     emptyText:
-                        'Start with Follow-ups, Stock Summary and Vendors',
+                    'Start with Follow-ups, Stock Summary and Vendors',
                     emptyIcon: Icons.rocket_launch_outlined,
                   ),
                 ),

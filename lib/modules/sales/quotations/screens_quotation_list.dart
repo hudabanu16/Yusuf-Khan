@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
@@ -8,6 +9,11 @@ import 'quotation_pdf_generator.dart';
 const Color primaryColor = Color(0xFF1E3A8A);
 const Color accentColor = Color(0xFF2563EB);
 const Color backgroundLight = Color(0xFFF8FAFC);
+
+const String _kCollectionCompanies = 'companies';
+const String _kCollectionUsers = 'users';
+const String _kCollectionQuotations = 'quotations';
+const String _kCollectionSalesOrders = 'sales_orders';
 
 class ScreensQuotationList extends StatefulWidget {
   final int userId;
@@ -31,6 +37,9 @@ class _ScreensQuotationListState extends State<ScreensQuotationList> {
   String _searchText = '';
   String _statusFilter = 'All';
   String _sortOption = 'Date: Newest';
+
+  final Map<String, bool> _convertingDocs = {};
+  final Map<String, String> _userNameCache = {};
 
   final List<String> _statuses = [
     'All',
@@ -98,16 +107,18 @@ class _ScreensQuotationListState extends State<ScreensQuotationList> {
     try {
       final user = FirebaseAuth.instance.currentUser;
       if (user == null) {
-        setState(() {
-          _errorMessage = 'User authentication required. Please log in again.';
-          _isLoadingContext = false;
-        });
+        if (mounted) {
+          setState(() {
+            _errorMessage = 'User authentication required. Please log in again.';
+            _isLoadingContext = false;
+          });
+        }
         return;
       }
 
       _currentUserUid = user.uid;
       final rootUserDoc = await FirebaseFirestore.instance
-          .collection('users')
+          .collection(_kCollectionUsers)
           .doc(user.uid)
           .get();
       Map<String, dynamic> userData = rootUserDoc.data() ?? {};
@@ -130,22 +141,23 @@ class _ScreensQuotationListState extends State<ScreensQuotationList> {
       }
 
       if (resolvedCompanyId.isEmpty) {
-        setState(() {
-          _errorMessage =
-              'No active workspace linked. Please join a company first.';
-          _isLoadingContext = false;
-        });
+        if (mounted) {
+          setState(() {
+            _errorMessage =
+            'No active workspace linked. Please join a company first.';
+            _isLoadingContext = false;
+          });
+        }
         return;
       }
 
       _companyId = resolvedCompanyId;
-      _currentUserName = (userData['name'] ?? userData['fullName'] ?? '')
-          .toString();
+      _currentUserName = (userData['name'] ?? userData['fullName'] ?? '').toString();
 
       final companyUserDoc = await FirebaseFirestore.instance
-          .collection('companies')
+          .collection(_kCollectionCompanies)
           .doc(resolvedCompanyId)
-          .collection('users')
+          .collection(_kCollectionUsers)
           .doc(user.uid)
           .get();
       if (companyUserDoc.exists && companyUserDoc.data() != null) {
@@ -155,45 +167,65 @@ class _ScreensQuotationListState extends State<ScreensQuotationList> {
       _currentUserRole = (userData['role'] ?? 'sales').toString().trim();
 
       if (!_hasQuotationPermission(userData)) {
-        setState(() {
-          _errorMessage =
-              'Access Denied: You lack permissions to view quotations.';
-          _isLoadingContext = false;
-        });
+        if (mounted) {
+          setState(() {
+            _errorMessage = 'Access Denied: You lack permissions to view quotations.';
+            _isLoadingContext = false;
+          });
+        }
         return;
       }
 
       _setupQueries(resolvedCompanyId);
 
-      setState(() {
-        _isLoadingContext = false;
-        _errorMessage = null;
-      });
+      if (mounted) {
+        setState(() {
+          _isLoadingContext = false;
+          _errorMessage = null;
+        });
+      }
     } catch (e) {
-      setState(() {
-        _errorMessage = 'Failed to load user context safely. Please try again.';
-        _isLoadingContext = false;
-      });
+      if (mounted) {
+        setState(() {
+          _errorMessage = 'Failed to load user context safely. Please try again.';
+          _isLoadingContext = false;
+        });
+      }
     }
   }
 
   void _setupQueries(String companyId) {
     _quotationCollection = FirebaseFirestore.instance
-        .collection('companies')
+        .collection(_kCollectionCompanies)
         .doc(companyId)
-        .collection('quotations');
-    Query<Map<String, dynamic>> query = _quotationCollection!;
+        .collection(_kCollectionQuotations);
 
-    // Keep the Firestore query index-safe. Deleted filtering and date sorting
-    // happen locally in _applyLocalFilters to avoid composite index failures.
     if (!_isAdminOrManager && _currentUserUid != null) {
-      query = query.where('createdBy', isEqualTo: _currentUserUid);
+      _primaryQuery = _quotationCollection!
+          .where(
+        Filter.or(
+          Filter('createdBy', isEqualTo: _currentUserUid),
+          Filter('assignedToUsers', arrayContains: _currentUserUid),
+        ),
+      )
+          .orderBy('createdAt', descending: true);
+    } else {
+      _primaryQuery = _quotationCollection!
+          .orderBy('createdAt', descending: true);
     }
-
-    _primaryQuery = query;
   }
 
-  String _safeString(dynamic value) => (value ?? '').toString().trim();
+  String _safeString(dynamic value, {String fallback = ''}) {
+    if (value == null) return fallback;
+    final str = value.toString().trim();
+    return str.isEmpty ? fallback : str;
+  }
+
+  String _parseSafeString(dynamic val, {String fallback = ''}) {
+    if (val == null) return fallback;
+    final str = val.toString().trim();
+    return str.isEmpty ? fallback : str;
+  }
 
   String _formatTimestamp(dynamic value) {
     if (value is Timestamp) {
@@ -203,8 +235,21 @@ class _ScreensQuotationListState extends State<ScreensQuotationList> {
     return '-';
   }
 
+  String _formatTime(Timestamp? ts) {
+    if (ts == null) return '-';
+    final d = ts.toDate();
+    int hour = d.hour;
+    final minute = d.minute.toString().padLeft(2, '0');
+    final amPm = hour >= 12 ? 'PM' : 'AM';
+    if (hour == 0) {
+      hour = 12;
+    } else if (hour > 12) {
+      hour -= 12;
+    }
+    return '${hour.toString().padLeft(2, '0')}:$minute $amPm';
+  }
+
   String _money(dynamic value) {
-    // ✅ SAFE PARSING
     final parsed = double.tryParse(value?.toString() ?? '0') ?? 0.0;
     return '₹ ${parsed.toStringAsFixed(2)}';
   }
@@ -228,6 +273,30 @@ class _ScreensQuotationListState extends State<ScreensQuotationList> {
     return 3;
   }
 
+  Future<String> _getUserName(String uid) async {
+    if (uid.isEmpty) return 'Unknown';
+    if (_userNameCache.containsKey(uid)) {
+      return _userNameCache[uid]!;
+    }
+    try {
+      final docSnap = await FirebaseFirestore.instance
+          .collection(_kCollectionUsers)
+          .doc(uid)
+          .get();
+
+      if (docSnap.exists) {
+        final data = docSnap.data();
+        final name = _safeString(data?['name'] ?? data?['fullName'], fallback: 'Unknown');
+        _userNameCache[uid] = name;
+        return name;
+      }
+    } catch (e) {
+      debugPrint('Error fetching user name for $uid: $e');
+    }
+    _userNameCache[uid] = 'Unknown';
+    return 'Unknown';
+  }
+
   Future<void> _openCreateQuotation() async {
     await Navigator.of(context).push(
       MaterialPageRoute(
@@ -239,9 +308,9 @@ class _ScreensQuotationListState extends State<ScreensQuotationList> {
   }
 
   Future<void> _openQuotationForEdit(
-    String docId,
-    Map<String, dynamic> data,
-  ) async {
+      String docId,
+      Map<String, dynamic> data,
+      ) async {
     await Navigator.of(context).push(
       MaterialPageRoute(
         builder: (_) => QuotationScreenLocal(
@@ -259,58 +328,38 @@ class _ScreensQuotationListState extends State<ScreensQuotationList> {
     showDialog(
       context: context,
       barrierDismissible: false,
-      builder: (_) =>
-          const Center(child: CircularProgressIndicator(color: primaryColor)),
+      builder: (_) => const Center(child: CircularProgressIndicator(color: primaryColor)),
     );
 
     try {
       final safeData = Map<String, dynamic>.from(data);
 
-      final quoteDate =
-          (safeData['quoteDate'] as Timestamp?)?.toDate() ?? DateTime.now();
-      safeData['quoteDateStr'] =
-          '${quoteDate.day.toString().padLeft(2, '0')}/${quoteDate.month.toString().padLeft(2, '0')}/${quoteDate.year}';
+      final quoteDate = (safeData['quoteDate'] as Timestamp?)?.toDate() ?? DateTime.now();
+      safeData['quoteDateStr'] = '${quoteDate.day.toString().padLeft(2, '0')}/${quoteDate.month.toString().padLeft(2, '0')}/${quoteDate.year}';
 
       if (safeData['companyName'] == null && _companyId != null) {
         final companyDoc = await FirebaseFirestore.instance
-            .collection('companies')
+            .collection(_kCollectionCompanies)
             .doc(_companyId)
             .get();
         if (companyDoc.exists) {
           final companyData = companyDoc.data() ?? {};
 
-          safeData['companyName'] ??=
-              companyData['companyName'] ?? companyData['name'] ?? '';
-          safeData['companyAddress'] ??=
-              companyData['companyAddress'] ?? companyData['address'] ?? '';
-          safeData['companyPhone'] ??=
-              companyData['companyPhone'] ?? companyData['phone'] ?? '';
-          safeData['companyEmail'] ??=
-              companyData['companyEmail'] ?? companyData['email'] ?? '';
-          safeData['companyLogoUrl'] ??=
-              companyData['companyLogoUrl'] ?? companyData['logoUrl'] ?? '';
-          safeData['companyGst'] ??=
-              companyData['companyGst'] ??
-              companyData['gstin'] ??
-              companyData['gstNo'] ??
-              '';
-          safeData['companyPan'] ??=
-              companyData['companyPan'] ?? companyData['pan'] ?? '';
-          safeData['companyIec'] ??=
-              companyData['companyIec'] ?? companyData['iec'] ?? '';
-          safeData['companyWebsite'] ??=
-              companyData['companyWebsite'] ?? companyData['website'] ?? '';
+          safeData['companyName'] ??= companyData['companyName'] ?? companyData['name'] ?? '';
+          safeData['companyAddress'] ??= companyData['companyAddress'] ?? companyData['address'] ?? '';
+          safeData['companyPhone'] ??= companyData['companyPhone'] ?? companyData['phone'] ?? '';
+          safeData['companyEmail'] ??= companyData['companyEmail'] ?? companyData['email'] ?? '';
+          safeData['companyLogoUrl'] ??= companyData['companyLogoUrl'] ?? companyData['logoUrl'] ?? '';
+          safeData['companyGst'] ??= companyData['companyGst'] ?? companyData['gstin'] ?? companyData['gstNo'] ?? '';
+          safeData['companyPan'] ??= companyData['companyPan'] ?? companyData['pan'] ?? '';
+          safeData['companyIec'] ??= companyData['companyIec'] ?? companyData['iec'] ?? '';
+          safeData['companyWebsite'] ??= companyData['companyWebsite'] ?? companyData['website'] ?? '';
         }
       }
 
-      final itemsList = (safeData['items'] is List)
-          ? (safeData['items'] as List)
-          : [];
+      final itemsList = (safeData['items'] is List) ? (safeData['items'] as List) : [];
       final parsedItems = itemsList
-          .map(
-            (e) =>
-                QuotationLineItem.fromMap(Map<String, dynamic>.from(e as Map)),
-          )
+          .map((e) => QuotationLineItem.fromMap(Map<String, dynamic>.from(e as Map)))
           .toList();
 
       if (mounted) {
@@ -321,8 +370,7 @@ class _ScreensQuotationListState extends State<ScreensQuotationList> {
       Navigator.push(
         context,
         MaterialPageRoute(
-          builder: (_) =>
-              QuotationPreviewScreen(quotation: safeData, items: parsedItems),
+          builder: (_) => QuotationPreviewScreen(quotation: safeData, items: parsedItems),
         ),
       );
     } catch (e) {
@@ -334,25 +382,30 @@ class _ScreensQuotationListState extends State<ScreensQuotationList> {
   }
 
   Future<void> _convertToSalesOrder(
-    String docId,
-    Map<String, dynamic> data,
-  ) async {
-    if (!_isAdminOrManager) {
-      _showSnack(
-        'Only administrators or managers can convert quotations to Sales Orders.',
-        isError: true,
-      );
+      String docId,
+      Map<String, dynamic> data,
+      ) async {
+    if (_companyId == null) {
+      _showSnack('Company context missing. Cannot convert.', isError: true);
       return;
     }
+
+    if (_convertingDocs[docId] == true) {
+      _showSnack('Conversion in progress. Please wait.');
+      return;
+    }
+
     if ((data['status'] ?? '').toString().toLowerCase() == 'converted') {
       _showSnack('Already converted to Sales Order.', isError: true);
       return;
     }
-    if ((data['approvalStatus'] ?? '').toString() != 'Approved') {
-      _showSnack(
-        'Quotation must be Approved before converting to SO.',
-        isError: true,
-      );
+
+    final String status = data['status']?.toString() ?? 'Draft';
+    final String approval = data['approvalStatus']?.toString() ?? 'Pending';
+    bool isApproved = status == 'Approved' || approval == 'Approved';
+
+    if (!isApproved) {
+      _showSnack('Quotation must be Approved before converting to SO.', isError: true);
       return;
     }
 
@@ -362,99 +415,144 @@ class _ScreensQuotationListState extends State<ScreensQuotationList> {
     );
     if (confirm != true) return;
 
+    if (!mounted) return;
+
+    setState(() => _convertingDocs[docId] = true);
+
     try {
-      final batch = FirebaseFirestore.instance.batch();
-
-      final counterRef = FirebaseFirestore.instance
-          .collection('companies')
+      final docRef = FirebaseFirestore.instance
+          .collection(_kCollectionCompanies)
           .doc(_companyId)
-          .collection('counters')
-          .doc('sales_order_counter');
-      int seq = 1;
-      final counterDoc = await counterRef.get();
-      if (counterDoc.exists) seq = (counterDoc.data()?['sequence'] ?? 0) + 1;
+          .collection(_kCollectionQuotations)
+          .doc(docId);
 
-      final now = DateTime.now();
-      final startYear = now.month >= 4 ? now.year : now.year - 1;
-      final fyShort =
-          '${startYear.toString().substring(2)}-${(startYear + 1).toString().substring(2)}';
-      final generatedSoNo = 'SO/${seq.toString().padLeft(4, '0')}/$fyShort';
-
-      final soRef = FirebaseFirestore.instance
-          .collection('companies')
+      final soCollection = FirebaseFirestore.instance
+          .collection(_kCollectionCompanies)
           .doc(_companyId)
-          .collection('sales_orders')
-          .doc();
-      batch.set(soRef, {
-        'id': soRef.id,
-        'companyId': _companyId,
-        'soNumber': generatedSoNo,
-        'referenceQuotationId': docId,
-        'referenceQuotationNo': data['quoteNumber'],
-        'soDate': FieldValue.serverTimestamp(),
-        'customerId': data['customerId'],
-        'clientName': data['clientName'],
-        'items': data['items'],
-        'grandTotal': data['grandTotal'],
-        'totalTaxableAmount': data['totalTaxableAmount'],
-        'status': 'Draft',
-        'createdBy': _currentUserUid,
-        'createdAt': FieldValue.serverTimestamp(),
-        'isActive': true,
-        'isDeleted': false,
+          .collection(_kCollectionSalesOrders);
+
+      final newSoRef = soCollection.doc();
+
+      bool canProceed = false;
+
+      await FirebaseFirestore.instance.runTransaction((transaction) async {
+        final snapshot = await transaction.get(docRef);
+        if (!snapshot.exists) {
+          throw Exception('Quotation not found.');
+        }
+
+        final docData = snapshot.data()!;
+        final isCurrentlyConverted = (docData['status'] ?? '').toString().toLowerCase() == 'converted';
+        final isConvertingFlag = docData['isConverting'] == true;
+
+        if (isCurrentlyConverted) {
+          throw Exception('Already converted by another user.');
+        }
+
+        if (isConvertingFlag) {
+          final convertingStartedAt = docData['convertingStartedAt'] as Timestamp?;
+          if (convertingStartedAt != null) {
+            final elapsed = DateTime.now().difference(convertingStartedAt.toDate());
+            if (elapsed.inMinutes < 2) {
+              throw Exception('Another user is currently converting this quotation.');
+            }
+          } else {
+            throw Exception('Another user is currently converting this quotation.');
+          }
+        }
+
+        transaction.update(docRef, {
+          'isConverting': true,
+          'convertingStartedAt': FieldValue.serverTimestamp(),
+        });
+        canProceed = true;
       });
-      batch.set(counterRef, {'sequence': seq}, SetOptions(merge: true));
 
-      final quoteRef = _quotationCollection!.doc(docId);
-      batch.update(quoteRef, {
+      if (!canProceed) return;
+
+      final salesOrderData = {
+        ...data,
+        'id': newSoRef.id,
+        'sourceQuotationId': docId,
+        'status': 'draft',
+        'approvalStatus': 'pending',
+        'dispatchStatus': 'pending',
+        'documentType': 'sales_order',
+        'createdAt': FieldValue.serverTimestamp(),
+        'createdBy': _currentUserUid,
+        'createdByName': _currentUserName,
+        'salesOrderNumber': 'SO-${DateTime.now().millisecondsSinceEpoch.toString().substring(5)}',
+        'activities': [
+          {
+            'type': 'Created',
+            'note': 'Sales Order automatically generated from Quotation $docId',
+            'timestamp': Timestamp.now(),
+            'byUid': _currentUserUid ?? 'system',
+          }
+        ],
+      };
+
+      await newSoRef.set(salesOrderData);
+
+      await docRef.update({
         'status': 'Converted',
         'convertedToSalesOrder': true,
-        'convertedSoId': soRef.id,
+        'convertedToSalesOrderId': newSoRef.id,
         'convertedAt': FieldValue.serverTimestamp(),
-        'convertedByUid': _currentUserUid,
-        // ✅ STRONG AUDIT TRAIL LOGGING
+        'convertedBy': _currentUserUid,
+        'isConverting': false,
+        'convertingStartedAt': null,
         'activities': FieldValue.arrayUnion([
           {
             'type': 'Converted',
-            'status': 'Converted',
+            'quotationId': docId,
+            'salesOrderId': newSoRef.id,
             'timestamp': Timestamp.now(),
-            'byUid': _currentUserUid,
-            'byName': _currentUserName,
-            'note': 'Converted to Sales Order $generatedSoNo',
+            'user': {
+              'uid': _currentUserUid,
+              'name': _currentUserName,
+              'role': _currentUserRole
+            },
+            'system': {
+              'platform': 'flutter',
+              'module': 'quotation_to_so',
+              'version': '1.0'
+            },
+            'note': 'Quotation successfully converted to Sales Order',
           },
         ]),
       });
 
-      final inquiryId = data['inquiryId'];
-      if (inquiryId != null && inquiryId.toString().isNotEmpty) {
-        final inquiryRef = FirebaseFirestore.instance
-            .collection('companies')
+      _showSnack('Quotation successfully converted to Sales Order.');
+
+    } catch (e) {
+      _showSnack('Conversion failed: ${e.toString().replaceAll('Exception: ', '')}', isError: true);
+
+      try {
+        final docRef = FirebaseFirestore.instance
+            .collection(_kCollectionCompanies)
             .doc(_companyId)
-            .collection('inquiries')
-            .doc(inquiryId);
-        batch.update(inquiryRef, {
-          'status': 'Converted',
-          'updatedAt': FieldValue.serverTimestamp(),
-          'updatedBy': _currentUserUid,
+            .collection(_kCollectionQuotations)
+            .doc(docId);
+        await docRef.update({
+          'isConverting': false,
+          'convertingStartedAt': null,
+        });
+      } catch (_) {}
+
+    } finally {
+      if (mounted) {
+        setState(() {
+          _convertingDocs.remove(docId);
         });
       }
-
-      await batch.commit();
-      _showSnack('Successfully converted to Sales Order $generatedSoNo!');
-      if (mounted) setState(() {});
-    } catch (e) {
-      _showSnack('Failed to convert: $e', isError: true);
     }
   }
 
   Future<void> _createRevision(String docId, Map<String, dynamic> data) async {
-    // ✅ ENFORCE INQUIRY-BASED QUOTATIONS
     final inquiryId = data['inquiryId'] ?? data['inquiryRefNo'];
     if (inquiryId == null || inquiryId.toString().trim().isEmpty) {
-      _showSnack(
-        'Warning: Cannot revise a quotation that is not linked to an Inquiry.',
-        isError: true,
-      );
+      _showSnack('Warning: Cannot revise a quotation that is not linked to an Inquiry.', isError: true);
       return;
     }
 
@@ -478,7 +576,6 @@ class _ScreensQuotationListState extends State<ScreensQuotationList> {
       final newRef = _quotationCollection!.doc();
       final currentVersion = (data['version'] as int?) ?? 1;
 
-      // ✅ REVISION OVERRIDING INSTEAD OF DUPLICATING
       final newData = Map<String, dynamic>.from(data)
         ..['id'] = newRef.id
         ..['version'] = currentVersion + 1
@@ -488,16 +585,25 @@ class _ScreensQuotationListState extends State<ScreensQuotationList> {
         ..['approvalStatus'] = 'Pending'
         ..['createdAt'] = FieldValue.serverTimestamp()
         ..['createdBy'] = _currentUserUid
+        ..['createdByName'] = _currentUserName
         ..['lastEditedAt'] = FieldValue.serverTimestamp()
         ..['lastEditedBy'] = _currentUserUid
-        // ✅ STRONG AUDIT TRAIL LOGGING
         ..['activities'] = [
           {
             'type': 'Revised',
-            'status': 'Draft',
+            'quotationId': newRef.id,
+            'parentQuotationId': docId,
             'timestamp': Timestamp.now(),
-            'byUid': _currentUserUid,
-            'byName': _currentUserName,
+            'user': {
+              'uid': _currentUserUid,
+              'name': _currentUserName,
+              'role': _currentUserRole
+            },
+            'system': {
+              'platform': 'flutter',
+              'module': 'quotation_revision',
+              'version': '1.0'
+            },
             'note': 'Revision ${currentVersion + 1} created from $docId',
           },
         ];
@@ -512,16 +618,7 @@ class _ScreensQuotationListState extends State<ScreensQuotationList> {
     }
   }
 
-  // ❌ REMOVED _duplicateQuotation ENTIRELY TO ENFORCE CLEAN BUSINESS LOGIC
-
   Future<void> _updateApproval(String docId, String status) async {
-    if (!_isAdminOrManager) {
-      _showSnack(
-        'Only administrators or managers can approve quotations.',
-        isError: true,
-      );
-      return;
-    }
     try {
       await _quotationCollection!.doc(docId).update({
         'approvalStatus': status,
@@ -529,14 +626,21 @@ class _ScreensQuotationListState extends State<ScreensQuotationList> {
         'approvedBy': status == 'Approved' ? _currentUserUid : null,
         'lastEditedAt': FieldValue.serverTimestamp(),
         'lastEditedBy': _currentUserUid,
-        // ✅ STRONG AUDIT TRAIL LOGGING
         'activities': FieldValue.arrayUnion([
           {
             'type': 'Approval Update',
-            'status': status,
+            'quotationId': docId,
             'timestamp': Timestamp.now(),
-            'byUid': _currentUserUid,
-            'byName': _currentUserName,
+            'user': {
+              'uid': _currentUserUid,
+              'name': _currentUserName,
+              'role': _currentUserRole
+            },
+            'system': {
+              'platform': 'flutter',
+              'module': 'quotation_approval',
+              'version': '1.0'
+            },
             'note': 'Approval set to $status',
           },
         ]),
@@ -560,14 +664,21 @@ class _ScreensQuotationListState extends State<ScreensQuotationList> {
         'status': 'Cancelled',
         'cancelledAt': FieldValue.serverTimestamp(),
         'cancelledBy': _currentUserUid,
-        // ✅ STRONG AUDIT TRAIL LOGGING
         'activities': FieldValue.arrayUnion([
           {
             'type': 'Cancelled',
-            'status': 'Cancelled',
+            'quotationId': docId,
             'timestamp': Timestamp.now(),
-            'byUid': _currentUserUid,
-            'byName': _currentUserName,
+            'user': {
+              'uid': _currentUserUid,
+              'name': _currentUserName,
+              'role': _currentUserRole
+            },
+            'system': {
+              'platform': 'flutter',
+              'module': 'quotation_cancel',
+              'version': '1.0'
+            },
             'note': 'Quotation cancelled',
           },
         ]),
@@ -616,24 +727,29 @@ class _ScreensQuotationListState extends State<ScreensQuotationList> {
   }
 
   List<QueryDocumentSnapshot<Map<String, dynamic>>> _applyLocalFilters(
-    List<QueryDocumentSnapshot<Map<String, dynamic>>> docs,
-  ) {
+      List<QueryDocumentSnapshot<Map<String, dynamic>>> docs,
+      ) {
     final search = _searchText.trim().toLowerCase();
 
     var filtered = docs.where((doc) {
       final data = doc.data();
-      final quoteNumber = (data['quoteNumber'] ?? '').toString().toLowerCase();
+
+      if (data['quoteNumber'] == null) {
+        return false;
+      }
+
+      final quoteNumber = data['quoteNumber'].toString().toLowerCase();
       final customer = (data['clientName'] ?? '').toString().toLowerCase();
       final status = (data['status'] ?? 'Draft').toString();
       final isDeleted = data['isDeleted'] == true;
 
       final matchesSearch =
           search.isEmpty ||
-          quoteNumber.contains(search) ||
-          customer.contains(search);
+              quoteNumber.contains(search) ||
+              customer.contains(search);
       final matchesStatus =
           _statusFilter == 'All' ||
-          status.toLowerCase() == _statusFilter.toLowerCase();
+              status.toLowerCase() == _statusFilter.toLowerCase();
 
       return !isDeleted && matchesSearch && matchesStatus;
     }).toList();
@@ -707,20 +823,20 @@ class _ScreensQuotationListState extends State<ScreensQuotationList> {
                 children: _statuses
                     .map(
                       (s) => ChoiceChip(
-                        label: Text(s),
-                        selected: tempStatus == s,
-                        onSelected: (v) => setModalState(() => tempStatus = s),
-                        selectedColor: primaryColor.withValues(alpha: 0.1),
-                        labelStyle: TextStyle(
-                          color: tempStatus == s
-                              ? primaryColor
-                              : Colors.black87,
-                          fontWeight: tempStatus == s
-                              ? FontWeight.bold
-                              : FontWeight.normal,
-                        ),
-                      ),
-                    )
+                    label: Text(s),
+                    selected: tempStatus == s,
+                    onSelected: (v) => setModalState(() => tempStatus = s),
+                    selectedColor: primaryColor.withValues(alpha: 0.1),
+                    labelStyle: TextStyle(
+                      color: tempStatus == s
+                          ? primaryColor
+                          : Colors.black87,
+                      fontWeight: tempStatus == s
+                          ? FontWeight.bold
+                          : FontWeight.normal,
+                    ),
+                  ),
+                )
                     .toList(),
               ),
               const SizedBox(height: 20),
@@ -800,14 +916,7 @@ class _ScreensQuotationListState extends State<ScreensQuotationList> {
       appBar: AppBar(
         elevation: 0,
         backgroundColor: Colors.white,
-        title: const Text(
-          'Quotations',
-          style: TextStyle(
-            color: Color(0xFF1E293B),
-            fontWeight: FontWeight.bold,
-            fontSize: 22,
-          ),
-        ),
+        title: const SizedBox.shrink(),
         actions: [
           IconButton(
             icon: const Icon(Icons.refresh, color: Colors.grey),
@@ -842,25 +951,26 @@ class _ScreensQuotationListState extends State<ScreensQuotationList> {
           double totalValue = 0;
           double approvedValue = 0;
           int converted = 0;
+          int approvedQuotes = 0;
 
           for (var doc in filteredDocs) {
             final data = doc.data();
             final st = (data['status'] ?? '').toString().toLowerCase();
             final ap = (data['approvalStatus'] ?? '').toString().toLowerCase();
-            final val =
-                double.tryParse(data['grandTotal']?.toString() ?? '0') ?? 0;
+            final val = double.tryParse(data['grandTotal']?.toString() ?? '0') ?? 0;
 
             if (st != 'cancelled') {
               totalValue += val;
-              if (ap == 'approved') approvedValue += val;
+              if (ap == 'approved' || st == 'approved') {
+                approvedValue += val;
+                approvedQuotes++;
+              }
               if (st == 'converted') converted++;
             }
           }
 
           double avgValue = totalQuotes > 0 ? totalValue / totalQuotes : 0;
-          double convRate = totalQuotes > 0
-              ? (converted / totalQuotes) * 100
-              : 0;
+          double convRate = approvedQuotes > 0 ? (converted / approvedQuotes) * 100 : 0;
 
           return Column(
             children: [
@@ -932,12 +1042,12 @@ class _ScreensQuotationListState extends State<ScreensQuotationList> {
                           ),
                           suffixIcon: _searchText.isNotEmpty
                               ? IconButton(
-                                  icon: const Icon(Icons.clear, size: 18),
-                                  onPressed: () => setState(() {
-                                    _searchController.clear();
-                                    _searchText = '';
-                                  }),
-                                )
+                            icon: const Icon(Icons.clear, size: 18),
+                            onPressed: () => setState(() {
+                              _searchController.clear();
+                              _searchText = '';
+                            }),
+                          )
                               : null,
                           filled: true,
                           fillColor: Colors.grey.shade100,
@@ -977,432 +1087,396 @@ class _ScreensQuotationListState extends State<ScreensQuotationList> {
               Expanded(
                 child: filteredDocs.isEmpty
                     ? Center(
-                        child: Column(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Icon(
-                              Icons.insert_drive_file_outlined,
-                              size: 64,
-                              color: Colors.grey.shade300,
-                            ),
-                            const SizedBox(height: 16),
-                            Text(
-                              'No Quotations Found',
-                              style: TextStyle(
-                                fontSize: 18,
-                                color: Colors.grey.shade600,
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                          ],
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        Icons.insert_drive_file_outlined,
+                        size: 64,
+                        color: Colors.grey.shade300,
+                      ),
+                      const SizedBox(height: 16),
+                      Text(
+                        'No Quotations Found',
+                        style: TextStyle(
+                          fontSize: 18,
+                          color: Colors.grey.shade600,
+                          fontWeight: FontWeight.w600,
                         ),
-                      )
+                      ),
+                    ],
+                  ),
+                )
                     : ListView.builder(
-                        padding: const EdgeInsets.fromLTRB(16, 8, 16, 80),
-                        itemCount: filteredDocs.length,
-                        itemBuilder: (ctx, i) {
-                          final doc = filteredDocs[i];
-                          final data = doc.data();
+                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 80),
+                  itemCount: filteredDocs.length,
+                  itemBuilder: (ctx, i) {
+                    final doc = filteredDocs[i];
+                    final data = doc.data();
 
-                          // ✅ DATA FIX: FIX DRAFT DISPLAY BUG
-                          final rawQNo =
-                              data['quoteNumber']?.toString().trim() ?? '';
-                          final qNo = rawQNo.isEmpty ? 'Draft' : rawQNo;
+                    final rawQNo = data['quoteNumber']?.toString().trim() ?? '';
+                    final qNo = rawQNo.isEmpty ? 'Draft' : rawQNo;
 
-                          final version = data['version']?.toString() ?? '1';
-                          final customer =
-                              data['clientName']?.toString() ??
-                              'Unknown Customer';
-                          final date = _formatTimestamp(data['quoteDate']);
-                          final amt = _money(data['grandTotal']);
+                    final version = data['version']?.toString() ?? '1';
+                    final customer = data['clientName']?.toString() ?? 'Unknown Customer';
+                    final date = _formatTimestamp(data['quoteDate'] ?? data['createdAt']);
+                    final amt = _money(data['grandTotal']);
 
-                          final status = data['status']?.toString() ?? 'Draft';
-                          final approval =
-                              data['approvalStatus']?.toString() ?? 'Pending';
-                          final paymentStat =
-                              data['paymentStatus']?.toString() ?? 'Pending';
-                          final inqRef =
-                              (data['inquiryRefNo'] ??
-                                      data['inquiryNumber'] ??
-                                      data['inquiryId'] ??
-                                      '')
-                                  .toString();
+                    final status = data['status']?.toString() ?? 'Draft';
+                    final approval = data['approvalStatus']?.toString() ?? 'Pending';
+                    final paymentStat = data['paymentStatus']?.toString() ?? 'Pending';
+                    final inqRef = (data['inquiryRefNo'] ?? data['inquiryNumber'] ?? data['inquiryId'] ?? '').toString();
 
-                          final priority = _getFollowUpPriority(data);
+                    final priority = _getFollowUpPriority(data);
 
-                          // ✅ DISABLE INVALID ACTIONS
-                          bool isCancelled = status == 'Cancelled';
-                          bool isApproved = approval == 'Approved';
-                          bool isSent = status == 'Sent';
-                          bool isConverted = status == 'Converted';
+                    bool isCancelled = status == 'Cancelled';
+                    bool isApproved = status == 'Approved' || approval == 'Approved';
+                    bool isSent = status == 'Sent';
+                    bool isConverted = status == 'Converted';
 
-                          // Strict edit lock rules
-                          bool canEdit =
-                              !isCancelled &&
-                              !isApproved &&
-                              !isSent &&
-                              !isConverted;
+                    bool canEdit = !isCancelled && !isApproved && !isSent && !isConverted;
 
-                          return Container(
-                            margin: const EdgeInsets.only(bottom: 12),
-                            decoration: BoxDecoration(
-                              color: Colors.white,
-                              borderRadius: BorderRadius.circular(12),
-                              border: Border.all(color: Colors.grey.shade200),
-                              boxShadow: [
-                                BoxShadow(
-                                  color: Colors.black.withValues(alpha: 0.02),
-                                  blurRadius: 4,
-                                  offset: const Offset(0, 2),
+                    bool isConverting = _convertingDocs[doc.id] == true;
+
+                    final String createdByUid = _parseSafeString(data['createdBy']);
+                    final String? explicitlyStoredName = data['createdByName']?.toString().trim();
+
+                    final Timestamp? createdAtRaw = data['createdAt'] as Timestamp?;
+                    final String createdAtFormatted = createdAtRaw != null ? _formatTime(createdAtRaw) : '-';
+
+                    final Timestamp? lastEditedAtRaw = data['lastEditedAt'] as Timestamp?;
+                    final String lastEditedAtStr = lastEditedAtRaw != null ? '${_formatTimestamp(lastEditedAtRaw)} • ${_formatTime(lastEditedAtRaw)}' : '';
+
+                    return Container(
+                      margin: const EdgeInsets.only(bottom: 12),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: Colors.grey.shade200),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withValues(alpha: 0.02),
+                            blurRadius: 4,
+                            offset: const Offset(0, 2),
+                          ),
+                        ],
+                      ),
+                      child: Padding(
+                        padding: const EdgeInsets.all(16),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                Row(
+                                  children: [
+                                    Text(
+                                      '$qNo (v$version)',
+                                      style: const TextStyle(
+                                        fontWeight: FontWeight.bold,
+                                        fontSize: 15,
+                                        color: primaryColor,
+                                      ),
+                                    ),
+                                    if (inqRef.isNotEmpty) ...[
+                                      const SizedBox(width: 8),
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                        decoration: BoxDecoration(
+                                          color: Colors.blue.shade50,
+                                          borderRadius: BorderRadius.circular(4),
+                                        ),
+                                        child: Text(
+                                          'INQ: $inqRef',
+                                          style: TextStyle(
+                                            fontSize: 10,
+                                            color: Colors.blue.shade800,
+                                            fontWeight: FontWeight.bold,
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ],
+                                ),
+                                Text(
+                                  date,
+                                  style: TextStyle(
+                                    color: Colors.grey.shade500,
+                                    fontSize: 12,
+                                  ),
                                 ),
                               ],
                             ),
-                            child: Padding(
-                              padding: const EdgeInsets.all(16),
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Row(
-                                    mainAxisAlignment:
-                                        MainAxisAlignment.spaceBetween,
-                                    children: [
-                                      Row(
-                                        children: [
-                                          Text(
-                                            '$qNo (v$version)',
-                                            style: const TextStyle(
-                                              fontWeight: FontWeight.bold,
-                                              fontSize: 15,
-                                              color: primaryColor,
-                                            ),
-                                          ),
-                                          if (inqRef.isNotEmpty) ...[
-                                            const SizedBox(width: 8),
-                                            Container(
-                                              padding:
-                                                  const EdgeInsets.symmetric(
-                                                    horizontal: 6,
-                                                    vertical: 2,
-                                                  ),
-                                              decoration: BoxDecoration(
-                                                color: Colors.blue.shade50,
-                                                borderRadius:
-                                                    BorderRadius.circular(4),
-                                              ),
-                                              child: Text(
-                                                'INQ: $inqRef',
-                                                style: TextStyle(
-                                                  fontSize: 10,
-                                                  color: Colors.blue.shade800,
-                                                  fontWeight: FontWeight.bold,
-                                                ),
-                                              ),
-                                            ),
-                                          ],
-                                        ],
-                                      ),
-                                      Text(
-                                        date,
+                            const SizedBox(height: 8),
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                Expanded(
+                                  child: Text(
+                                    customer,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: const TextStyle(
+                                      fontWeight: FontWeight.w600,
+                                      fontSize: 16,
+                                    ),
+                                  ),
+                                ),
+                                Text(
+                                  amt,
+                                  style: const TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 16,
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 6),
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: (explicitlyStoredName != null && explicitlyStoredName.isNotEmpty)
+                                      ? Text(
+                                    'Created by: $explicitlyStoredName • $createdAtFormatted',
+                                    style: TextStyle(
+                                      fontSize: 11,
+                                      color: Colors.grey.shade600,
+                                      fontWeight: FontWeight.w500,
+                                    ),
+                                  )
+                                      : FutureBuilder<String>(
+                                    future: _getUserName(createdByUid),
+                                    builder: (context, snapshot) {
+                                      return Text(
+                                        'Created by: ${snapshot.data ?? '...'} • $createdAtFormatted',
                                         style: TextStyle(
-                                          color: Colors.grey.shade500,
-                                          fontSize: 12,
+                                          fontSize: 11,
+                                          color: Colors.grey.shade600,
+                                          fontWeight: FontWeight.w500,
                                         ),
-                                      ),
-                                    ],
+                                      );
+                                    },
                                   ),
-                                  const SizedBox(height: 8),
-                                  Row(
-                                    mainAxisAlignment:
-                                        MainAxisAlignment.spaceBetween,
-                                    children: [
-                                      Expanded(
-                                        child: Text(
-                                          customer,
-                                          maxLines: 1,
-                                          overflow: TextOverflow.ellipsis,
-                                          style: const TextStyle(
-                                            fontWeight: FontWeight.w600,
-                                            fontSize: 16,
-                                          ),
-                                        ),
-                                      ),
-                                      Text(
-                                        amt,
-                                        style: const TextStyle(
-                                          fontWeight: FontWeight.bold,
-                                          fontSize: 16,
-                                        ),
-                                      ),
-                                    ],
+                                ),
+                              ],
+                            ),
+                            if (lastEditedAtStr.isNotEmpty)
+                              Padding(
+                                padding: const EdgeInsets.only(top: 2),
+                                child: Text(
+                                  'Updated: $lastEditedAtStr',
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    color: Colors.grey.shade500,
                                   ),
-                                  const SizedBox(height: 12),
-                                  Row(
-                                    children: [
-                                      _buildStatusChip(status),
-                                      const SizedBox(width: 8),
-                                      if (approval != 'Pending')
-                                        _buildStatusChip(
-                                          approval,
-                                          isApproval: true,
-                                        ),
-                                      const SizedBox(width: 8),
-                                      if (status == 'Converted')
-                                        _buildStatusChip(
-                                          paymentStat,
-                                          isPayment: true,
-                                        ),
-
-                                      const Spacer(),
-
-                                      if (!isCancelled) ...[
-                                        if (priority == 1)
-                                          _buildFollowUpChip(
-                                            'Follow-up Today',
-                                            Colors.orange,
-                                          )
-                                        else if (priority == 2)
-                                          _buildFollowUpChip(
-                                            'Overdue',
-                                            Colors.red,
-                                          ),
-                                      ],
-
-                                      const SizedBox(width: 8),
-
-                                      PopupMenuButton<String>(
-                                        icon: const Icon(
-                                          Icons.more_vert,
-                                          color: Colors.grey,
-                                        ),
-                                        shape: RoundedRectangleBorder(
-                                          borderRadius: BorderRadius.circular(
-                                            12,
-                                          ),
-                                        ),
-                                        onSelected: (val) {
-                                          switch (val) {
-                                            case 'view':
-                                              _openQuotationPreview(data);
-                                              break;
-                                            case 'edit':
-                                              _openQuotationForEdit(
-                                                doc.id,
-                                                data,
-                                              );
-                                              break;
-                                            case 'approve':
-                                              _updateApproval(
-                                                doc.id,
-                                                'Approved',
-                                              );
-                                              break;
-                                            case 'reject':
-                                              _updateApproval(
-                                                doc.id,
-                                                'Rejected',
-                                              );
-                                              break;
-                                            case 'convert':
-                                              _convertToSalesOrder(
-                                                doc.id,
-                                                data,
-                                              );
-                                              break;
-                                            case 'revision':
-                                              _createRevision(doc.id, data);
-                                              break;
-                                            case 'cancel':
-                                              _cancelQuotation(doc.id);
-                                              break;
-                                          }
-                                        },
-                                        itemBuilder: (ctx) {
-                                          // ✅ KEEP MENU CLEAN
-                                          List<PopupMenuEntry<String>> items = [
-                                            const PopupMenuItem(
-                                              value: 'view',
-                                              child: Row(
-                                                children: [
-                                                  Icon(
-                                                    Icons.visibility,
-                                                    size: 18,
-                                                  ),
-                                                  SizedBox(width: 8),
-                                                  Text('View'),
-                                                ],
-                                              ),
-                                            ),
-                                          ];
-
-                                          if (canEdit) {
-                                            items.add(
-                                              const PopupMenuItem(
-                                                value: 'edit',
-                                                child: Row(
-                                                  children: [
-                                                    Icon(Icons.edit, size: 18),
-                                                    SizedBox(width: 8),
-                                                    Text('Edit'),
-                                                  ],
-                                                ),
-                                              ),
-                                            );
-                                          }
-
-                                          if (!isCancelled) {
-                                            items.add(const PopupMenuDivider());
-
-                                            if (approval == 'Pending' &&
-                                                _isAdminOrManager) {
-                                              items.add(
-                                                const PopupMenuItem(
-                                                  value: 'approve',
-                                                  child: Row(
-                                                    children: [
-                                                      Icon(
-                                                        Icons.thumb_up,
-                                                        size: 18,
-                                                        color: Colors.green,
-                                                      ),
-                                                      SizedBox(width: 8),
-                                                      Text('Approve'),
-                                                    ],
-                                                  ),
-                                                ),
-                                              );
-                                              items.add(
-                                                const PopupMenuItem(
-                                                  value: 'reject',
-                                                  child: Row(
-                                                    children: [
-                                                      Icon(
-                                                        Icons.thumb_down,
-                                                        size: 18,
-                                                        color: Colors.red,
-                                                      ),
-                                                      SizedBox(width: 8),
-                                                      Text('Reject'),
-                                                    ],
-                                                  ),
-                                                ),
-                                              );
-                                            }
-
-                                            if (!isConverted &&
-                                                isApproved &&
-                                                _isAdminOrManager) {
-                                              items.add(
-                                                const PopupMenuItem(
-                                                  value: 'convert',
-                                                  child: Row(
-                                                    children: [
-                                                      Icon(
-                                                        Icons.swap_horiz,
-                                                        size: 18,
-                                                        color: Colors.teal,
-                                                      ),
-                                                      SizedBox(width: 8),
-                                                      Text('Convert to SO'),
-                                                    ],
-                                                  ),
-                                                ),
-                                              );
-                                            }
-
-                                            // Allow revisions if they are not approved (or if admin is handling changes)
-                                            items.add(
-                                              const PopupMenuItem(
-                                                value: 'revision',
-                                                child: Row(
-                                                  children: [
-                                                    Icon(
-                                                      Icons.history,
-                                                      size: 18,
-                                                      color: Colors.indigo,
-                                                    ),
-                                                    SizedBox(width: 8),
-                                                    Text('Create Revision'),
-                                                  ],
-                                                ),
-                                              ),
-                                            );
-
-                                            items.add(const PopupMenuDivider());
-                                            items.add(
-                                              const PopupMenuItem(
-                                                value: 'cancel',
-                                                child: Row(
-                                                  children: [
-                                                    Icon(
-                                                      Icons.cancel,
-                                                      size: 18,
-                                                      color: Colors.red,
-                                                    ),
-                                                    SizedBox(width: 8),
-                                                    Text(
-                                                      'Cancel',
-                                                      style: TextStyle(
-                                                        color: Colors.red,
-                                                      ),
-                                                    ),
-                                                  ],
-                                                ),
-                                              ),
-                                            );
-                                          }
-
-                                          return items;
-                                        },
-                                      ),
-                                    ],
+                                ),
+                              ),
+                            const SizedBox(height: 12),
+                            Row(
+                              children: [
+                                _buildStatusChip(status),
+                                const SizedBox(width: 8),
+                                if (approval != 'Pending')
+                                  _buildStatusChip(
+                                    approval,
+                                    isApproval: true,
+                                  ),
+                                const SizedBox(width: 8),
+                                if (status == 'Converted')
+                                  _buildStatusChip(
+                                    paymentStat,
+                                    isPayment: true,
                                   ),
 
-                                  // ✅ UX: SHOW CLEAR NEXT STEP (Prominent Convert Button)
-                                  if (isApproved &&
-                                      !isConverted &&
-                                      !isCancelled)
-                                    Padding(
-                                      padding: const EdgeInsets.only(top: 16),
-                                      child: SizedBox(
-                                        width: double.infinity,
-                                        child: ElevatedButton.icon(
-                                          style: ElevatedButton.styleFrom(
-                                            backgroundColor:
-                                                Colors.teal.shade600,
-                                            foregroundColor: Colors.white,
-                                            padding: const EdgeInsets.symmetric(
-                                              vertical: 12,
-                                            ),
-                                            shape: RoundedRectangleBorder(
-                                              borderRadius:
-                                                  BorderRadius.circular(8),
-                                            ),
-                                            elevation: 0,
-                                          ),
-                                          icon: const Icon(
-                                            Icons.swap_horiz,
-                                            size: 20,
-                                          ),
-                                          label: const Text(
-                                            'Convert to Sales Order',
-                                            style: TextStyle(
-                                              fontWeight: FontWeight.bold,
-                                              fontSize: 14,
-                                            ),
-                                          ),
-                                          onPressed: () => _convertToSalesOrder(
-                                            doc.id,
-                                            data,
-                                          ),
-                                        ),
-                                      ),
+                                const Spacer(),
+
+                                if (!isCancelled) ...[
+                                  if (priority == 1)
+                                    _buildFollowUpChip(
+                                      'Follow-up Today',
+                                      Colors.orange,
+                                    )
+                                  else if (priority == 2)
+                                    _buildFollowUpChip(
+                                      'Overdue',
+                                      Colors.red,
                                     ),
                                 ],
-                              ),
+
+                                const SizedBox(width: 8),
+
+                                PopupMenuButton<String>(
+                                  icon: const Icon(
+                                    Icons.more_vert,
+                                    color: Colors.grey,
+                                  ),
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(12),
+                                  ),
+                                  onSelected: (val) {
+                                    switch (val) {
+                                      case 'view':
+                                        _openQuotationPreview(data);
+                                        break;
+                                      case 'edit':
+                                        _openQuotationForEdit(doc.id, data);
+                                        break;
+                                      case 'approve':
+                                        _updateApproval(doc.id, 'Approved');
+                                        break;
+                                      case 'reject':
+                                        _updateApproval(doc.id, 'Rejected');
+                                        break;
+                                      case 'convert':
+                                        _convertToSalesOrder(doc.id, data);
+                                        break;
+                                      case 'revision':
+                                        _createRevision(doc.id, data);
+                                        break;
+                                      case 'cancel':
+                                        _cancelQuotation(doc.id);
+                                        break;
+                                    }
+                                  },
+                                  itemBuilder: (ctx) {
+                                    List<PopupMenuEntry<String>> items = [
+                                      const PopupMenuItem(
+                                        value: 'view',
+                                        child: Row(
+                                          children: [
+                                            Icon(Icons.visibility, size: 18),
+                                            SizedBox(width: 8),
+                                            Text('View'),
+                                          ],
+                                        ),
+                                      ),
+                                    ];
+
+                                    if (canEdit) {
+                                      items.add(
+                                        const PopupMenuItem(
+                                          value: 'edit',
+                                          child: Row(
+                                            children: [
+                                              Icon(Icons.edit, size: 18),
+                                              SizedBox(width: 8),
+                                              Text('Edit'),
+                                            ],
+                                          ),
+                                        ),
+                                      );
+                                    }
+
+                                    if (!isCancelled) {
+                                      items.add(const PopupMenuDivider());
+
+                                      if (approval != 'Approved' && approval != 'Rejected') {
+                                        items.add(
+                                          const PopupMenuItem(
+                                            value: 'approve',
+                                            child: Row(
+                                              children: [
+                                                Icon(Icons.thumb_up, size: 18, color: Colors.green),
+                                                SizedBox(width: 8),
+                                                Text('Approve'),
+                                              ],
+                                            ),
+                                          ),
+                                        );
+                                        items.add(
+                                          const PopupMenuItem(
+                                            value: 'reject',
+                                            child: Row(
+                                              children: [
+                                                Icon(Icons.thumb_down, size: 18, color: Colors.red),
+                                                SizedBox(width: 8),
+                                                Text('Reject'),
+                                              ],
+                                            ),
+                                          ),
+                                        );
+                                      }
+
+                                      if (!isConverted && isApproved && !isConverting) {
+                                        items.add(
+                                          const PopupMenuItem(
+                                            value: 'convert',
+                                            child: Row(
+                                              children: [
+                                                Icon(Icons.swap_horiz, size: 18, color: Colors.teal),
+                                                SizedBox(width: 8),
+                                                Text('Convert to SO'),
+                                              ],
+                                            ),
+                                          ),
+                                        );
+                                      }
+
+                                      items.add(
+                                        const PopupMenuItem(
+                                          value: 'revision',
+                                          child: Row(
+                                            children: [
+                                              Icon(Icons.history, size: 18, color: Colors.indigo),
+                                              SizedBox(width: 8),
+                                              Text('Create Revision'),
+                                            ],
+                                          ),
+                                        ),
+                                      );
+
+                                      items.add(const PopupMenuDivider());
+                                      items.add(
+                                        const PopupMenuItem(
+                                          value: 'cancel',
+                                          child: Row(
+                                            children: [
+                                              Icon(Icons.cancel, size: 18, color: Colors.red),
+                                              SizedBox(width: 8),
+                                              Text('Cancel', style: TextStyle(color: Colors.red)),
+                                            ],
+                                          ),
+                                        ),
+                                      );
+                                    }
+
+                                    return items;
+                                  },
+                                ),
+                              ],
                             ),
-                          );
-                        },
+
+                            if (isApproved && !isConverted && !isCancelled)
+                              Padding(
+                                padding: const EdgeInsets.only(top: 16),
+                                child: SizedBox(
+                                  width: double.infinity,
+                                  child: ElevatedButton.icon(
+                                    style: ElevatedButton.styleFrom(
+                                      backgroundColor: Colors.teal.shade600,
+                                      foregroundColor: Colors.white,
+                                      padding: const EdgeInsets.symmetric(vertical: 12),
+                                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                                      elevation: 0,
+                                    ),
+                                    icon: isConverting
+                                        ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                                        : const Icon(Icons.swap_horiz, size: 20),
+                                    label: Text(
+                                      isConverting ? 'Processing...' : 'Convert to Sales Order',
+                                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                                    ),
+                                    onPressed: isConverting ? null : () => _convertToSalesOrder(doc.id, data),
+                                  ),
+                                ),
+                              ),
+                          ],
+                        ),
                       ),
+                    );
+                  },
+                ),
               ),
             ],
           );
@@ -1476,10 +1550,10 @@ class _ScreensQuotationListState extends State<ScreensQuotationList> {
   }
 
   Widget _buildStatusChip(
-    String status, {
-    bool isApproval = false,
-    bool isPayment = false,
-  }) {
+      String status, {
+        bool isApproval = false,
+        bool isPayment = false,
+      }) {
     Color bg = Colors.grey.shade100;
     Color fg = Colors.grey.shade800;
 

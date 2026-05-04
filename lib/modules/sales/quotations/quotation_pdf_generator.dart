@@ -52,7 +52,17 @@ class QuotationLineItem {
   double get totalAmount => taxableAmount + taxAmount;
 
   static double _toDouble(dynamic value) {
-    return double.tryParse(value?.toString() ?? '0') ?? 0.0;
+    if (value == null) return 0.0;
+    if (value is num) {
+      final double result = value.toDouble();
+      return result.isNaN ? 0.0 : result;
+    }
+    if (value is String) {
+      if (value.trim().isEmpty) return 0.0;
+      final parsed = double.tryParse(value.replaceAll(',', ''));
+      if (parsed != null && !parsed.isNaN) return parsed;
+    }
+    return 0.0;
   }
 
   static String _safeString(dynamic value) {
@@ -149,8 +159,6 @@ class QuotationDataService {
           .get();
       final workspaceData = wsDoc.exists ? (wsDoc.data() ?? {}) : {};
 
-      debugPrint("Workspace Data: $workspaceData");
-
       final authName = user.displayName ?? '';
       final authPhone = user.phoneNumber ?? '';
 
@@ -183,7 +191,6 @@ class QuotationDataService {
         'signaturePhone': sigPhone,
       };
     } catch (e) {
-      debugPrint('Error fetching quotation data context: $e');
       return {};
     }
   }
@@ -195,7 +202,17 @@ class QuotationDataService {
 
 class QuotationPdfGenerator {
   static double _toDouble(dynamic value) {
-    return double.tryParse(value?.toString() ?? '0') ?? 0.0;
+    if (value == null) return 0.0;
+    if (value is num) {
+      final double result = value.toDouble();
+      return result.isNaN ? 0.0 : result;
+    }
+    if (value is String) {
+      if (value.trim().isEmpty) return 0.0;
+      final parsed = double.tryParse(value.replaceAll(',', ''));
+      if (parsed != null && !parsed.isNaN) return parsed;
+    }
+    return 0.0;
   }
 
   static String _safeString(dynamic value) {
@@ -211,6 +228,11 @@ class QuotationPdfGenerator {
       decimalDigits: 2,
     );
     return format.format(value);
+  }
+
+  static bool _isSalesOrder(String type) {
+    final t = type.toLowerCase().replaceAll('_', '').replaceAll(' ', '');
+    return t == 'salesorder' || t == 'so';
   }
 
   static final PdfColor _primaryColor = PdfColor.fromInt(0xFF1E3A8A);
@@ -235,10 +257,10 @@ class QuotationPdfGenerator {
   }
 
   static Future<Uint8List> buildPdf(
-    PdfPageFormat format,
-    Map<String, dynamic> quotation,
-    List<QuotationLineItem> items,
-  ) async {
+      PdfPageFormat format,
+      Map<String, dynamic> quotation,
+      List<QuotationLineItem> items,
+      ) async {
     final doc = pw.Document();
 
     pw.ImageProvider? logoImage;
@@ -252,10 +274,58 @@ class QuotationPdfGenerator {
     final isInterState = quotation['isInterState'] as bool? ?? false;
     final roundOff = _toDouble(quotation['roundOff']);
 
-    final quoteNumber = _safeString(quotation['quoteNumber']);
-    final isPreview =
-        quoteNumber.contains('PREVIEW') ||
-        quoteNumber.contains('Auto-generated');
+    final documentType = _safeString(quotation['documentType']);
+    final isSO = _isSalesOrder(documentType);
+    final displayDocumentType = documentType.isNotEmpty ? documentType : 'Quotation';
+
+    // Determine Document Numbers securely
+    String soNumber = _safeString(quotation['salesOrderNumberDisplay']);
+    if (soNumber.isEmpty) soNumber = _safeString(quotation['salesOrderNumber']);
+    if (soNumber.isEmpty) soNumber = _safeString(quotation['soNumber']);
+    if (soNumber.isEmpty) soNumber = _safeString(quotation['orderNumber']);
+
+    String quoteNumber = _safeString(quotation['quoteNumber']);
+    if (quoteNumber.isEmpty) quoteNumber = _safeString(quotation['quotationNumber']);
+
+    // Determine the correct date
+    String docDateStr = '';
+    dynamic dateVal;
+    if (isSO) {
+      dateVal = quotation['soDate'] ?? quotation['date'] ?? quotation['createdAt'];
+    }
+
+    if (dateVal == null) {
+      dateVal = quotation['quoteDate'];
+    }
+
+    if (dateVal != null) {
+      try {
+        if (dateVal is Timestamp) {
+          docDateStr = DateFormat('dd/MM/yyyy').format(dateVal.toDate());
+        } else if (dateVal is String && dateVal.isNotEmpty) {
+          if (dateVal.contains('/')) {
+            docDateStr = dateVal;
+          } else {
+            docDateStr = DateFormat('dd/MM/yyyy').format(DateTime.parse(dateVal));
+          }
+        }
+      } catch (e) {
+        docDateStr = dateVal.toString();
+      }
+    }
+
+    if (docDateStr.isEmpty) {
+      docDateStr = _safeString(quotation['quoteDateStr']);
+    }
+
+    // For Preview Check logic
+    final checkNum = isSO && soNumber.isNotEmpty ? soNumber : quoteNumber;
+    final isPreview = checkNum.toUpperCase().contains('PREVIEW') || checkNum.toUpperCase().contains('AUTO-GENERATED');
+
+    String subjectStr = _safeString(quotation['subject']);
+    if (subjectStr.isEmpty) {
+      subjectStr = isSO ? 'Sales Order for supplied items' : 'Quotation for your requirement';
+    }
 
     doc.addPage(
       pw.MultiPage(
@@ -269,15 +339,13 @@ class QuotationPdfGenerator {
         ),
         build: (context) {
           return [
-            _buildEnterpriseHeader(quotation, logoImage, isPreview),
+            _buildEnterpriseHeader(quotation, logoImage, isPreview, displayDocumentType),
             pw.SizedBox(height: 20),
-            _buildTwoColumnInfo(quotation, quoteNumber),
+            _buildTwoColumnInfo(quotation, soNumber, quoteNumber, docDateStr, isSO),
             pw.SizedBox(height: 16),
 
-            if (_safeString(quotation['subject']).isNotEmpty) ...[
-              _buildSubjectBar(_safeString(quotation['subject'])),
-              pw.SizedBox(height: 16),
-            ],
+            _buildSubjectBar(subjectStr),
+            pw.SizedBox(height: 16),
 
             _buildProductsTable(items, isInterState),
             pw.SizedBox(height: 16),
@@ -286,7 +354,7 @@ class QuotationPdfGenerator {
             _buildBottomSection(quotation),
           ];
         },
-        footer: (context) => _buildPageFooter(context),
+        footer: (context) => _buildPageFooter(context, isSO),
       ),
     );
 
@@ -294,10 +362,11 @@ class QuotationPdfGenerator {
   }
 
   static pw.Widget _buildEnterpriseHeader(
-    Map<String, dynamic> quotation,
-    pw.ImageProvider? logoImage,
-    bool isPreview,
-  ) {
+      Map<String, dynamic> quotation,
+      pw.ImageProvider? logoImage,
+      bool isPreview,
+      String displayDocumentType,
+      ) {
     List<String> legalIds = [];
     final gst = _safeString(quotation['companyGst']);
     final pan = _safeString(quotation['companyPan']);
@@ -407,7 +476,7 @@ class QuotationPdfGenerator {
                   ),
                 ),
               pw.Text(
-                'QUOTATION',
+                displayDocumentType.toUpperCase(),
                 style: pw.TextStyle(
                   color: _primaryColor,
                   fontSize: 24,
@@ -423,9 +492,12 @@ class QuotationPdfGenerator {
   }
 
   static pw.Widget _buildTwoColumnInfo(
-    Map<String, dynamic> quotation,
-    String quoteNumber,
-  ) {
+      Map<String, dynamic> quotation,
+      String soNumber,
+      String quoteNumber,
+      String docDateStr,
+      bool isSO,
+      ) {
     final clientName = _safeString(quotation['clientName']);
     final clientAddress = _safeString(quotation['clientAddress']);
     final customerState = _safeString(quotation['customerState']);
@@ -445,7 +517,7 @@ class QuotationPdfGenerator {
               crossAxisAlignment: pw.CrossAxisAlignment.start,
               children: [
                 pw.Text(
-                  'Quotation To:',
+                  'Bill To:',
                   style: pw.TextStyle(
                     fontSize: 9,
                     color: _textMuted,
@@ -513,8 +585,11 @@ class QuotationPdfGenerator {
               crossAxisAlignment: pw.CrossAxisAlignment.start,
               mainAxisAlignment: pw.MainAxisAlignment.center,
               children: [
-                _buildMetaRow('Quotation No.', quoteNumber),
-                _buildMetaRow('Date', _safeString(quotation['quoteDateStr'])),
+                if (isSO && soNumber.isNotEmpty)
+                  _buildMetaRow('Sales Order No.', soNumber),
+                if (quoteNumber.isNotEmpty)
+                  _buildMetaRow('Quotation No.', quoteNumber),
+                _buildMetaRow('Date', docDateStr),
                 if (revision.isNotEmpty && revision != '1')
                   _buildMetaRow('Revision No.', revision),
                 if (inquiryRef.isNotEmpty)
@@ -590,9 +665,29 @@ class QuotationPdfGenerator {
   }
 
   static pw.Widget _buildProductsTable(
-    List<QuotationLineItem> items,
-    bool isInterState,
-  ) {
+      List<QuotationLineItem> items,
+      bool isInterState,
+      ) {
+    if (items.isEmpty) {
+      return pw.Container(
+        padding: const pw.EdgeInsets.all(24),
+        decoration: pw.BoxDecoration(
+          color: _cardBgColor,
+          borderRadius: pw.BorderRadius.circular(8),
+          border: pw.Border.all(color: _borderColor),
+        ),
+        alignment: pw.Alignment.center,
+        child: pw.Text(
+          'No items added',
+          style: pw.TextStyle(
+            fontSize: 12,
+            color: _textMuted,
+            fontStyle: pw.FontStyle.italic,
+          ),
+        ),
+      );
+    }
+
     return pw.Container(
       decoration: pw.BoxDecoration(
         color: _cardBgColor,
@@ -618,39 +713,39 @@ class QuotationPdfGenerator {
               ),
             ),
             children:
-                [
-                  'S.No',
-                  'Description',
-                  'HSN/SAC',
-                  'Qty',
-                  'Rate',
-                  'Tax',
-                  'Amount',
-                ].map((text) {
-                  return pw.Container(
-                    padding: const pw.EdgeInsets.symmetric(
-                      vertical: 10,
-                      horizontal: 8,
-                    ),
-                    alignment:
-                        (text == 'S.No' ||
-                            text == 'Qty' ||
-                            text == 'HSN/SAC' ||
-                            text == 'Tax')
-                        ? pw.Alignment.center
-                        : (text == 'Description'
-                              ? pw.Alignment.centerLeft
-                              : pw.Alignment.centerRight),
-                    child: pw.Text(
-                      text,
-                      style: pw.TextStyle(
-                        color: PdfColors.white,
-                        fontSize: 9,
-                        fontWeight: pw.FontWeight.bold,
-                      ),
-                    ),
-                  );
-                }).toList(),
+            [
+              'S.No',
+              'Description',
+              'HSN/SAC',
+              'Qty',
+              'Rate',
+              'Tax',
+              'Amount',
+            ].map((text) {
+              return pw.Container(
+                padding: const pw.EdgeInsets.symmetric(
+                  vertical: 10,
+                  horizontal: 8,
+                ),
+                alignment:
+                (text == 'S.No' ||
+                    text == 'Qty' ||
+                    text == 'HSN/SAC' ||
+                    text == 'Tax')
+                    ? pw.Alignment.center
+                    : (text == 'Description'
+                    ? pw.Alignment.centerLeft
+                    : pw.Alignment.centerRight),
+                child: pw.Text(
+                  text,
+                  style: pw.TextStyle(
+                    color: PdfColors.white,
+                    fontSize: 9,
+                    fontWeight: pw.FontWeight.bold,
+                  ),
+                ),
+              );
+            }).toList(),
           ),
 
           ...List.generate(items.length, (i) {
@@ -705,9 +800,9 @@ class QuotationPdfGenerator {
             }
 
             pw.Widget cell(
-              pw.Widget child, {
-              pw.Alignment align = pw.Alignment.centerRight,
-            }) {
+                pw.Widget child, {
+                  pw.Alignment align = pw.Alignment.centerRight,
+                }) {
               return pw.Container(
                 padding: const pw.EdgeInsets.symmetric(
                   vertical: 10,
@@ -719,10 +814,10 @@ class QuotationPdfGenerator {
             }
 
             pw.Widget textCell(
-              String text, {
-              pw.Alignment align = pw.Alignment.centerRight,
-              bool bold = false,
-            }) {
+                String text, {
+                  pw.Alignment align = pw.Alignment.centerRight,
+                  bool bold = false,
+                }) {
               return cell(
                 pw.Text(
                   text,
@@ -775,10 +870,10 @@ class QuotationPdfGenerator {
   }
 
   static pw.Widget _buildTotalSummaryCard(
-    Map<String, dynamic> quotation,
-    bool isInterState,
-    double roundOff,
-  ) {
+      Map<String, dynamic> quotation,
+      bool isInterState,
+      double roundOff,
+      ) {
     pw.Widget calcRow(String label, String value, {bool bold = false}) {
       return pw.Padding(
         padding: const pw.EdgeInsets.symmetric(vertical: 6, horizontal: 16),
@@ -812,7 +907,7 @@ class QuotationPdfGenerator {
     final cgst = _toDouble(quotation['totalCgst']);
     final sgst = _toDouble(quotation['totalSgst']);
     final igst = _toDouble(quotation['totalIgst']);
-    final finalTotal = _toDouble(quotation['finalTotal']);
+    final finalTotal = _toDouble(quotation['finalTotal'] ?? quotation['grandTotal']);
 
     return pw.Row(
       mainAxisAlignment: pw.MainAxisAlignment.end,
@@ -1018,7 +1113,7 @@ class QuotationPdfGenerator {
     );
   }
 
-  static pw.Widget _buildPageFooter(pw.Context context) {
+  static pw.Widget _buildPageFooter(pw.Context context, bool isSO) {
     return pw.Container(
       margin: const pw.EdgeInsets.only(top: 16),
       padding: const pw.EdgeInsets.only(top: 8),
@@ -1029,7 +1124,9 @@ class QuotationPdfGenerator {
         mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
         children: [
           pw.Text(
-            'This is a computer generated document.',
+            isSO
+                ? 'This is a system generated Sales Order.'
+                : 'This is a computer generated document.',
             style: pw.TextStyle(
               fontSize: 8,
               fontStyle: pw.FontStyle.italic,
@@ -1053,22 +1150,43 @@ class QuotationPdfGenerator {
 class QuotationPreviewScreen extends StatelessWidget {
   final Map<String, dynamic> quotation;
   final List<QuotationLineItem> items;
+  final String? titleOverride;
 
   const QuotationPreviewScreen({
     super.key,
     required this.quotation,
     required this.items,
+    this.titleOverride,
   });
 
   @override
   Widget build(BuildContext context) {
+    final String documentType = QuotationPdfGenerator._safeString(quotation['documentType']);
+    final String displayDocumentType = documentType.isNotEmpty ? documentType : 'Quotation';
+    final bool isSO = QuotationPdfGenerator._isSalesOrder(displayDocumentType);
+
+    String docNumber = '';
+    if (isSO) {
+      docNumber = QuotationPdfGenerator._safeString(quotation['salesOrderNumberDisplay']);
+      if (docNumber.isEmpty) docNumber = QuotationPdfGenerator._safeString(quotation['salesOrderNumber']);
+      if (docNumber.isEmpty) docNumber = QuotationPdfGenerator._safeString(quotation['soNumber']);
+      if (docNumber.isEmpty) docNumber = QuotationPdfGenerator._safeString(quotation['orderNumber']);
+    }
+    if (docNumber.isEmpty) {
+      docNumber = QuotationPdfGenerator._safeString(quotation['quoteNumber']);
+      if (docNumber.isEmpty) docNumber = QuotationPdfGenerator._safeString(quotation['quotationNumber']);
+    }
+    if (docNumber.isEmpty) docNumber = 'N/A';
+
+    final displayTitle = titleOverride ?? '$displayDocumentType Preview';
+
     return Scaffold(
       appBar: AppBar(
         backgroundColor: const Color(0xFF1E3A8A),
         foregroundColor: Colors.white,
-        title: const Text(
-          'Quotation Preview',
-          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
+        title: Text(
+          displayTitle,
+          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
         ),
         elevation: 0,
       ),
@@ -1079,8 +1197,7 @@ class QuotationPreviewScreen extends StatelessWidget {
         canChangePageFormat: false,
         allowPrinting: true,
         allowSharing: true,
-        pdfFileName:
-            'Quotation_${QuotationPdfGenerator._safeString(quotation['quoteNumber'])}.pdf',
+        pdfFileName: '${displayDocumentType}_$docNumber.pdf'.replaceAll(' ', '_'),
       ),
     );
   }
