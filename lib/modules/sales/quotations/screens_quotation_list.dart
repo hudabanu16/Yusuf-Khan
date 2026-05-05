@@ -1,3 +1,4 @@
+// FILE PATH: lib/modules/sales/quotations/screens_quotation_list.dart
 import 'dart:async';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -152,7 +153,8 @@ class _ScreensQuotationListState extends State<ScreensQuotationList> {
       }
 
       _companyId = resolvedCompanyId;
-      _currentUserName = (userData['name'] ?? userData['fullName'] ?? '').toString();
+      _currentUserName =
+          (userData['name'] ?? userData['fullName'] ?? '').toString();
 
       final companyUserDoc = await FirebaseFirestore.instance
           .collection(_kCollectionCompanies)
@@ -169,7 +171,8 @@ class _ScreensQuotationListState extends State<ScreensQuotationList> {
       if (!_hasQuotationPermission(userData)) {
         if (mounted) {
           setState(() {
-            _errorMessage = 'Access Denied: You lack permissions to view quotations.';
+            _errorMessage =
+            'Access Denied: You lack permissions to view quotations.';
             _isLoadingContext = false;
           });
         }
@@ -187,7 +190,8 @@ class _ScreensQuotationListState extends State<ScreensQuotationList> {
     } catch (e) {
       if (mounted) {
         setState(() {
-          _errorMessage = 'Failed to load user context safely. Please try again.';
+          _errorMessage =
+          'Failed to load user context safely. Please try again.';
           _isLoadingContext = false;
         });
       }
@@ -210,8 +214,8 @@ class _ScreensQuotationListState extends State<ScreensQuotationList> {
       )
           .orderBy('createdAt', descending: true);
     } else {
-      _primaryQuery = _quotationCollection!
-          .orderBy('createdAt', descending: true);
+      _primaryQuery =
+          _quotationCollection!.orderBy('createdAt', descending: true);
     }
   }
 
@@ -227,50 +231,17 @@ class _ScreensQuotationListState extends State<ScreensQuotationList> {
     return str.isEmpty ? fallback : str;
   }
 
-  String _formatTimestamp(dynamic value) {
-    if (value is Timestamp) {
-      final d = value.toDate();
-      return '${d.day.toString().padLeft(2, '0')}/${d.month.toString().padLeft(2, '0')}/${d.year}';
-    }
-    return '-';
-  }
-
-  String _formatTime(Timestamp? ts) {
-    if (ts == null) return '-';
-    final d = ts.toDate();
-    int hour = d.hour;
-    final minute = d.minute.toString().padLeft(2, '0');
-    final amPm = hour >= 12 ? 'PM' : 'AM';
-    if (hour == 0) {
-      hour = 12;
-    } else if (hour > 12) {
-      hour -= 12;
-    }
-    return '${hour.toString().padLeft(2, '0')}:$minute $amPm';
+  String _formatCompactDate(DateTime? date) {
+    if (date == null) return '-';
+    final d = date.day.toString().padLeft(2, '0');
+    final m = date.month.toString().padLeft(2, '0');
+    final y = date.year.toString();
+    return '$d/$m/$y';
   }
 
   String _money(dynamic value) {
     final parsed = double.tryParse(value?.toString() ?? '0') ?? 0.0;
     return '₹ ${parsed.toStringAsFixed(2)}';
-  }
-
-  int _getFollowUpPriority(Map<String, dynamic> data) {
-    final dateVal = data['nextFollowUpDate'];
-    if (dateVal == null || dateVal is! Timestamp) return 3;
-
-    final followUp = dateVal.toDate();
-    final today = DateTime.now();
-
-    if (followUp.year == today.year &&
-        followUp.month == today.month &&
-        followUp.day == today.day) {
-      return 1;
-    }
-    if (followUp.isBefore(today)) {
-      return 2;
-    }
-
-    return 3;
   }
 
   Future<String> _getUserName(String uid) async {
@@ -286,7 +257,8 @@ class _ScreensQuotationListState extends State<ScreensQuotationList> {
 
       if (docSnap.exists) {
         final data = docSnap.data();
-        final name = _safeString(data?['name'] ?? data?['fullName'], fallback: 'Unknown');
+        final name =
+        _safeString(data?['name'] ?? data?['fullName'], fallback: 'Unknown');
         _userNameCache[uid] = name;
         return name;
       }
@@ -328,14 +300,17 @@ class _ScreensQuotationListState extends State<ScreensQuotationList> {
     showDialog(
       context: context,
       barrierDismissible: false,
-      builder: (_) => const Center(child: CircularProgressIndicator(color: primaryColor)),
+      builder: (_) =>
+      const Center(child: CircularProgressIndicator(color: primaryColor)),
     );
 
     try {
       final safeData = Map<String, dynamic>.from(data);
 
-      final quoteDate = (safeData['quoteDate'] as Timestamp?)?.toDate() ?? DateTime.now();
-      safeData['quoteDateStr'] = '${quoteDate.day.toString().padLeft(2, '0')}/${quoteDate.month.toString().padLeft(2, '0')}/${quoteDate.year}';
+      final quoteDate =
+          (safeData['quoteDate'] as Timestamp?)?.toDate() ?? DateTime.now();
+      safeData['quoteDateStr'] =
+      '${quoteDate.day.toString().padLeft(2, '0')}/${quoteDate.month.toString().padLeft(2, '0')}/${quoteDate.year}';
 
       if (safeData['companyName'] == null && _companyId != null) {
         final companyDoc = await FirebaseFirestore.instance
@@ -345,21 +320,34 @@ class _ScreensQuotationListState extends State<ScreensQuotationList> {
         if (companyDoc.exists) {
           final companyData = companyDoc.data() ?? {};
 
-          safeData['companyName'] ??= companyData['companyName'] ?? companyData['name'] ?? '';
-          safeData['companyAddress'] ??= companyData['companyAddress'] ?? companyData['address'] ?? '';
-          safeData['companyPhone'] ??= companyData['companyPhone'] ?? companyData['phone'] ?? '';
-          safeData['companyEmail'] ??= companyData['companyEmail'] ?? companyData['email'] ?? '';
-          safeData['companyLogoUrl'] ??= companyData['companyLogoUrl'] ?? companyData['logoUrl'] ?? '';
-          safeData['companyGst'] ??= companyData['companyGst'] ?? companyData['gstin'] ?? companyData['gstNo'] ?? '';
-          safeData['companyPan'] ??= companyData['companyPan'] ?? companyData['pan'] ?? '';
-          safeData['companyIec'] ??= companyData['companyIec'] ?? companyData['iec'] ?? '';
-          safeData['companyWebsite'] ??= companyData['companyWebsite'] ?? companyData['website'] ?? '';
+          safeData['companyName'] ??=
+              companyData['companyName'] ?? companyData['name'] ?? '';
+          safeData['companyAddress'] ??=
+              companyData['companyAddress'] ?? companyData['address'] ?? '';
+          safeData['companyPhone'] ??=
+              companyData['companyPhone'] ?? companyData['phone'] ?? '';
+          safeData['companyEmail'] ??=
+              companyData['companyEmail'] ?? companyData['email'] ?? '';
+          safeData['companyLogoUrl'] ??=
+              companyData['companyLogoUrl'] ?? companyData['logoUrl'] ?? '';
+          safeData['companyGst'] ??= companyData['companyGst'] ??
+              companyData['gstin'] ??
+              companyData['gstNo'] ??
+              '';
+          safeData['companyPan'] ??=
+              companyData['companyPan'] ?? companyData['pan'] ?? '';
+          safeData['companyIec'] ??=
+              companyData['companyIec'] ?? companyData['iec'] ?? '';
+          safeData['companyWebsite'] ??=
+              companyData['companyWebsite'] ?? companyData['website'] ?? '';
         }
       }
 
-      final itemsList = (safeData['items'] is List) ? (safeData['items'] as List) : [];
+      final itemsList =
+      (safeData['items'] is List) ? (safeData['items'] as List) : [];
       final parsedItems = itemsList
-          .map((e) => QuotationLineItem.fromMap(Map<String, dynamic>.from(e as Map)))
+          .map((e) => QuotationLineItem.fromMap(
+          Map<String, dynamic>.from(e as Map)))
           .toList();
 
       if (mounted) {
@@ -370,7 +358,8 @@ class _ScreensQuotationListState extends State<ScreensQuotationList> {
       Navigator.push(
         context,
         MaterialPageRoute(
-          builder: (_) => QuotationPreviewScreen(quotation: safeData, items: parsedItems),
+          builder: (_) => QuotationPreviewScreen(
+              quotation: safeData, items: parsedItems),
         ),
       );
     } catch (e) {
@@ -405,7 +394,8 @@ class _ScreensQuotationListState extends State<ScreensQuotationList> {
     bool isApproved = status == 'Approved' || approval == 'Approved';
 
     if (!isApproved) {
-      _showSnack('Quotation must be Approved before converting to SO.', isError: true);
+      _showSnack('Quotation must be Approved before converting to SO.',
+          isError: true);
       return;
     }
 
@@ -442,7 +432,8 @@ class _ScreensQuotationListState extends State<ScreensQuotationList> {
         }
 
         final docData = snapshot.data()!;
-        final isCurrentlyConverted = (docData['status'] ?? '').toString().toLowerCase() == 'converted';
+        final isCurrentlyConverted =
+            (docData['status'] ?? '').toString().toLowerCase() == 'converted';
         final isConvertingFlag = docData['isConverting'] == true;
 
         if (isCurrentlyConverted) {
@@ -450,14 +441,18 @@ class _ScreensQuotationListState extends State<ScreensQuotationList> {
         }
 
         if (isConvertingFlag) {
-          final convertingStartedAt = docData['convertingStartedAt'] as Timestamp?;
+          final convertingStartedAt =
+          docData['convertingStartedAt'] as Timestamp?;
           if (convertingStartedAt != null) {
-            final elapsed = DateTime.now().difference(convertingStartedAt.toDate());
+            final elapsed =
+            DateTime.now().difference(convertingStartedAt.toDate());
             if (elapsed.inMinutes < 2) {
-              throw Exception('Another user is currently converting this quotation.');
+              throw Exception(
+                  'Another user is currently converting this quotation.');
             }
           } else {
-            throw Exception('Another user is currently converting this quotation.');
+            throw Exception(
+                'Another user is currently converting this quotation.');
           }
         }
 
@@ -481,7 +476,8 @@ class _ScreensQuotationListState extends State<ScreensQuotationList> {
         'createdAt': FieldValue.serverTimestamp(),
         'createdBy': _currentUserUid,
         'createdByName': _currentUserName,
-        'salesOrderNumber': 'SO-${DateTime.now().millisecondsSinceEpoch.toString().substring(5)}',
+        'salesOrderNumber':
+        'SO-${DateTime.now().millisecondsSinceEpoch.toString().substring(5)}',
         'activities': [
           {
             'type': 'Created',
@@ -524,9 +520,10 @@ class _ScreensQuotationListState extends State<ScreensQuotationList> {
       });
 
       _showSnack('Quotation successfully converted to Sales Order.');
-
     } catch (e) {
-      _showSnack('Conversion failed: ${e.toString().replaceAll('Exception: ', '')}', isError: true);
+      _showSnack(
+          'Conversion failed: ${e.toString().replaceAll('Exception: ', '')}',
+          isError: true);
 
       try {
         final docRef = FirebaseFirestore.instance
@@ -539,7 +536,6 @@ class _ScreensQuotationListState extends State<ScreensQuotationList> {
           'convertingStartedAt': null,
         });
       } catch (_) {}
-
     } finally {
       if (mounted) {
         setState(() {
@@ -552,7 +548,9 @@ class _ScreensQuotationListState extends State<ScreensQuotationList> {
   Future<void> _createRevision(String docId, Map<String, dynamic> data) async {
     final inquiryId = data['inquiryId'] ?? data['inquiryRefNo'];
     if (inquiryId == null || inquiryId.toString().trim().isEmpty) {
-      _showSnack('Warning: Cannot revise a quotation that is not linked to an Inquiry.', isError: true);
+      _showSnack(
+          'Warning: Cannot revise a quotation that is not linked to an Inquiry.',
+          isError: true);
       return;
     }
 
@@ -743,13 +741,11 @@ class _ScreensQuotationListState extends State<ScreensQuotationList> {
       final status = (data['status'] ?? 'Draft').toString();
       final isDeleted = data['isDeleted'] == true;
 
-      final matchesSearch =
-          search.isEmpty ||
-              quoteNumber.contains(search) ||
-              customer.contains(search);
-      final matchesStatus =
-          _statusFilter == 'All' ||
-              status.toLowerCase() == _statusFilter.toLowerCase();
+      final matchesSearch = search.isEmpty ||
+          quoteNumber.contains(search) ||
+          customer.contains(search);
+      final matchesStatus = _statusFilter == 'All' ||
+          status.toLowerCase() == _statusFilter.toLowerCase();
 
       return !isDeleted && matchesSearch && matchesStatus;
     }).toList();
@@ -757,12 +753,6 @@ class _ScreensQuotationListState extends State<ScreensQuotationList> {
     filtered.sort((a, b) {
       final dataA = a.data();
       final dataB = b.data();
-
-      int prioA = _getFollowUpPriority(dataA);
-      int prioB = _getFollowUpPriority(dataB);
-      if (prioA != prioB) {
-        return prioA.compareTo(prioB);
-      }
 
       if (_sortOption.startsWith('Amount')) {
         final amtA =
@@ -786,106 +776,118 @@ class _ScreensQuotationListState extends State<ScreensQuotationList> {
     return filtered;
   }
 
-  void _openFilterSheet() {
+  Future<void> _openFilterSheet() async {
     String tempStatus = _statusFilter;
     String tempSort = _sortOption;
 
-    showModalBottomSheet(
+    await showModalBottomSheet(
       context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
       backgroundColor: Colors.white,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (ctx) => StatefulBuilder(
-        builder: (context, setModalState) => Padding(
-          padding: const EdgeInsets.all(24),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text(
-                'Sort & Filter',
-                style: TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
-                  color: primaryColor,
-                ),
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (ctx, setModalState) {
+            return Padding(
+              padding: EdgeInsets.fromLTRB(
+                16,
+                6,
+                16,
+                MediaQuery.of(context).viewInsets.bottom + 16,
               ),
-              const SizedBox(height: 20),
-              const Text(
-                'Status',
-                style: TextStyle(fontWeight: FontWeight.w600),
-              ),
-              const SizedBox(height: 8),
-              Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                children: _statuses
-                    .map(
-                      (s) => ChoiceChip(
-                    label: Text(s),
-                    selected: tempStatus == s,
-                    onSelected: (v) => setModalState(() => tempStatus = s),
-                    selectedColor: primaryColor.withValues(alpha: 0.1),
-                    labelStyle: TextStyle(
-                      color: tempStatus == s
-                          ? primaryColor
-                          : Colors.black87,
-                      fontWeight: tempStatus == s
-                          ? FontWeight.bold
-                          : FontWeight.normal,
+              child: SingleChildScrollView(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'Filters & Sort',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w700,
+                      ),
                     ),
-                  ),
-                )
-                    .toList(),
-              ),
-              const SizedBox(height: 20),
-              const Text(
-                'Sort By',
-                style: TextStyle(fontWeight: FontWeight.w600),
-              ),
-              const SizedBox(height: 8),
-              DropdownButtonFormField<String>(
-                initialValue: tempSort,
-                decoration: InputDecoration(
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  isDense: true,
+                    const SizedBox(height: 14),
+                    DropdownButtonFormField<String>(
+                      initialValue: tempStatus,
+                      decoration: const InputDecoration(
+                        labelText: 'Status',
+                        isDense: true,
+                        border: OutlineInputBorder(),
+                      ),
+                      items: _statuses
+                          .map((e) => DropdownMenuItem(value: e, child: Text(e)))
+                          .toList(),
+                      onChanged: (value) {
+                        setModalState(() {
+                          tempStatus = value ?? 'All';
+                        });
+                      },
+                    ),
+                    const SizedBox(height: 10),
+                    DropdownButtonFormField<String>(
+                      initialValue: tempSort,
+                      decoration: const InputDecoration(
+                        labelText: 'Sort By',
+                        isDense: true,
+                        border: OutlineInputBorder(),
+                      ),
+                      items: _sortOptions
+                          .map((e) => DropdownMenuItem(value: e, child: Text(e)))
+                          .toList(),
+                      onChanged: (value) {
+                        setModalState(() {
+                          tempSort = value ?? 'Date: Newest';
+                        });
+                      },
+                    ),
+                    const SizedBox(height: 14),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: TextButton(
+                            onPressed: () {
+                              setState(() {
+                                _statusFilter = 'All';
+                                _sortOption = 'Date: Newest';
+                              });
+                              Navigator.pop(context);
+                            },
+                            child: const Text('Reset'),
+                          ),
+                        ),
+                        Expanded(
+                          child: ElevatedButton(
+                            onPressed: () {
+                              setState(() {
+                                _statusFilter = tempStatus;
+                                _sortOption = tempSort;
+                              });
+                              Navigator.pop(context);
+                            },
+                            child: const Text('Apply'),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
                 ),
-                items: _sortOptions
-                    .map((e) => DropdownMenuItem(value: e, child: Text(e)))
-                    .toList(),
-                onChanged: (v) => setModalState(() => tempSort = v!),
               ),
-              const SizedBox(height: 30),
-              SizedBox(
-                width: double.infinity,
-                child: ElevatedButton(
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: accentColor,
-                    foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(vertical: 14),
-                  ),
-                  onPressed: () {
-                    setState(() {
-                      _statusFilter = tempStatus;
-                      _sortOption = tempSort;
-                    });
-                    Navigator.pop(ctx);
-                  },
-                  child: const Text(
-                    'Apply Options',
-                    style: TextStyle(fontWeight: FontWeight.bold),
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
+            );
+          },
+        );
+      },
     );
   }
+
+  void _resetFilters() {
+    setState(() {
+      _statusFilter = 'All';
+      _sortOption = 'Date: Newest';
+    });
+  }
+
+  bool get _hasActiveFilters =>
+      _statusFilter != 'All' || _sortOption != 'Date: Newest';
 
   @override
   Widget build(BuildContext context) {
@@ -912,33 +914,31 @@ class _ScreensQuotationListState extends State<ScreensQuotationList> {
     }
 
     return Scaffold(
-      backgroundColor: backgroundLight,
+      backgroundColor: Colors.white,
       appBar: AppBar(
         elevation: 0,
+        toolbarHeight: 6,
+        automaticallyImplyLeading: false,
         backgroundColor: Colors.white,
-        title: const SizedBox.shrink(),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.refresh, color: Colors.grey),
-            onPressed: () => setState(() {}),
-          ),
-        ],
+        surfaceTintColor: Colors.transparent,
       ),
-      floatingActionButton: FloatingActionButton.extended(
-        backgroundColor: primaryColor,
+      floatingActionButton: FloatingActionButton(
+        tooltip: 'New Quote',
+        backgroundColor: const Color(0xFF2563EB),
         foregroundColor: Colors.white,
-        icon: const Icon(Icons.add),
-        label: const Text(
-          'New Quote',
-          style: TextStyle(fontWeight: FontWeight.bold),
-        ),
         onPressed: _openCreateQuotation,
+        child: const Icon(Icons.add),
       ),
       body: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
         stream: _primaryQuery!.snapshots(),
         builder: (context, snapshot) {
           if (snapshot.hasError) {
-            return Center(child: Text('Error: ${snapshot.error}'));
+            return Center(
+              child: Text(
+                'Error loading quotations:\n${snapshot.error}',
+                style: const TextStyle(color: Colors.red),
+              ),
+            );
           }
           if (snapshot.connectionState == ConnectionState.waiting) {
             return const Center(child: CircularProgressIndicator());
@@ -948,529 +948,403 @@ class _ScreensQuotationListState extends State<ScreensQuotationList> {
           final filteredDocs = _applyLocalFilters(docs);
 
           int totalQuotes = filteredDocs.length;
-          double totalValue = 0;
-          double approvedValue = 0;
+          int approved = 0;
           int converted = 0;
-          int approvedQuotes = 0;
+          int sent = 0;
 
-          for (var doc in filteredDocs) {
-            final data = doc.data();
-            final st = (data['status'] ?? '').toString().toLowerCase();
-            final ap = (data['approvalStatus'] ?? '').toString().toLowerCase();
-            final val = double.tryParse(data['grandTotal']?.toString() ?? '0') ?? 0;
+          for (final doc in filteredDocs) {
+            final status = (doc.data()['status'] ?? '').toString().toLowerCase();
+            final approvalStatus = (doc.data()['approvalStatus'] ?? '').toString().toLowerCase();
 
-            if (st != 'cancelled') {
-              totalValue += val;
-              if (ap == 'approved' || st == 'approved') {
-                approvedValue += val;
-                approvedQuotes++;
-              }
-              if (st == 'converted') converted++;
-            }
+            if (status == 'sent') sent++;
+            if (status == 'approved' || approvalStatus == 'approved') approved++;
+            if (status == 'converted') converted++;
           }
-
-          double avgValue = totalQuotes > 0 ? totalValue / totalQuotes : 0;
-          double convRate = approvedQuotes > 0 ? (converted / approvedQuotes) * 100 : 0;
 
           return Column(
             children: [
-              Container(
-                width: double.infinity,
-                color: Colors.white,
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 16,
-                  vertical: 12,
-                ),
-                child: LayoutBuilder(
-                  builder: (context, constraints) {
-                    return SingleChildScrollView(
-                      scrollDirection: Axis.horizontal,
-                      child: ConstrainedBox(
-                        constraints: BoxConstraints(
-                          minWidth: constraints.maxWidth,
-                        ),
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            _buildKpiCard(
-                              'Total Value',
-                              '₹${(totalValue / 100000).toStringAsFixed(2)}L',
-                              Icons.account_balance_wallet,
-                              Colors.blue,
-                            ),
-                            _buildKpiCard(
-                              'Approved Val',
-                              '₹${(approvedValue / 100000).toStringAsFixed(2)}L',
-                              Icons.verified,
-                              Colors.green,
-                            ),
-                            _buildKpiCard(
-                              'Conv. Rate',
-                              '${convRate.toStringAsFixed(1)}%',
-                              Icons.insights,
-                              Colors.purple,
-                            ),
-                            _buildKpiCard(
-                              'Avg Value',
-                              '₹${(avgValue / 1000).toStringAsFixed(1)}K',
-                              Icons.bar_chart,
-                              Colors.orange,
-                            ),
-                          ],
-                        ),
-                      ),
-                    );
-                  },
-                ),
-              ),
-
-              Container(
-                width: double.infinity,
-                color: Colors.white,
-                padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 6, 16, 8),
                 child: Row(
                   children: [
-                    Expanded(
-                      child: TextField(
-                        controller: _searchController,
-                        onChanged: (v) => setState(() => _searchText = v),
-                        decoration: InputDecoration(
-                          hintText: 'Search quotation, customer...',
-                          prefixIcon: const Icon(
-                            Icons.search,
-                            color: Colors.grey,
-                          ),
-                          suffixIcon: _searchText.isNotEmpty
-                              ? IconButton(
-                            icon: const Icon(Icons.clear, size: 18),
-                            onPressed: () => setState(() {
-                              _searchController.clear();
-                              _searchText = '';
-                            }),
-                          )
-                              : null,
-                          filled: true,
-                          fillColor: Colors.grey.shade100,
-                          contentPadding: const EdgeInsets.symmetric(
-                            vertical: 0,
-                          ),
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(10),
-                            borderSide: BorderSide.none,
+                    ConstrainedBox(
+                      constraints: const BoxConstraints(maxWidth: 320),
+                      child: SizedBox(
+                        height: 38,
+                        child: TextField(
+                          controller: _searchController,
+                          onChanged: (value) {
+                            setState(() {
+                              _searchText = value;
+                            });
+                          },
+                          decoration: InputDecoration(
+                            hintText: 'Search quotation, customer...',
+                            prefixIcon: const Icon(Icons.search, size: 18),
+                            suffixIcon: _searchText.trim().isEmpty
+                                ? null
+                                : IconButton(
+                              tooltip: 'Clear',
+                              icon: const Icon(Icons.close, size: 17),
+                              onPressed: () {
+                                _searchController.clear();
+                                setState(() {
+                                  _searchText = '';
+                                });
+                              },
+                            ),
+                            isDense: true,
+                            filled: true,
+                            fillColor: Colors.grey.shade100,
+                            contentPadding: const EdgeInsets.symmetric(
+                              horizontal: 10,
+                              vertical: 8,
+                            ),
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(10),
+                              borderSide: BorderSide.none,
+                            ),
+                            enabledBorder: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(10),
+                              borderSide: BorderSide.none,
+                            ),
+                            focusedBorder: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(10),
+                              borderSide: BorderSide.none,
+                            ),
                           ),
                         ),
                       ),
                     ),
-                    const SizedBox(width: 12),
-                    InkWell(
-                      onTap: _openFilterSheet,
-                      borderRadius: BorderRadius.circular(10),
-                      child: Container(
-                        padding: const EdgeInsets.all(12),
-                        decoration: BoxDecoration(
-                          color: Colors.grey.shade100,
+                    const SizedBox(width: 8),
+                    SizedBox(
+                      height: 38,
+                      width: 38,
+                      child: Material(
+                        color: Colors.grey.shade100,
+                        borderRadius: BorderRadius.circular(10),
+                        child: InkWell(
                           borderRadius: BorderRadius.circular(10),
-                        ),
-                        child: Icon(
-                          Icons.tune,
-                          color: _statusFilter != 'All'
-                              ? primaryColor
-                              : Colors.grey.shade700,
-                          size: 22,
+                          onTap: _openFilterSheet,
+                          child: Stack(
+                            alignment: Alignment.center,
+                            children: [
+                              Icon(
+                                Icons.tune_rounded,
+                                size: 18,
+                                color: Colors.grey.shade800,
+                              ),
+                              if (_hasActiveFilters)
+                                Positioned(
+                                  right: 8,
+                                  top: 8,
+                                  child: Container(
+                                    width: 7,
+                                    height: 7,
+                                    decoration: BoxDecoration(
+                                      color: Colors.blue.shade700,
+                                      shape: BoxShape.circle,
+                                    ),
+                                  ),
+                                ),
+                            ],
+                          ),
                         ),
                       ),
                     ),
+                    const Spacer(),
+                    _MiniStatText(label: 'Total', value: totalQuotes.toString()),
+                    const SizedBox(width: 10),
+                    _MiniStatText(label: 'Sent', value: sent.toString()),
+                    const SizedBox(width: 10),
+                    _MiniStatText(label: 'Approved', value: approved.toString()),
+                    const SizedBox(width: 10),
+                    _MiniStatText(label: 'Converted', value: converted.toString()),
                   ],
                 ),
               ),
-
-              Expanded(
-                child: filteredDocs.isEmpty
-                    ? Center(
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
+              if (_hasActiveFilters)
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 4),
+                  child: Row(
                     children: [
-                      Icon(
-                        Icons.insert_drive_file_outlined,
-                        size: 64,
-                        color: Colors.grey.shade300,
-                      ),
-                      const SizedBox(height: 16),
-                      Text(
-                        'No Quotations Found',
-                        style: TextStyle(
-                          fontSize: 18,
-                          color: Colors.grey.shade600,
-                          fontWeight: FontWeight.w600,
+                      Expanded(
+                        child: Text(
+                          'Filters applied',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: Colors.grey.shade700,
+                            fontWeight: FontWeight.w500,
+                          ),
                         ),
+                      ),
+                      TextButton(
+                        onPressed: _resetFilters,
+                        child: const Text('Clear'),
                       ),
                     ],
                   ),
+                ),
+              Expanded(
+                child: filteredDocs.isEmpty
+                    ? _EmptyQuotationsState(
+                  hasSearch:
+                  _searchText.trim().isNotEmpty || _hasActiveFilters,
+                  onReset: () {
+                    _searchController.clear();
+                    setState(() {
+                      _searchText = '';
+                    });
+                    _resetFilters();
+                  },
                 )
-                    : ListView.builder(
-                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 80),
+                    : ListView.separated(
+                  padding: const EdgeInsets.fromLTRB(16, 4, 16, 90),
                   itemCount: filteredDocs.length,
-                  itemBuilder: (ctx, i) {
-                    final doc = filteredDocs[i];
+                  separatorBuilder: (_, __) => const SizedBox(height: 8),
+                  itemBuilder: (context, index) {
+                    final doc = filteredDocs[index];
                     final data = doc.data();
 
                     final rawQNo = data['quoteNumber']?.toString().trim() ?? '';
                     final qNo = rawQNo.isEmpty ? 'Draft' : rawQNo;
-
                     final version = data['version']?.toString() ?? '1';
                     final customer = data['clientName']?.toString() ?? 'Unknown Customer';
-                    final date = _formatTimestamp(data['quoteDate'] ?? data['createdAt']);
-                    final amt = _money(data['grandTotal']);
 
+                    final amt = _money(data['grandTotal']);
                     final status = data['status']?.toString() ?? 'Draft';
                     final approval = data['approvalStatus']?.toString() ?? 'Pending';
                     final paymentStat = data['paymentStatus']?.toString() ?? 'Pending';
                     final inqRef = (data['inquiryRefNo'] ?? data['inquiryNumber'] ?? data['inquiryId'] ?? '').toString();
 
-                    final priority = _getFollowUpPriority(data);
-
-                    bool isCancelled = status == 'Cancelled';
-                    bool isApproved = status == 'Approved' || approval == 'Approved';
-                    bool isSent = status == 'Sent';
-                    bool isConverted = status == 'Converted';
+                    bool isCancelled = status.toLowerCase() == 'cancelled';
+                    bool isApproved = status.toLowerCase() == 'approved' || approval.toLowerCase() == 'approved';
+                    bool isSent = status.toLowerCase() == 'sent';
+                    bool isConverted = status.toLowerCase() == 'converted';
 
                     bool canEdit = !isCancelled && !isApproved && !isSent && !isConverted;
-
                     bool isConverting = _convertingDocs[doc.id] == true;
 
                     final String createdByUid = _parseSafeString(data['createdBy']);
-                    final String? explicitlyStoredName = data['createdByName']?.toString().trim();
+                    final String explicitlyStoredName = data['createdByName']?.toString().trim() ?? '';
 
                     final Timestamp? createdAtRaw = data['createdAt'] as Timestamp?;
-                    final String createdAtFormatted = createdAtRaw != null ? _formatTime(createdAtRaw) : '-';
-
-                    final Timestamp? lastEditedAtRaw = data['lastEditedAt'] as Timestamp?;
-                    final String lastEditedAtStr = lastEditedAtRaw != null ? '${_formatTimestamp(lastEditedAtRaw)} • ${_formatTime(lastEditedAtRaw)}' : '';
+                    final Timestamp? nextFollowUpRaw = data['nextFollowUpDate'] as Timestamp?;
 
                     return Container(
-                      margin: const EdgeInsets.only(bottom: 12),
                       decoration: BoxDecoration(
                         color: Colors.white,
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(color: Colors.grey.shade200),
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.black.withValues(alpha: 0.02),
-                            blurRadius: 4,
-                            offset: const Offset(0, 2),
-                          ),
-                        ],
+                        borderRadius: BorderRadius.circular(14),
+                        border: Border.all(
+                          color: Colors.grey.shade200,
+                          width: 0.8,
+                        ),
                       ),
                       child: Padding(
-                        padding: const EdgeInsets.all(16),
+                        padding: const EdgeInsets.all(10), // Condensed padding
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Row(
-                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                Row(
-                                  children: [
-                                    Text(
-                                      '$qNo (v$version)',
-                                      style: const TextStyle(
-                                        fontWeight: FontWeight.bold,
-                                        fontSize: 15,
-                                        color: primaryColor,
-                                      ),
-                                    ),
-                                    if (inqRef.isNotEmpty) ...[
-                                      const SizedBox(width: 8),
-                                      Container(
-                                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                        decoration: BoxDecoration(
-                                          color: Colors.blue.shade50,
-                                          borderRadius: BorderRadius.circular(4),
-                                        ),
-                                        child: Text(
-                                          'INQ: $inqRef',
-                                          style: TextStyle(
-                                            fontSize: 10,
-                                            color: Colors.blue.shade800,
-                                            fontWeight: FontWeight.bold,
-                                          ),
-                                        ),
-                                      ),
-                                    ],
-                                  ],
-                                ),
-                                Text(
-                                  date,
-                                  style: TextStyle(
-                                    color: Colors.grey.shade500,
-                                    fontSize: 12,
-                                  ),
-                                ),
-                              ],
-                            ),
-                            const SizedBox(height: 8),
-                            Row(
-                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                              children: [
-                                Expanded(
+                                CircleAvatar(
+                                  radius: 18, // Slightly more compact avatar
+                                  backgroundColor: Colors.blue.shade50,
                                   child: Text(
-                                    customer,
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: const TextStyle(
-                                      fontWeight: FontWeight.w600,
-                                      fontSize: 16,
-                                    ),
-                                  ),
-                                ),
-                                Text(
-                                  amt,
-                                  style: const TextStyle(
-                                    fontWeight: FontWeight.bold,
-                                    fontSize: 16,
-                                  ),
-                                ),
-                              ],
-                            ),
-                            const SizedBox(height: 6),
-                            Row(
-                              children: [
-                                Expanded(
-                                  child: (explicitlyStoredName != null && explicitlyStoredName.isNotEmpty)
-                                      ? Text(
-                                    'Created by: $explicitlyStoredName • $createdAtFormatted',
+                                    customer.isNotEmpty
+                                        ? customer[0].toUpperCase()
+                                        : '?',
                                     style: TextStyle(
-                                      fontSize: 11,
-                                      color: Colors.grey.shade600,
-                                      fontWeight: FontWeight.w500,
+                                      fontSize: 14,
+                                      fontWeight: FontWeight.w700,
+                                      color: Colors.blue.shade800,
                                     ),
-                                  )
-                                      : FutureBuilder<String>(
-                                    future: _getUserName(createdByUid),
-                                    builder: (context, snapshot) {
-                                      return Text(
-                                        'Created by: ${snapshot.data ?? '...'} • $createdAtFormatted',
+                                  ),
+                                ),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        '$qNo (v$version)',
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: const TextStyle(
+                                          fontSize: 14.5,
+                                          fontWeight: FontWeight.w700,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 1), // Tighter spacing
+                                      Text(
+                                        customer,
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
                                         style: TextStyle(
-                                          fontSize: 11,
+                                          fontSize: 12.5,
                                           color: Colors.grey.shade600,
                                           fontWeight: FontWeight.w500,
                                         ),
-                                      );
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                SizedBox(
+                                  width: 28,
+                                  height: 28,
+                                  child: PopupMenuButton<String>(
+                                    padding: EdgeInsets.zero,
+                                    tooltip: 'Actions',
+                                    icon: Icon(Icons.more_vert, size: 20, color: Colors.grey.shade600),
+                                    onSelected: (val) {
+                                      if (val == 'view') {
+                                        _openQuotationPreview(data);
+                                      } else if (val == 'edit') {
+                                        _openQuotationForEdit(doc.id, data);
+                                      } else if (val == 'approve') {
+                                        _updateApproval(doc.id, 'Approved');
+                                      } else if (val == 'reject') {
+                                        _updateApproval(doc.id, 'Rejected');
+                                      } else if (val == 'convert') {
+                                        _convertToSalesOrder(doc.id, data);
+                                      } else if (val == 'revision') {
+                                        _createRevision(doc.id, data);
+                                      } else if (val == 'cancel') {
+                                        _cancelQuotation(doc.id);
+                                      }
+                                    },
+                                    itemBuilder: (context) {
+                                      List<PopupMenuEntry<String>> items = [
+                                        const PopupMenuItem(
+                                          value: 'view',
+                                          child: Text('View Quotation'),
+                                        ),
+                                      ];
+
+                                      if (canEdit) {
+                                        items.add(
+                                          const PopupMenuItem(
+                                            value: 'edit',
+                                            child: Text('Edit Quotation'),
+                                          ),
+                                        );
+                                      }
+
+                                      if (!isCancelled) {
+                                        items.add(const PopupMenuDivider());
+
+                                        if (approval.toLowerCase() != 'approved' && approval.toLowerCase() != 'rejected') {
+                                          items.add(
+                                            const PopupMenuItem(
+                                              value: 'approve',
+                                              child: Text('Approve'),
+                                            ),
+                                          );
+                                          items.add(
+                                            const PopupMenuItem(
+                                              value: 'reject',
+                                              child: Text('Reject'),
+                                            ),
+                                          );
+                                        }
+
+                                        if (!isConverted && isApproved && !isConverting) {
+                                          items.add(
+                                            const PopupMenuItem(
+                                              value: 'convert',
+                                              child: Text('Convert to Sales Order'),
+                                            ),
+                                          );
+                                        }
+
+                                        items.add(
+                                          const PopupMenuItem(
+                                            value: 'revision',
+                                            child: Text('Create Revision'),
+                                          ),
+                                        );
+
+                                        items.add(const PopupMenuDivider());
+                                        items.add(
+                                          const PopupMenuItem(
+                                            value: 'cancel',
+                                            child: Text('Cancel', style: TextStyle(color: Colors.red)),
+                                          ),
+                                        );
+                                      }
+
+                                      return items;
                                     },
                                   ),
                                 ),
                               ],
                             ),
-                            if (lastEditedAtStr.isNotEmpty)
-                              Padding(
-                                padding: const EdgeInsets.only(top: 2),
-                                child: Text(
-                                  'Updated: $lastEditedAtStr',
-                                  style: TextStyle(
-                                    fontSize: 11,
-                                    color: Colors.grey.shade500,
-                                  ),
-                                ),
-                              ),
-                            const SizedBox(height: 12),
-                            Row(
+                            const SizedBox(height: 8),
+                            Wrap(
+                              spacing: 6,
+                              runSpacing: 6,
                               children: [
-                                _buildStatusChip(status),
-                                const SizedBox(width: 8),
-                                if (approval != 'Pending')
-                                  _buildStatusChip(
-                                    approval,
-                                    isApproval: true,
-                                  ),
-                                const SizedBox(width: 8),
-                                if (status == 'Converted')
-                                  _buildStatusChip(
-                                    paymentStat,
-                                    isPayment: true,
-                                  ),
-
-                                const Spacer(),
-
-                                if (!isCancelled) ...[
-                                  if (priority == 1)
-                                    _buildFollowUpChip(
-                                      'Follow-up Today',
-                                      Colors.orange,
-                                    )
-                                  else if (priority == 2)
-                                    _buildFollowUpChip(
-                                      'Overdue',
-                                      Colors.red,
-                                    ),
-                                ],
-
-                                const SizedBox(width: 8),
-
-                                PopupMenuButton<String>(
-                                  icon: const Icon(
-                                    Icons.more_vert,
-                                    color: Colors.grey,
-                                  ),
-                                  shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(12),
-                                  ),
-                                  onSelected: (val) {
-                                    switch (val) {
-                                      case 'view':
-                                        _openQuotationPreview(data);
-                                        break;
-                                      case 'edit':
-                                        _openQuotationForEdit(doc.id, data);
-                                        break;
-                                      case 'approve':
-                                        _updateApproval(doc.id, 'Approved');
-                                        break;
-                                      case 'reject':
-                                        _updateApproval(doc.id, 'Rejected');
-                                        break;
-                                      case 'convert':
-                                        _convertToSalesOrder(doc.id, data);
-                                        break;
-                                      case 'revision':
-                                        _createRevision(doc.id, data);
-                                        break;
-                                      case 'cancel':
-                                        _cancelQuotation(doc.id);
-                                        break;
-                                    }
-                                  },
-                                  itemBuilder: (ctx) {
-                                    List<PopupMenuEntry<String>> items = [
-                                      const PopupMenuItem(
-                                        value: 'view',
-                                        child: Row(
-                                          children: [
-                                            Icon(Icons.visibility, size: 18),
-                                            SizedBox(width: 8),
-                                            Text('View'),
-                                          ],
-                                        ),
-                                      ),
-                                    ];
-
-                                    if (canEdit) {
-                                      items.add(
-                                        const PopupMenuItem(
-                                          value: 'edit',
-                                          child: Row(
-                                            children: [
-                                              Icon(Icons.edit, size: 18),
-                                              SizedBox(width: 8),
-                                              Text('Edit'),
-                                            ],
-                                          ),
-                                        ),
-                                      );
-                                    }
-
-                                    if (!isCancelled) {
-                                      items.add(const PopupMenuDivider());
-
-                                      if (approval != 'Approved' && approval != 'Rejected') {
-                                        items.add(
-                                          const PopupMenuItem(
-                                            value: 'approve',
-                                            child: Row(
-                                              children: [
-                                                Icon(Icons.thumb_up, size: 18, color: Colors.green),
-                                                SizedBox(width: 8),
-                                                Text('Approve'),
-                                              ],
-                                            ),
-                                          ),
-                                        );
-                                        items.add(
-                                          const PopupMenuItem(
-                                            value: 'reject',
-                                            child: Row(
-                                              children: [
-                                                Icon(Icons.thumb_down, size: 18, color: Colors.red),
-                                                SizedBox(width: 8),
-                                                Text('Reject'),
-                                              ],
-                                            ),
-                                          ),
-                                        );
-                                      }
-
-                                      if (!isConverted && isApproved && !isConverting) {
-                                        items.add(
-                                          const PopupMenuItem(
-                                            value: 'convert',
-                                            child: Row(
-                                              children: [
-                                                Icon(Icons.swap_horiz, size: 18, color: Colors.teal),
-                                                SizedBox(width: 8),
-                                                Text('Convert to SO'),
-                                              ],
-                                            ),
-                                          ),
-                                        );
-                                      }
-
-                                      items.add(
-                                        const PopupMenuItem(
-                                          value: 'revision',
-                                          child: Row(
-                                            children: [
-                                              Icon(Icons.history, size: 18, color: Colors.indigo),
-                                              SizedBox(width: 8),
-                                              Text('Create Revision'),
-                                            ],
-                                          ),
-                                        ),
-                                      );
-
-                                      items.add(const PopupMenuDivider());
-                                      items.add(
-                                        const PopupMenuItem(
-                                          value: 'cancel',
-                                          child: Row(
-                                            children: [
-                                              Icon(Icons.cancel, size: 18, color: Colors.red),
-                                              SizedBox(width: 8),
-                                              Text('Cancel', style: TextStyle(color: Colors.red)),
-                                            ],
-                                          ),
-                                        ),
-                                      );
-                                    }
-
-                                    return items;
-                                  },
+                                _InfoChip(
+                                  label: status,
+                                  backgroundColor: _getQuotationStatusBg(status),
+                                  textColor: _getQuotationStatusFg(status),
                                 ),
+                                if (approval != 'Pending')
+                                  _InfoChip(
+                                    label: approval,
+                                    backgroundColor: _getQuotationStatusBg(approval, isApproval: true),
+                                    textColor: _getQuotationStatusFg(approval, isApproval: true),
+                                  ),
+                                if (status.toLowerCase() == 'converted')
+                                  _InfoChip(
+                                    label: paymentStat,
+                                    backgroundColor: _getQuotationStatusBg(paymentStat, isPayment: true),
+                                    textColor: _getQuotationStatusFg(paymentStat, isPayment: true),
+                                  ),
                               ],
                             ),
-
-                            if (isApproved && !isConverted && !isCancelled)
-                              Padding(
-                                padding: const EdgeInsets.only(top: 16),
-                                child: SizedBox(
-                                  width: double.infinity,
-                                  child: ElevatedButton.icon(
-                                    style: ElevatedButton.styleFrom(
-                                      backgroundColor: Colors.teal.shade600,
-                                      foregroundColor: Colors.white,
-                                      padding: const EdgeInsets.symmetric(vertical: 12),
-                                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                                      elevation: 0,
-                                    ),
-                                    icon: isConverting
-                                        ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
-                                        : const Icon(Icons.swap_horiz, size: 20),
-                                    label: Text(
-                                      isConverting ? 'Processing...' : 'Convert to Sales Order',
-                                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
-                                    ),
-                                    onPressed: isConverting ? null : () => _convertToSalesOrder(doc.id, data),
+                            const SizedBox(height: 8),
+                            Wrap(
+                              spacing: 12,
+                              runSpacing: 6,
+                              crossAxisAlignment: WrapCrossAlignment.center,
+                              children: [
+                                if (inqRef.isNotEmpty)
+                                  _InlineInfo(
+                                    icon: Icons.tag_outlined,
+                                    text: 'INQ: $inqRef',
                                   ),
+                                if (explicitlyStoredName.isNotEmpty)
+                                  _InlineInfo(
+                                    icon: Icons.person_outline,
+                                    text: explicitlyStoredName,
+                                  )
+                                else
+                                  FutureBuilder<String>(
+                                    future: _getUserName(createdByUid),
+                                    builder: (context, snapshot) {
+                                      return _InlineInfo(
+                                        icon: Icons.person_outline,
+                                        text: snapshot.data ?? '...',
+                                      );
+                                    },
+                                  ),
+                                _InlineInfo(
+                                  icon: Icons.currency_rupee_outlined,
+                                  text: amt,
                                 ),
-                              ),
+                                _InlineInfo(
+                                  icon: Icons.add_circle_outline,
+                                  text: 'Created: ${_formatCompactDate(createdAtRaw?.toDate())}',
+                                ),
+                                if (nextFollowUpRaw != null)
+                                  _InlineInfo(
+                                    icon: Icons.event_repeat_outlined,
+                                    text: 'Next: ${_formatCompactDate(nextFollowUpRaw.toDate())}',
+                                  ),
+                              ],
+                            ),
                           ],
                         ),
                       ),
@@ -1485,123 +1359,186 @@ class _ScreensQuotationListState extends State<ScreensQuotationList> {
     );
   }
 
-  Widget _buildKpiCard(String title, String value, IconData icon, Color color) {
-    return Container(
-      margin: const EdgeInsets.only(right: 12),
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.05),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: color.withValues(alpha: 0.2)),
-      ),
-      child: Row(
-        children: [
-          Icon(icon, color: color, size: 24),
-          const SizedBox(width: 12),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                title,
-                style: TextStyle(
-                  fontSize: 12,
-                  color: Colors.grey.shade700,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-              Text(
-                value,
-                style: TextStyle(
-                  fontSize: 16,
-                  color: color,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-            ],
-          ),
-        ],
+  Color _getQuotationStatusBg(String status, {bool isApproval = false, bool isPayment = false}) {
+    String s = status.toLowerCase();
+    if (isPayment) {
+      if (s == 'paid') return Colors.green.shade50;
+      if (s == 'partial') return Colors.orange.shade50;
+      return Colors.red.shade50;
+    } else {
+      if (s == 'draft') return Colors.orange.shade50;
+      if (s == 'sent' || s == 'viewed') return Colors.blue.shade50;
+      if (s == 'approved' || s == 'converted') return Colors.green.shade50;
+      if (s == 'rejected') return Colors.red.shade50;
+      if (s == 'follow-up' || s == 'negotiation') return Colors.purple.shade50;
+      if (s == 'cancelled') return Colors.red.shade100;
+      return Colors.grey.shade100;
+    }
+  }
+
+  Color _getQuotationStatusFg(String status, {bool isApproval = false, bool isPayment = false}) {
+    String s = status.toLowerCase();
+    if (isPayment) {
+      if (s == 'paid') return Colors.green.shade800;
+      if (s == 'partial') return Colors.orange.shade800;
+      return Colors.red.shade800;
+    } else {
+      if (s == 'draft') return Colors.orange.shade800;
+      if (s == 'sent' || s == 'viewed') return Colors.blue.shade800;
+      if (s == 'approved' || s == 'converted') return Colors.green.shade800;
+      if (s == 'rejected') return Colors.red.shade800;
+      if (s == 'follow-up' || s == 'negotiation') return Colors.purple.shade800;
+      if (s == 'cancelled') return Colors.red.shade900;
+      return Colors.grey.shade800;
+    }
+  }
+}
+
+class _MiniStatText extends StatelessWidget {
+  final String label;
+  final String value;
+
+  const _MiniStatText({required this.label, required this.value});
+
+  @override
+  Widget build(BuildContext context) {
+    return Text(
+      '$label: $value',
+      style: TextStyle(
+        fontSize: 12,
+        color: Colors.grey.shade700,
+        fontWeight: FontWeight.w600,
       ),
     );
   }
+}
 
-  Widget _buildFollowUpChip(String label, MaterialColor color) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
-      decoration: BoxDecoration(
-        color: color.shade50,
-        borderRadius: BorderRadius.circular(4),
-        border: Border.all(color: color.shade200),
-      ),
+class _InlineInfo extends StatelessWidget {
+  final IconData icon;
+  final String text;
+
+  const _InlineInfo({required this.icon, required this.text});
+
+  @override
+  Widget build(BuildContext context) {
+    return ConstrainedBox(
+      constraints: const BoxConstraints(maxWidth: 300),
       child: Row(
+        mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(Icons.warning_amber_rounded, size: 12, color: color.shade800),
+          Icon(icon, size: 14, color: Colors.grey.shade600), // Slightly smaller, softer icon
           const SizedBox(width: 4),
-          Text(
-            label,
-            style: TextStyle(
-              fontSize: 9,
-              fontWeight: FontWeight.bold,
-              color: color.shade800,
+          Flexible(
+            child: Text(
+              text,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                fontSize: 12, // Condensed size
+                color: Colors.grey.shade800,
+                fontWeight: FontWeight.w500,
+              ),
             ),
           ),
         ],
       ),
     );
   }
+}
 
-  Widget _buildStatusChip(
-      String status, {
-        bool isApproval = false,
-        bool isPayment = false,
-      }) {
-    Color bg = Colors.grey.shade100;
-    Color fg = Colors.grey.shade800;
+class _InfoChip extends StatelessWidget {
+  final String label;
+  final Color backgroundColor;
+  final Color textColor;
 
-    String s = status.toLowerCase();
+  const _InfoChip({
+    required this.label,
+    required this.backgroundColor,
+    required this.textColor,
+  });
 
-    if (isPayment) {
-      if (s == 'paid') {
-        bg = Colors.green.shade50;
-        fg = Colors.green.shade800;
-      } else if (s == 'partial') {
-        bg = Colors.orange.shade50;
-        fg = Colors.orange.shade800;
-      } else {
-        bg = Colors.red.shade50;
-        fg = Colors.red.shade800;
-      }
-    } else {
-      if (s == 'draft') {
-        bg = Colors.orange.shade50;
-        fg = Colors.orange.shade800;
-      } else if (s == 'sent' || s == 'viewed') {
-        bg = Colors.blue.shade50;
-        fg = Colors.blue.shade800;
-      } else if (s == 'approved' || s == 'converted') {
-        bg = Colors.green.shade50;
-        fg = Colors.green.shade800;
-      } else if (s == 'rejected') {
-        bg = Colors.red.shade50;
-        fg = Colors.red.shade800;
-      } else if (s == 'follow-up' || s == 'negotiation') {
-        bg = Colors.purple.shade50;
-        fg = Colors.purple.shade800;
-      } else if (s == 'cancelled') {
-        bg = Colors.red.shade100;
-        fg = Colors.red.shade900;
-      }
-    }
-
+  @override
+  Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4), // Tighter padding
       decoration: BoxDecoration(
-        color: bg,
-        borderRadius: BorderRadius.circular(6),
+        color: backgroundColor,
+        borderRadius: BorderRadius.circular(999),
       ),
       child: Text(
-        status.toUpperCase(),
-        style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: fg),
+        label,
+        style: TextStyle(
+          fontSize: 11, // Condensed font for secondary chips
+          fontWeight: FontWeight.w700,
+          color: textColor,
+        ),
       ),
+    );
+  }
+}
+
+class _EmptyQuotationsState extends StatelessWidget {
+  final bool hasSearch;
+  final VoidCallback onReset;
+
+  const _EmptyQuotationsState({required this.hasSearch, required this.onReset});
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        return SingleChildScrollView(
+          padding: const EdgeInsets.all(28),
+          child: ConstrainedBox(
+            constraints: BoxConstraints(minHeight: constraints.maxHeight - 40),
+            child: IntrinsicHeight(
+              child: Center(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    CircleAvatar(
+                      radius: 34,
+                      backgroundColor: Colors.blue.shade50,
+                      child: Icon(
+                        hasSearch ? Icons.search_off : Icons.inbox_outlined,
+                        size: 34,
+                        color: Colors.blue.shade700,
+                      ),
+                    ),
+                    const SizedBox(height: 18),
+                    Text(
+                      hasSearch
+                          ? 'No matching quotations found'
+                          : 'No quotations found',
+                      style: const TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w700,
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      hasSearch
+                          ? 'Try changing the search text or filter.'
+                          : 'No quotation records are available yet.',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        color: Colors.grey.shade700,
+                        fontSize: 14,
+                      ),
+                    ),
+                    const SizedBox(height: 18),
+                    if (hasSearch)
+                      OutlinedButton(
+                        onPressed: onReset,
+                        child: const Text('Reset Filters'),
+                      ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        );
+      },
     );
   }
 }

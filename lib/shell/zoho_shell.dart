@@ -756,7 +756,7 @@ class _ZohoShellState extends State<ZohoShell> {
           title: 'Finance',
           icon: Icons.account_balance_wallet_outlined,
           children: [
-            ShellPage.financeProforma, // Added it here so it's accessible for export users too
+            ShellPage.financeProforma,
             ShellPage.financeTaxInvoice,
             ShellPage.financePaymentsReceived,
             ShellPage.financeOutstanding,
@@ -1083,8 +1083,8 @@ class _ZohoShellState extends State<ZohoShell> {
 
   Widget _buildTopHeader() {
     return Container(
-      constraints: const BoxConstraints(minHeight: 66),
-      padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
+      constraints: const BoxConstraints(minHeight: 48),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
       decoration: const BoxDecoration(
         color: Colors.white,
         border: Border(bottom: BorderSide(color: zBorder)),
@@ -1097,7 +1097,7 @@ class _ZohoShellState extends State<ZohoShell> {
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               style: const TextStyle(
-                fontSize: 18,
+                fontSize: 16,
                 fontWeight: FontWeight.w900,
                 color: zText,
               ),
@@ -1114,23 +1114,23 @@ class _ZohoShellState extends State<ZohoShell> {
       body: SafeArea(
         child: Center(
           child: Container(
-            constraints: const BoxConstraints(maxWidth: 520),
-            margin: const EdgeInsets.all(24),
-            padding: const EdgeInsets.all(24),
+            constraints: const BoxConstraints(maxWidth: 480),
+            margin: const EdgeInsets.all(16),
+            padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
               color: Colors.white,
               border: Border.all(color: zBorder),
-              borderRadius: BorderRadius.circular(18),
+              borderRadius: BorderRadius.circular(12),
             ),
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                const Icon(Icons.lock_person_outlined, size: 42, color: zMuted),
+                const Icon(Icons.lock_person_outlined, size: 32, color: zMuted),
                 const SizedBox(height: 12),
                 const Text(
                   'Workspace access unavailable',
                   style: TextStyle(
-                    fontSize: 20,
+                    fontSize: 16,
                     fontWeight: FontWeight.w900,
                     color: zText,
                   ),
@@ -1141,15 +1141,15 @@ class _ZohoShellState extends State<ZohoShell> {
                   textAlign: TextAlign.center,
                   style: TextStyle(
                     color: zMuted,
-                    fontSize: 14,
+                    fontSize: 12,
                     height: 1.5,
                     fontWeight: FontWeight.w600,
                   ),
                 ),
-                const SizedBox(height: 18),
+                const SizedBox(height: 16),
                 OutlinedButton.icon(
                   onPressed: _logout,
-                  icon: const Icon(Icons.logout),
+                  icon: const Icon(Icons.logout, size: 18),
                   label: const Text('Logout'),
                 ),
               ],
@@ -1219,14 +1219,14 @@ class _ZohoShellState extends State<ZohoShell> {
           body: Row(
             children: [
               Container(
-                width: 292,
+                width: 240,
                 color: zIconRail,
                 child: SafeArea(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
                       Padding(
-                        padding: const EdgeInsets.fromLTRB(18, 16, 18, 14),
+                        padding: const EdgeInsets.fromLTRB(14, 12, 14, 10),
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
@@ -1235,18 +1235,18 @@ class _ZohoShellState extends State<ZohoShell> {
                               style: TextStyle(
                                 color: Colors.white,
                                 fontWeight: FontWeight.w900,
-                                fontSize: 18,
+                                fontSize: 15,
                                 letterSpacing: 0.2,
                               ),
                             ),
-                            const SizedBox(height: 8),
+                            const SizedBox(height: 6),
                             Text(
                               widget.companyName,
                               maxLines: 2,
                               overflow: TextOverflow.ellipsis,
                               style: const TextStyle(
                                 color: Colors.white70,
-                                fontSize: 12.5,
+                                fontSize: 11,
                                 fontWeight: FontWeight.w600,
                                 height: 1.4,
                               ),
@@ -1257,13 +1257,13 @@ class _ZohoShellState extends State<ZohoShell> {
                       const Divider(color: Color(0xFF243041), height: 1),
                       Expanded(
                         child: ListView(
-                          padding: const EdgeInsets.fromLTRB(10, 12, 10, 10),
+                          padding: const EdgeInsets.fromLTRB(8, 8, 8, 8),
                           children: [
                             _dashboardNavItem(),
-                            const SizedBox(height: 8),
+                            const SizedBox(height: 6),
                             ..._currentSidebarGroups.map(_groupWidget),
                             if (_isModuleEnabled(ModuleIds.settings)) ...[
-                              const SizedBox(height: 8),
+                              const SizedBox(height: 6),
                               const Divider(color: Color(0xFF243041)),
                               _settingsNavItem(),
                             ],
@@ -1271,18 +1271,18 @@ class _ZohoShellState extends State<ZohoShell> {
                         ),
                       ),
                       Padding(
-                        padding: const EdgeInsets.fromLTRB(10, 8, 10, 12),
+                        padding: const EdgeInsets.fromLTRB(8, 6, 8, 10),
                         child: InkWell(
-                          borderRadius: BorderRadius.circular(14),
+                          borderRadius: BorderRadius.circular(10),
                           onTap: _logout,
                           child: Container(
                             padding: const EdgeInsets.symmetric(
-                              horizontal: 12,
-                              vertical: 12,
+                              horizontal: 10,
+                              vertical: 10,
                             ),
                             decoration: BoxDecoration(
                               color: Colors.white.withValues(alpha: 0.06),
-                              borderRadius: BorderRadius.circular(14),
+                              borderRadius: BorderRadius.circular(10),
                               border: Border.all(
                                 color: Colors.white.withValues(alpha: 0.10),
                               ),
@@ -1292,15 +1292,16 @@ class _ZohoShellState extends State<ZohoShell> {
                                 const Icon(
                                   Icons.logout,
                                   color: Colors.white70,
-                                  size: 20,
+                                  size: 18,
                                 ),
-                                const SizedBox(width: 10),
+                                const SizedBox(width: 8),
                                 const Expanded(
                                   child: Text(
                                     'Logout',
                                     style: TextStyle(
                                       color: Colors.white,
                                       fontWeight: FontWeight.w800,
+                                      fontSize: 12,
                                     ),
                                   ),
                                 ),
@@ -1308,7 +1309,7 @@ class _ZohoShellState extends State<ZohoShell> {
                                   _currentRole.toUpperCase(),
                                   style: const TextStyle(
                                     color: Colors.white54,
-                                    fontSize: 11,
+                                    fontSize: 10,
                                     fontWeight: FontWeight.w700,
                                   ),
                                 ),
@@ -1340,14 +1341,14 @@ class _ZohoShellState extends State<ZohoShell> {
     final selected = activePage == ShellPage.dashboard;
 
     return Padding(
-      padding: const EdgeInsets.only(bottom: 4),
+      padding: const EdgeInsets.only(bottom: 2),
       child: InkWell(
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(10),
         onTap: () => _selectPage(ShellPage.dashboard),
         child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 13),
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
           decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(14),
+            borderRadius: BorderRadius.circular(10),
             color: selected
                 ? Colors.white.withValues(alpha: 0.10)
                 : Colors.transparent,
@@ -1361,14 +1362,15 @@ class _ZohoShellState extends State<ZohoShell> {
             children: [
               Icon(
                 Icons.dashboard_outlined,
-                size: 20,
+                size: 18,
                 color: selected ? Colors.white : Colors.white70,
               ),
-              const SizedBox(width: 10),
+              const SizedBox(width: 8),
               Expanded(
                 child: Text(
                   'Dashboard',
                   style: TextStyle(
+                    fontSize: 12,
                     color: selected ? Colors.white : Colors.white70,
                     fontWeight: selected ? FontWeight.w900 : FontWeight.w700,
                   ),
@@ -1385,14 +1387,14 @@ class _ZohoShellState extends State<ZohoShell> {
     final selected = activePage == ShellPage.settingsGeneral;
 
     return Padding(
-      padding: const EdgeInsets.only(top: 4),
+      padding: const EdgeInsets.only(top: 2),
       child: InkWell(
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(10),
         onTap: () => _selectPage(ShellPage.settingsGeneral),
         child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 13),
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
           decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(14),
+            borderRadius: BorderRadius.circular(10),
             color: selected
                 ? Colors.white.withValues(alpha: 0.10)
                 : Colors.transparent,
@@ -1406,14 +1408,15 @@ class _ZohoShellState extends State<ZohoShell> {
             children: [
               Icon(
                 Icons.settings_outlined,
-                size: 20,
+                size: 18,
                 color: selected ? Colors.white : Colors.white70,
               ),
-              const SizedBox(width: 10),
+              const SizedBox(width: 8),
               Expanded(
                 child: Text(
                   'Settings',
                   style: TextStyle(
+                    fontSize: 12,
                     color: selected ? Colors.white : Colors.white70,
                     fontWeight: selected ? FontWeight.w900 : FontWeight.w700,
                   ),
@@ -1431,10 +1434,10 @@ class _ZohoShellState extends State<ZohoShell> {
     final bool hasActiveChild = _groupContainsActive(group);
 
     return Padding(
-      padding: const EdgeInsets.only(bottom: 6),
+      padding: const EdgeInsets.only(bottom: 2),
       child: Container(
         decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(14),
+          borderRadius: BorderRadius.circular(10),
           color: hasActiveChild
               ? Colors.white.withValues(alpha: 0.05)
               : Colors.transparent,
@@ -1447,7 +1450,7 @@ class _ZohoShellState extends State<ZohoShell> {
         child: Column(
           children: [
             InkWell(
-              borderRadius: BorderRadius.circular(14),
+              borderRadius: BorderRadius.circular(10),
               onTap: () {
                 setState(() {
                   if (expanded) {
@@ -1459,21 +1462,22 @@ class _ZohoShellState extends State<ZohoShell> {
               },
               child: Padding(
                 padding: const EdgeInsets.symmetric(
-                  horizontal: 12,
-                  vertical: 13,
+                  horizontal: 10,
+                  vertical: 8,
                 ),
                 child: Row(
                   children: [
                     Icon(
                       group.icon,
-                      size: 20,
+                      size: 18,
                       color: hasActiveChild ? Colors.white : Colors.white70,
                     ),
-                    const SizedBox(width: 10),
+                    const SizedBox(width: 8),
                     Expanded(
                       child: Text(
                         group.title,
                         style: TextStyle(
+                          fontSize: 12,
                           color: hasActiveChild ? Colors.white : Colors.white70,
                           fontWeight: hasActiveChild
                               ? FontWeight.w900
@@ -1486,6 +1490,7 @@ class _ZohoShellState extends State<ZohoShell> {
                           ? Icons.keyboard_arrow_down
                           : Icons.keyboard_arrow_right,
                       color: Colors.white60,
+                      size: 16,
                     ),
                   ],
                 ),
@@ -1497,7 +1502,7 @@ class _ZohoShellState extends State<ZohoShell> {
                   ? CrossFadeState.showFirst
                   : CrossFadeState.showSecond,
               firstChild: Padding(
-                padding: const EdgeInsets.fromLTRB(8, 0, 8, 8),
+                padding: const EdgeInsets.fromLTRB(6, 0, 6, 6),
                 child: Column(
                   children: group.children
                       .map((page) => _subNavItem(page))
@@ -1520,17 +1525,17 @@ class _ZohoShellState extends State<ZohoShell> {
                     activePage == ShellPage.financeTaxInvoiceCreate));
 
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 2),
+      padding: const EdgeInsets.symmetric(vertical: 1),
       child: InkWell(
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(8),
         onTap: () => _selectPage(page),
         child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
           decoration: BoxDecoration(
             color: selected
                 ? Colors.white
                 : Colors.white.withValues(alpha: 0.03),
-            borderRadius: BorderRadius.circular(12),
+            borderRadius: BorderRadius.circular(8),
             border: Border.all(
               color: selected
                   ? Colors.white
@@ -1541,17 +1546,17 @@ class _ZohoShellState extends State<ZohoShell> {
             children: [
               Icon(
                 page.icon,
-                size: 18,
+                size: 16,
                 color: selected ? zBlue : Colors.white70,
               ),
-              const SizedBox(width: 10),
+              const SizedBox(width: 8),
               Expanded(
                 child: Text(
                   page.label,
                   style: TextStyle(
                     color: selected ? zText : Colors.white70,
                     fontWeight: selected ? FontWeight.w800 : FontWeight.w600,
-                    fontSize: 13.2,
+                    fontSize: 11.5,
                   ),
                 ),
               ),
@@ -1575,7 +1580,7 @@ class _ZohoShellState extends State<ZohoShell> {
       builder: (context, snap) {
         final count = snap.data?.docs.length ?? 0;
         return Container(
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
           decoration: BoxDecoration(
             color: selected ? zBlueSoft : Colors.white.withValues(alpha: 0.12),
             borderRadius: BorderRadius.circular(999),
@@ -1588,7 +1593,7 @@ class _ZohoShellState extends State<ZohoShell> {
           child: Text(
             '$count',
             style: TextStyle(
-              fontSize: 11.5,
+              fontSize: 10,
               fontWeight: FontWeight.w900,
               color: selected ? zBlue : Colors.white,
             ),
@@ -1601,7 +1606,7 @@ class _ZohoShellState extends State<ZohoShell> {
   Widget _buildActiveBody() {
     if (!_canViewPage(activePage)) {
       return Padding(
-        padding: const EdgeInsets.all(14),
+        padding: const EdgeInsets.all(10),
         child: DashboardScreen(
           companyId: widget.companyId,
           userName: _resolvedEmployeeName(),
@@ -1624,43 +1629,43 @@ class _ZohoShellState extends State<ZohoShell> {
 
       case ShellPage.platformTenantModules:
         return Padding(
-          padding: const EdgeInsets.all(14),
+          padding: const EdgeInsets.all(10),
           child: PlatformTenantModulesScreen(platformAdminUid: widget.userUid),
         );
 
       case ShellPage.salesInquiries:
         return const Padding(
-          padding: EdgeInsets.all(14),
+          padding: EdgeInsets.all(10),
           child: ScreensInquiryList(),
         );
 
       case ShellPage.service:
         return Padding(
-          padding: const EdgeInsets.all(14),
+          padding: const EdgeInsets.all(10),
           child: ServiceHomeScreen(),
         );
 
       case ShellPage.crmCustomers:
         return const Padding(
-          padding: EdgeInsets.all(14),
+          padding: EdgeInsets.all(10),
           child: ScreensCustomerList(),
         );
 
       case ShellPage.inventoryProducts:
         return const Padding(
-          padding: EdgeInsets.all(14),
+          padding: EdgeInsets.all(10),
           child: ScreensProductList(),
         );
 
       case ShellPage.purchaseOrders:
         return Padding(
-          padding: const EdgeInsets.all(14),
+          padding: const EdgeInsets.all(10),
           child: FabricationPurchaseBillScreen(tenantId: widget.companyId),
         );
 
       case ShellPage.purchaseGrn:
         return Padding(
-          padding: const EdgeInsets.all(14),
+          padding: const EdgeInsets.all(10),
           child: FabricationMaterialInwardScreen(
             tenantId: widget.companyId,
             purchaseView: true,
@@ -1669,25 +1674,25 @@ class _ZohoShellState extends State<ZohoShell> {
 
       case ShellPage.inventoryRawMaterialStock:
         return Padding(
-          padding: const EdgeInsets.all(14),
+          padding: const EdgeInsets.all(10),
           child: FabricationRawMaterialStockScreen(tenantId: widget.companyId),
         );
 
       case ShellPage.inventoryMaterialInward:
         return Padding(
-          padding: const EdgeInsets.all(14),
+          padding: const EdgeInsets.all(10),
           child: FabricationMaterialInwardScreen(tenantId: widget.companyId),
         );
 
       case ShellPage.inventoryMaterialIssue:
         return Padding(
-          padding: const EdgeInsets.all(14),
+          padding: const EdgeInsets.all(10),
           child: FabricationMaterialIssueScreen(tenantId: widget.companyId),
         );
 
       case ShellPage.salesQuotations:
         return Padding(
-          padding: const EdgeInsets.all(14),
+          padding: const EdgeInsets.all(10),
           child: ScreensQuotationList(
             userId: (widget.userUid.hashCode).abs() % 1000000,
           ),
@@ -1695,13 +1700,13 @@ class _ZohoShellState extends State<ZohoShell> {
 
       case ShellPage.salesOrders:
         return Padding(
-          padding: const EdgeInsets.all(14),
+          padding: const EdgeInsets.all(10),
           child: SalesOrderListScreen(companyId: widget.companyId),
         );
 
       case ShellPage.adminUsers:
         return Padding(
-          padding: const EdgeInsets.all(14),
+          padding: const EdgeInsets.all(10),
           child: ScreenUserManagement(
             companyId: widget.companyId,
             currentUid: widget.userUid,
@@ -1710,7 +1715,7 @@ class _ZohoShellState extends State<ZohoShell> {
 
       case ShellPage.adminModules:
         return Padding(
-          padding: const EdgeInsets.all(14),
+          padding: const EdgeInsets.all(10),
           child: ScreenCompanyModules(
             companyId: widget.companyId,
             companyName: widget.companyName,
@@ -1719,16 +1724,16 @@ class _ZohoShellState extends State<ZohoShell> {
 
       case ShellPage.adminInventoryProfile:
         return Padding(
-          padding: const EdgeInsets.all(14),
+          padding: const EdgeInsets.all(10),
           child: ScreenInventoryProfileSettings(
             companyId: widget.companyId,
             companyName: widget.companyName,
           ),
         );
 
-      case ShellPage.financeProforma: // 🟢 NOW ROUTES TO THE NEW LIST SCREEN
+      case ShellPage.financeProforma:
         return Padding(
-          padding: const EdgeInsets.all(14),
+          padding: const EdgeInsets.all(10),
           child: ProformaListScreen(
             companyId: widget.companyId,
           ),
@@ -1736,7 +1741,7 @@ class _ZohoShellState extends State<ZohoShell> {
 
       case ShellPage.financeTaxInvoice:
         return Padding(
-          padding: const EdgeInsets.all(14),
+          padding: const EdgeInsets.all(10),
           child: InvoiceListScreen(
             companyId: widget.companyId,
             userUid: widget.userUid,
@@ -1769,7 +1774,7 @@ class _ZohoShellState extends State<ZohoShell> {
 
       case ShellPage.financePaymentsReceived:
         return Padding(
-          padding: const EdgeInsets.all(14),
+          padding: const EdgeInsets.all(10),
           child: PaymentsListScreen(
             companyId: widget.companyId,
             userUid: widget.userUid,
@@ -1778,7 +1783,7 @@ class _ZohoShellState extends State<ZohoShell> {
 
       case ShellPage.financeOutstanding:
         return Padding(
-          padding: const EdgeInsets.all(14),
+          padding: const EdgeInsets.all(10),
           child: OutstandingScreen(
             companyId: widget.companyId,
             userUid: widget.userUid,
@@ -1787,55 +1792,55 @@ class _ZohoShellState extends State<ZohoShell> {
 
       case ShellPage.productionItems:
         return Padding(
-          padding: const EdgeInsets.all(14),
+          padding: const EdgeInsets.all(10),
           child: ProductionItemListScreen(tenantId: widget.companyId),
         );
 
       case ShellPage.productionProcesses:
         return Padding(
-          padding: const EdgeInsets.all(14),
+          padding: const EdgeInsets.all(10),
           child: ProcessListScreen(tenantId: widget.companyId),
         );
 
       case ShellPage.productionWorkCenters:
         return Padding(
-          padding: const EdgeInsets.all(14),
+          padding: const EdgeInsets.all(10),
           child: WorkCenterListScreen(tenantId: widget.companyId),
         );
 
       case ShellPage.productionBom:
         return Padding(
-          padding: const EdgeInsets.all(14),
+          padding: const EdgeInsets.all(10),
           child: BomListScreen(tenantId: widget.companyId),
         );
 
       case ShellPage.productionBoq:
         return Padding(
-          padding: const EdgeInsets.all(14),
+          padding: const EdgeInsets.all(10),
           child: BoqListScreen(tenantId: widget.companyId),
         );
 
       case ShellPage.productionEntries:
         return Padding(
-          padding: const EdgeInsets.all(14),
+          padding: const EdgeInsets.all(10),
           child: ProductionEntryListScreen(tenantId: widget.companyId),
         );
 
       case ShellPage.hrHome:
         return Padding(
-          padding: const EdgeInsets.all(14),
+          padding: const EdgeInsets.all(10),
           child: HrHomeScreen(tenantId: widget.companyId),
         );
 
       case ShellPage.reportsSales:
         return Padding(
-          padding: const EdgeInsets.all(14),
+          padding: const EdgeInsets.all(10),
           child: SalesReportScreen(companyId: widget.companyId),
         );
 
       case ShellPage.settingsGeneral:
         return Padding(
-          padding: const EdgeInsets.all(14),
+          padding: const EdgeInsets.all(10),
           child: ScreenSettingsHome(
             companyId: widget.companyId,
             companyName: widget.companyName,
@@ -1852,7 +1857,7 @@ class _ZohoShellState extends State<ZohoShell> {
 
       default:
         return Padding(
-          padding: const EdgeInsets.all(14),
+          padding: const EdgeInsets.all(10),
           child: _moduleLandingPage(activePage),
         );
     }
@@ -1876,7 +1881,7 @@ class _ZohoShellState extends State<ZohoShell> {
         Text(
           page.label,
           style: const TextStyle(
-            fontSize: 22,
+            fontSize: 18,
             fontWeight: FontWeight.w900,
             color: zText,
           ),
@@ -1886,11 +1891,11 @@ class _ZohoShellState extends State<ZohoShell> {
           '$sectionName module inside ${widget.companyName}',
           style: const TextStyle(
             color: zMuted,
-            fontSize: 13.5,
+            fontSize: 11.5,
             fontWeight: FontWeight.w600,
           ),
         ),
-        const SizedBox(height: 16),
+        const SizedBox(height: 12),
         Row(
           children: [
             Expanded(
@@ -1912,7 +1917,7 @@ class _ZohoShellState extends State<ZohoShell> {
                     : Colors.redAccent,
               ),
             ),
-            const SizedBox(width: 12),
+            const SizedBox(width: 8),
             Expanded(
               child: _overviewCard(
                 title: 'Action',
@@ -1924,7 +1929,7 @@ class _ZohoShellState extends State<ZohoShell> {
                 iconColor: zOrange,
               ),
             ),
-            const SizedBox(width: 12),
+            const SizedBox(width: 8),
             Expanded(
               child: _overviewCard(
                 title: 'Department',
@@ -1936,18 +1941,18 @@ class _ZohoShellState extends State<ZohoShell> {
             ),
           ],
         ),
-        const SizedBox(height: 14),
+        const SizedBox(height: 10),
         Expanded(
           child: Row(
             children: [
               Expanded(
                 flex: 3,
                 child: Container(
-                  padding: const EdgeInsets.all(18),
+                  padding: const EdgeInsets.all(14),
                   decoration: BoxDecoration(
                     color: Colors.white,
                     border: Border.all(color: zBorder),
-                    borderRadius: BorderRadius.circular(18),
+                    borderRadius: BorderRadius.circular(12),
                   ),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -1955,25 +1960,25 @@ class _ZohoShellState extends State<ZohoShell> {
                       const Text(
                         'Module Overview',
                         style: TextStyle(
-                          fontSize: 16,
+                          fontSize: 14,
                           fontWeight: FontWeight.w900,
                           color: zText,
                         ),
                       ),
-                      const SizedBox(height: 12),
+                      const SizedBox(height: 8),
                       Text(
                         _moduleDescription(page),
                         style: const TextStyle(
                           color: zMuted,
                           height: 1.55,
-                          fontSize: 13.5,
+                          fontSize: 11.5,
                           fontWeight: FontWeight.w500,
                         ),
                       ),
-                      const SizedBox(height: 18),
+                      const SizedBox(height: 12),
                       Wrap(
-                        spacing: 10,
-                        runSpacing: 10,
+                        spacing: 8,
+                        runSpacing: 8,
                         children: _moduleTags(
                           page,
                         ).map((e) => _moduleTag(e)).toList(),
@@ -1983,7 +1988,7 @@ class _ZohoShellState extends State<ZohoShell> {
                   ),
                 ),
               ),
-              const SizedBox(width: 12),
+              const SizedBox(width: 8),
               Expanded(
                 flex: 2,
                 child: Column(
@@ -1995,7 +2000,7 @@ class _ZohoShellState extends State<ZohoShell> {
                         icon: Icons.auto_awesome_outlined,
                       ),
                     ),
-                    const SizedBox(height: 12),
+                    const SizedBox(height: 8),
                     Expanded(
                       child: _quickPanel(
                         title: 'Implementation Note',
@@ -2114,7 +2119,7 @@ class _ZohoShellState extends State<ZohoShell> {
 
   Widget _moduleTag(String text) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       decoration: BoxDecoration(
         color: const Color(0xFFF8FAFC),
         borderRadius: BorderRadius.circular(999),
@@ -2124,7 +2129,7 @@ class _ZohoShellState extends State<ZohoShell> {
         text,
         style: const TextStyle(
           color: zText,
-          fontSize: 12.5,
+          fontSize: 11,
           fontWeight: FontWeight.w700,
         ),
       ),
@@ -2139,12 +2144,12 @@ class _ZohoShellState extends State<ZohoShell> {
     required Color iconColor,
   }) {
     return Container(
-      height: 102,
-      padding: const EdgeInsets.all(14),
+      height: 76,
+      padding: const EdgeInsets.all(10),
       decoration: BoxDecoration(
         color: Colors.white,
         border: Border.all(color: zBorder),
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(10),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -2152,19 +2157,20 @@ class _ZohoShellState extends State<ZohoShell> {
           Row(
             children: [
               Container(
-                width: 34,
-                height: 34,
+                width: 28,
+                height: 28,
                 decoration: BoxDecoration(
                   color: tint,
-                  borderRadius: BorderRadius.circular(10),
+                  borderRadius: BorderRadius.circular(8),
                 ),
-                child: Icon(icon, size: 18, color: iconColor),
+                child: Icon(icon, size: 16, color: iconColor),
               ),
-              const SizedBox(width: 10),
+              const SizedBox(width: 8),
               Expanded(
                 child: Text(
                   title,
                   style: const TextStyle(
+                    fontSize: 11,
                     color: zMuted,
                     fontWeight: FontWeight.w700,
                   ),
@@ -2176,7 +2182,7 @@ class _ZohoShellState extends State<ZohoShell> {
           Text(
             value,
             style: const TextStyle(
-              fontSize: 18,
+              fontSize: 15,
               fontWeight: FontWeight.w900,
               color: zText,
             ),
@@ -2193,43 +2199,43 @@ class _ZohoShellState extends State<ZohoShell> {
   }) {
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
         color: Colors.white,
         border: Border.all(color: zBorder),
-        borderRadius: BorderRadius.circular(18),
+        borderRadius: BorderRadius.circular(12),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
-              Icon(icon, color: zBlue, size: 18),
+              Icon(icon, color: zBlue, size: 16),
               const SizedBox(width: 8),
               Text(
                 title,
                 style: const TextStyle(
                   color: zText,
                   fontWeight: FontWeight.w900,
-                  fontSize: 15,
+                  fontSize: 13,
                 ),
               ),
             ],
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: 10),
           Expanded(
             child: ListView(
               padding: EdgeInsets.zero,
               children: lines
                   .map(
                     (e) => Padding(
-                  padding: const EdgeInsets.only(bottom: 10),
+                  padding: const EdgeInsets.only(bottom: 8),
                   child: Row(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       const Padding(
-                        padding: EdgeInsets.only(top: 5),
-                        child: Icon(Icons.circle, size: 6, color: zBlue),
+                        padding: EdgeInsets.only(top: 4),
+                        child: Icon(Icons.circle, size: 5, color: zBlue),
                       ),
                       const SizedBox(width: 8),
                       Expanded(
@@ -2237,7 +2243,7 @@ class _ZohoShellState extends State<ZohoShell> {
                           e,
                           style: const TextStyle(
                             color: zMuted,
-                            fontSize: 13.2,
+                            fontSize: 11.5,
                             height: 1.45,
                             fontWeight: FontWeight.w600,
                           ),
@@ -2279,12 +2285,12 @@ class _ZohoShellState extends State<ZohoShell> {
           Text(
             welcomeText,
             style: const TextStyle(
-              fontSize: 18,
+              fontSize: 16,
               fontWeight: FontWeight.w900,
               color: zText,
             ),
           ),
-          const SizedBox(height: 20),
+          const SizedBox(height: 14),
           Row(
             children: const [
               Expanded(
@@ -2294,7 +2300,7 @@ class _ZohoShellState extends State<ZohoShell> {
                   icon: Icons.trending_up_outlined,
                 ),
               ),
-              SizedBox(width: 12),
+              SizedBox(width: 8),
               Expanded(
                 child: _KpiBox(
                   title: 'CRM Modules',
@@ -2302,7 +2308,7 @@ class _ZohoShellState extends State<ZohoShell> {
                   icon: Icons.people_outline,
                 ),
               ),
-              SizedBox(width: 12),
+              SizedBox(width: 8),
               Expanded(
                 child: _KpiBox(
                   title: 'Inventory Modules',
@@ -2310,7 +2316,7 @@ class _ZohoShellState extends State<ZohoShell> {
                   icon: Icons.inventory_2_outlined,
                 ),
               ),
-              SizedBox(width: 12),
+              SizedBox(width: 8),
               Expanded(
                 child: _KpiBox(
                   title: 'Reports',
@@ -2320,7 +2326,7 @@ class _ZohoShellState extends State<ZohoShell> {
               ),
             ],
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: 8),
           Expanded(
             child: Row(
               children: const [
@@ -2331,7 +2337,7 @@ class _ZohoShellState extends State<ZohoShell> {
                     emptyIcon: Icons.dashboard_customize_outlined,
                   ),
                 ),
-                SizedBox(width: 12),
+                SizedBox(width: 8),
                 Expanded(
                   child: _Panel(
                     title: 'Next Build Suggestion',
@@ -2393,12 +2399,12 @@ class _ZohoShellState extends State<ZohoShell> {
             Text(
               welcomeText,
               style: const TextStyle(
-                fontSize: 18,
+                fontSize: 16,
                 fontWeight: FontWeight.w900,
                 color: zText,
               ),
             ),
-            const SizedBox(height: 14),
+            const SizedBox(height: 10),
             Row(
               children: [
                 Expanded(
@@ -2408,7 +2414,7 @@ class _ZohoShellState extends State<ZohoShell> {
                     icon: Icons.folder_open_outlined,
                   ),
                 ),
-                const SizedBox(width: 12),
+                const SizedBox(width: 8),
                 Expanded(
                   child: _KpiBox(
                     title: 'Untouched',
@@ -2416,7 +2422,7 @@ class _ZohoShellState extends State<ZohoShell> {
                     icon: Icons.mark_email_unread_outlined,
                   ),
                 ),
-                const SizedBox(width: 12),
+                const SizedBox(width: 8),
                 Expanded(
                   child: _KpiBox(
                     title: 'Follow-ups Today',
@@ -2424,7 +2430,7 @@ class _ZohoShellState extends State<ZohoShell> {
                     icon: Icons.event_repeat_outlined,
                   ),
                 ),
-                const SizedBox(width: 12),
+                const SizedBox(width: 8),
                 Expanded(
                   child: _KpiBox(
                     title: 'My Inquiries',
@@ -2434,7 +2440,7 @@ class _ZohoShellState extends State<ZohoShell> {
                 ),
               ],
             ),
-            const SizedBox(height: 12),
+            const SizedBox(height: 8),
             Expanded(
               child: Row(
                 children: const [
@@ -2445,7 +2451,7 @@ class _ZohoShellState extends State<ZohoShell> {
                       emptyIcon: Icons.task_alt,
                     ),
                   ),
-                  SizedBox(width: 12),
+                  SizedBox(width: 8),
                   Expanded(
                     child: _Panel(
                       title: 'My Meetings',
@@ -2473,24 +2479,25 @@ class _KpiBox extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      height: 92,
-      padding: const EdgeInsets.all(14),
+      height: 70,
+      padding: const EdgeInsets.all(10),
       decoration: BoxDecoration(
         color: Colors.white,
         border: Border.all(color: zBorder),
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(10),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
-              Icon(icon, size: 18, color: zMuted),
+              Icon(icon, size: 16, color: zMuted),
               const SizedBox(width: 8),
               Expanded(
                 child: Text(
                   title,
                   style: const TextStyle(
+                    fontSize: 11,
                     color: zMuted,
                     fontWeight: FontWeight.w700,
                   ),
@@ -2502,7 +2509,7 @@ class _KpiBox extends StatelessWidget {
           Text(
             value,
             style: const TextStyle(
-              fontSize: 22,
+              fontSize: 18,
               fontWeight: FontWeight.w900,
               color: zText,
             ),
@@ -2530,12 +2537,12 @@ class _Panel extends StatelessWidget {
       decoration: BoxDecoration(
         color: Colors.white,
         border: Border.all(color: zBorder),
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(10),
       ),
       child: Column(
         children: [
           Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
             decoration: const BoxDecoration(
               border: Border(bottom: BorderSide(color: zBorder)),
             ),
@@ -2544,6 +2551,7 @@ class _Panel extends StatelessWidget {
                 Text(
                   title,
                   style: const TextStyle(
+                    fontSize: 12,
                     fontWeight: FontWeight.w900,
                     color: zText,
                   ),
@@ -2554,16 +2562,17 @@ class _Panel extends StatelessWidget {
           Expanded(
             child: Center(
               child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 20),
+                padding: const EdgeInsets.symmetric(horizontal: 16),
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Icon(emptyIcon, color: zMuted, size: 30),
-                    const SizedBox(height: 8),
+                    Icon(emptyIcon, color: zMuted, size: 24),
+                    const SizedBox(height: 6),
                     Text(
                       emptyText,
                       textAlign: TextAlign.center,
                       style: const TextStyle(
+                        fontSize: 11,
                         color: zMuted,
                         fontWeight: FontWeight.w600,
                       ),

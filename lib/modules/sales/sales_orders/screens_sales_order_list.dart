@@ -12,17 +12,12 @@ import 'package:flutter_image_compress/flutter_image_compress.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import 'package:QUIK/modules/sales/quotations/quotation_pdf_generator.dart';
+import 'package:QUIK/modules/finance/proforma_invoice/proforma_screen.dart';
 
 // =========================================================
-// CONSTANTS & THEME
+// CONSTANTS
 // =========================================================
-const Color _zBackground = Color(0xFFF8FAFC);
-const Color _zCard = Colors.white;
-const Color _zBorder = Color(0xFFE2E8F0);
-const Color _zTextMain = Color(0xFF0F172A);
-const Color _zTextMuted = Color(0xFF64748B);
 const Color _zPrimary = Color(0xFF2563EB);
-const Color _zPrimaryLight = Color(0xFFEFF6FF);
 const Color _zDanger = Color(0xFFEF4444);
 const Color _zSuccess = Color(0xFF10B981);
 const Color _zWarning = Color(0xFFF59E0B);
@@ -56,12 +51,10 @@ class SalesOrderListScreen extends StatefulWidget {
 }
 
 class _SalesOrderListScreenState extends State<SalesOrderListScreen> {
-  // --- UI Controllers ---
   final TextEditingController _searchController = TextEditingController();
   final ScrollController _scrollController = ScrollController();
   Timer? _debounce;
 
-  // --- State Variables ---
   String _searchQuery = '';
   String _selectedStatus = 'All';
   String _selectedSort = 'Latest';
@@ -69,7 +62,6 @@ class _SalesOrderListScreenState extends State<SalesOrderListScreen> {
   final List<String> _statusOptions = ['All', 'Draft', 'Confirmed', 'Completed', 'Cancelled'];
   final List<String> _sortOptions = ['Latest', 'Oldest', 'Highest Amount', 'Lowest Amount'];
 
-  // --- Pagination & Data State ---
   final List<QueryDocumentSnapshot<Map<String, dynamic>>> _salesOrders = [];
   DocumentSnapshot? _lastDocument;
   bool _isLoading = true;
@@ -77,7 +69,6 @@ class _SalesOrderListScreenState extends State<SalesOrderListScreen> {
   bool _hasMore = true;
   String? _errorMessage;
 
-  // --- User Name Cache ---
   final Map<String, String> _userNameCache = {};
 
   @override
@@ -94,10 +85,6 @@ class _SalesOrderListScreenState extends State<SalesOrderListScreen> {
     _scrollController.dispose();
     super.dispose();
   }
-
-  // =========================================================
-  // USER NAME RESOLUTION LOGIC
-  // =========================================================
 
   Future<String> _getUserName(String uid) async {
     if (uid.isEmpty) return 'Unknown User';
@@ -124,10 +111,6 @@ class _SalesOrderListScreenState extends State<SalesOrderListScreen> {
     _userNameCache[uid] = 'Unknown User';
     return 'Unknown User';
   }
-
-  // =========================================================
-  // DATA FETCHING & PAGINATION LOGIC
-  // =========================================================
 
   Future<void> _fetchInitialData() async {
     if (!mounted) return;
@@ -230,10 +213,6 @@ class _SalesOrderListScreenState extends State<SalesOrderListScreen> {
     }
   }
 
-  // =========================================================
-  // SEARCH & FILTER LOGIC
-  // =========================================================
-
   void _onSearchChanged(String val) {
     if (_debounce?.isActive ?? false) _debounce!.cancel();
     _debounce = Timer(const Duration(milliseconds: 300), () {
@@ -254,10 +233,6 @@ class _SalesOrderListScreenState extends State<SalesOrderListScreen> {
       return soNum.contains(query) || custName.contains(query);
     }).toList();
   }
-
-  // =========================================================
-  // PREVIEW & DATA MAPPING
-  // =========================================================
 
   Map<String, dynamic> prepareSalesOrderForPdf(Map<String, dynamic> mergedData) {
     mergedData['documentType'] = 'Sales Order';
@@ -413,82 +388,33 @@ class _SalesOrderListScreenState extends State<SalesOrderListScreen> {
     }
   }
 
-  // =========================================================
-  // PROFORMA INVOICE CREATION
-  // =========================================================
+  void _createProformaInvoice(Map<String, dynamic> soData) {
+    final Map<String, dynamic> mappedData = Map<String, dynamic>.from(soData);
 
-  Future<void> _createProformaInvoice(Map<String, dynamic> soData) async {
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (_) => const Center(child: CircularProgressIndicator(color: _zPrimary)),
+    mappedData['customerName'] = _parseSafeString(soData['customerName'] ?? soData['clientName'] ?? soData['partyName'] ?? soData['customer']);
+    mappedData['clientName'] = mappedData['customerName'];
+
+    final String inquiryNum = _parseSafeString(soData['inquiryNumber'] ?? soData['inquiryCode'] ?? soData['referenceInquiryNumber'] ?? soData['inquiryId'] ?? '', fallback: '');
+    final String quoteNum = _parseSafeString(soData['quotationNumber'] ?? soData['quoteNumber'] ?? soData['referenceQuotationNumber'] ?? soData['referenceQuotationId'] ?? soData['quotationId'] ?? soData['quoteId'] ?? '', fallback: '');
+
+    mappedData['inquiryNumber'] = inquiryNum;
+    mappedData['quotationNumber'] = quoteNum;
+    mappedData['referenceQuotationId'] = _parseSafeString(soData['referenceQuotationId'] ?? soData['quotationId'] ?? soData['quoteId'] ?? '', fallback: '');
+
+    mappedData.remove('salesOrderNumber');
+    mappedData.remove('soNumber');
+    mappedData.remove('orderNumber');
+
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => ProformaScreen(
+          companyId: widget.companyId,
+          inquirySeed: mappedData,
+        ),
+      ),
     );
-
-    try {
-      final user = FirebaseAuth.instance.currentUser;
-      if (user == null) throw Exception('User not authenticated.');
-
-      final currentUserName = await _getUserName(user.uid);
-
-      final piCollection = FirebaseFirestore.instance
-          .collection('companies')
-          .doc(widget.companyId)
-          .collection('proforma_invoices');
-
-      final newPiRef = piCollection.doc();
-      final piNumber = 'PI-${DateTime.now().millisecondsSinceEpoch.toString().substring(5)}';
-
-      final piData = Map<String, dynamic>.from(soData);
-
-      piData.remove('dispatchStatus');
-      piData.remove('purchaseOrder');
-
-      piData.addAll({
-        'id': newPiRef.id,
-        'sourceSalesOrderId': soData['id'] ?? newPiRef.id,
-        'documentType': 'proforma_invoice',
-        'status': 'draft',
-        'proformaNumber': piNumber,
-        'createdAt': FieldValue.serverTimestamp(),
-        'createdBy': user.uid,
-        'createdByName': currentUserName,
-        'updatedAt': FieldValue.serverTimestamp(),
-        'updatedBy': user.uid,
-        'updatedByName': currentUserName,
-        'activities': [
-          {
-            'type': 'Created',
-            'note': 'Proforma Invoice automatically generated from Sales Order ${soData['salesOrderNumber'] ?? soData['id']}',
-            'timestamp': Timestamp.now(),
-            'byUid': user.uid,
-          }
-        ],
-      });
-
-      await newPiRef.set(piData);
-
-      if (mounted) {
-        Navigator.pop(context);
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-          content: Text('Proforma Invoice created successfully'),
-          backgroundColor: _zSuccess,
-        ));
-      }
-    } catch (e) {
-      if (mounted) {
-        Navigator.pop(context);
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: Text('Failed to create Proforma Invoice: $e'),
-          backgroundColor: _zDanger,
-        ));
-      }
-    }
   }
-
-
-  // =========================================================
-  // PURCHASE ORDER UPLOAD LOGIC
-  // =========================================================
 
   Future<void> _handlePOUpload(String docId) async {
     try {
@@ -615,10 +541,6 @@ class _SalesOrderListScreenState extends State<SalesOrderListScreen> {
     }
   }
 
-  // =========================================================
-  // BUSINESS LOGIC ACTIONS (DISPATCH, APPROVE, CANCEL)
-  // =========================================================
-
   Future<void> _updateOrderField(String docId, Map<String, dynamic> updates, String logType, String logNote) async {
     try {
       final docRef = FirebaseFirestore.instance
@@ -664,7 +586,7 @@ class _SalesOrderListScreenState extends State<SalesOrderListScreen> {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx),
-            child: const Text('Close', style: TextStyle(color: _zTextMuted)),
+            child: const Text('Close', style: TextStyle(color: Colors.grey)),
           ),
           ElevatedButton(
             style: ElevatedButton.styleFrom(backgroundColor: _zDanger),
@@ -734,7 +656,7 @@ class _SalesOrderListScreenState extends State<SalesOrderListScreen> {
                 ),
               ),
               actions: [
-                TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel', style: TextStyle(color: _zTextMuted))),
+                TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel', style: TextStyle(color: Colors.grey))),
                 ElevatedButton(
                   style: ElevatedButton.styleFrom(backgroundColor: _zPrimary),
                   onPressed: () {
@@ -780,7 +702,7 @@ class _SalesOrderListScreenState extends State<SalesOrderListScreen> {
         title: const Text('Cancel Order', style: TextStyle(color: _zDanger, fontWeight: FontWeight.bold)),
         content: const Text('Are you sure you want to cancel this Sales Order? This action cannot be fully undone.'),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('No, Keep It', style: TextStyle(color: _zTextMain))),
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('No, Keep It', style: TextStyle(color: Colors.black87))),
           ElevatedButton(
             style: ElevatedButton.styleFrom(backgroundColor: _zDanger),
             onPressed: () {
@@ -794,130 +716,147 @@ class _SalesOrderListScreenState extends State<SalesOrderListScreen> {
     );
   }
 
-  // =========================================================
-  // UI BUILDERS
-  // =========================================================
+  void _resetFilters() {
+    setState(() {
+      _selectedStatus = 'All';
+      _selectedSort = 'Latest';
+    });
+    _fetchInitialData();
+  }
+
+  bool get _hasActiveFilters => _selectedStatus != 'All' || _selectedSort != 'Latest';
+
+  Future<void> _openFilterSheet() async {
+    String tempStatus = _selectedStatus;
+    String tempSort = _selectedSort;
+
+    await showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      backgroundColor: Colors.white,
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (ctx, setModalState) {
+            return Padding(
+              padding: EdgeInsets.fromLTRB(
+                16,
+                6,
+                16,
+                MediaQuery.of(context).viewInsets.bottom + 16,
+              ),
+              child: SingleChildScrollView(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'Filters & Sort',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    const SizedBox(height: 14),
+                    DropdownButtonFormField<String>(
+                      initialValue: tempStatus,
+                      decoration: const InputDecoration(
+                        labelText: 'Status',
+                        isDense: true,
+                        border: OutlineInputBorder(),
+                      ),
+                      items: _statusOptions
+                          .map((e) => DropdownMenuItem(value: e, child: Text(e)))
+                          .toList(),
+                      onChanged: (value) {
+                        setModalState(() {
+                          tempStatus = value ?? 'All';
+                        });
+                      },
+                    ),
+                    const SizedBox(height: 10),
+                    DropdownButtonFormField<String>(
+                      initialValue: tempSort,
+                      decoration: const InputDecoration(
+                        labelText: 'Sort By',
+                        isDense: true,
+                        border: OutlineInputBorder(),
+                      ),
+                      items: _sortOptions
+                          .map((e) => DropdownMenuItem(value: e, child: Text(e)))
+                          .toList(),
+                      onChanged: (value) {
+                        setModalState(() {
+                          tempSort = value ?? 'Latest';
+                        });
+                      },
+                    ),
+                    const SizedBox(height: 14),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: TextButton(
+                            onPressed: () {
+                              setState(() {
+                                _selectedStatus = 'All';
+                                _selectedSort = 'Latest';
+                              });
+                              _fetchInitialData();
+                              Navigator.pop(context);
+                            },
+                            child: const Text('Reset'),
+                          ),
+                        ),
+                        Expanded(
+                          child: ElevatedButton(
+                            onPressed: () {
+                              setState(() {
+                                _selectedStatus = tempStatus;
+                                _selectedSort = tempSort;
+                              });
+                              _fetchInitialData();
+                              Navigator.pop(context);
+                            },
+                            child: const Text('Apply'),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: _zBackground,
-      body: SafeArea(
-        child: Column(
-          children: [
-            _buildToolbar(),
-            _buildKpiDashboard(),
-            Expanded(
-              child: _buildListContent(),
-            ),
-          ],
+    if (_isLoading && _salesOrders.isEmpty) {
+      return const Scaffold(
+        backgroundColor: Colors.white,
+        body: Center(child: CircularProgressIndicator()),
+      );
+    }
+
+    if (_errorMessage != null && _salesOrders.isEmpty) {
+      return Scaffold(
+        backgroundColor: Colors.white,
+        body: Center(
+          child: Text(
+            _errorMessage!,
+            style: const TextStyle(color: Colors.red, fontWeight: FontWeight.bold),
+          ),
         ),
-      ),
-    );
-  }
-
-  Widget _buildToolbar() {
-    return Container(
-      color: Colors.white,
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Expanded(
-                child: TextField(
-                  controller: _searchController,
-                  onChanged: _onSearchChanged,
-                  decoration: InputDecoration(
-                    hintText: 'Search order or customer...',
-                    hintStyle: const TextStyle(color: _zTextMuted, fontSize: 14),
-                    prefixIcon: const Icon(Icons.search, color: _zTextMuted, size: 20),
-                    suffixIcon: _searchQuery.isNotEmpty
-                        ? IconButton(
-                      icon: const Icon(Icons.clear, color: _zTextMuted, size: 18),
-                      onPressed: () {
-                        _searchController.clear();
-                        _onSearchChanged('');
-                      },
-                    )
-                        : null,
-                    filled: true,
-                    fillColor: _zBackground,
-                    contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 0),
-                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide.none),
-                  ),
-                ),
-              ),
-              const SizedBox(width: 12),
-              Container(
-                height: 48,
-                padding: const EdgeInsets.symmetric(horizontal: 12),
-                decoration: BoxDecoration(color: _zBackground, borderRadius: BorderRadius.circular(10)),
-                child: DropdownButtonHideUnderline(
-                  child: DropdownButton<String>(
-                    value: _selectedSort,
-                    icon: const Icon(Icons.sort_rounded, color: _zTextMuted, size: 20),
-                    style: const TextStyle(color: _zTextMain, fontSize: 14, fontWeight: FontWeight.w600),
-                    items: _sortOptions.map((e) => DropdownMenuItem(value: e, child: Text(e))).toList(),
-                    onChanged: (val) {
-                      if (val != null && val != _selectedSort) {
-                        setState(() => _selectedSort = val);
-                        _fetchInitialData();
-                      }
-                    },
-                  ),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            physics: const BouncingScrollPhysics(),
-            child: Row(
-              children: _statusOptions.map((status) {
-                final isSelected = _selectedStatus == status;
-                return Padding(
-                  padding: const EdgeInsets.only(right: 8.0),
-                  child: ChoiceChip(
-                    label: Text(
-                      status,
-                      style: TextStyle(
-                        fontSize: 13,
-                        fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
-                        color: isSelected ? _zPrimary : _zTextMuted,
-                      ),
-                    ),
-                    selected: isSelected,
-                    selectedColor: _zPrimaryLight,
-                    backgroundColor: _zBackground,
-                    side: BorderSide(color: isSelected ? _zPrimary.withOpacity(0.3) : _zBorder),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                    onSelected: (selected) {
-                      if (selected && _selectedStatus != status) {
-                        setState(() => _selectedStatus = status);
-                        _fetchInitialData();
-                      }
-                    },
-                  ),
-                );
-              }).toList(),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildKpiDashboard() {
-    if (_isLoading && _salesOrders.isEmpty) return const SizedBox.shrink();
+      );
+    }
 
     final filteredDocs = _getFilteredOrders();
+    int totalOrders = filteredDocs.length;
     double totalRevenue = 0;
     int confirmedCount = 0;
     int dispatchPendingCount = 0;
-    int completedCount = 0;
 
     for (var doc in filteredDocs) {
       final data = doc.data();
@@ -926,182 +865,191 @@ class _SalesOrderListScreenState extends State<SalesOrderListScreen> {
       final dst = _parseSafeString(data['dispatchStatus']).toLowerCase();
 
       if (st == 'confirmed') confirmedCount++;
-      if (st == 'completed') completedCount++;
       if (st == 'confirmed' && dst != 'delivered') dispatchPendingCount++;
     }
 
-    final String formattedRevenue = NumberFormat.currency(
-        symbol: '₹', locale: 'en_IN', decimalDigits: totalRevenue.truncateToDouble() == totalRevenue ? 0 : 2
+    final String formattedRevenue = NumberFormat.compactCurrency(
+        symbol: '₹', locale: 'en_IN'
     ).format(totalRevenue);
 
-    return Container(
-      width: double.infinity,
-      color: _zBackground,
-      padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
-      child: SingleChildScrollView(
-        scrollDirection: Axis.horizontal,
-        physics: const BouncingScrollPhysics(),
-        child: Row(
-          children: [
-            _KpiCard(title: 'Visible Revenue', value: formattedRevenue, icon: Icons.account_balance_wallet_rounded, color: _zPrimary),
-            _KpiCard(title: 'Confirmed', value: '$confirmedCount', icon: Icons.check_circle_rounded, color: _zSuccess),
-            _KpiCard(title: 'Dispatch Pending', value: '$dispatchPendingCount', icon: Icons.local_shipping_rounded, color: _zWarning),
-            _KpiCard(title: 'Completed', value: '$completedCount', icon: Icons.done_all_rounded, color: _zTextMuted),
-          ],
-        ),
+    return Scaffold(
+      backgroundColor: Colors.white,
+      appBar: AppBar(
+        elevation: 0,
+        toolbarHeight: 6,
+        automaticallyImplyLeading: false,
+        backgroundColor: Colors.white,
+        surfaceTintColor: Colors.transparent,
       ),
-    );
-  }
-
-  Widget _buildListContent() {
-    if (_isLoading && _salesOrders.isEmpty) {
-      return ListView.builder(padding: const EdgeInsets.all(16), itemCount: 4, itemBuilder: (_, __) => const _SkeletonCard());
-    }
-
-    if (_errorMessage != null && _salesOrders.isEmpty) {
-      return _buildEmptyState(
-        icon: Icons.cloud_off_rounded, title: 'Connection Issue', subtitle: _errorMessage!,
-        actionLabel: 'Retry', onAction: _fetchInitialData,
-      );
-    }
-
-    final filteredDocs = _getFilteredOrders();
-
-    if (filteredDocs.isEmpty) {
-      return _buildEmptyState(
-        icon: Icons.receipt_long_outlined, title: 'No Orders Found',
-        subtitle: 'No sales orders match your current filters or search.',
-        actionLabel: 'Clear Filters', onAction: () {
-        _searchController.clear();
-        setState(() { _searchQuery = ''; _selectedStatus = 'All'; });
-        _fetchInitialData();
-      },
-      );
-    }
-
-    return RefreshIndicator(
-      color: _zPrimary,
-      onRefresh: _fetchInitialData,
-      child: ListView.builder(
-        controller: _scrollController,
-        physics: const AlwaysScrollableScrollPhysics(parent: BouncingScrollPhysics()),
-        padding: const EdgeInsets.only(left: 16, right: 16, top: 12, bottom: 80),
-        itemCount: filteredDocs.length + 1,
-        itemBuilder: (context, index) {
-          if (index == filteredDocs.length) {
-            if (_hasMore) {
-              return const Padding(padding: EdgeInsets.symmetric(vertical: 24), child: Center(child: CircularProgressIndicator(color: _zPrimary)));
-            } else {
-              return Padding(
-                padding: const EdgeInsets.symmetric(vertical: 24),
-                child: Center(
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Container(height: 1, width: 40, color: _zBorder),
-                      const Padding(padding: EdgeInsets.symmetric(horizontal: 12), child: Text('No more records', style: TextStyle(color: _zTextMuted, fontSize: 12, fontWeight: FontWeight.w600))),
-                      Container(height: 1, width: 40, color: _zBorder),
-                    ],
+      body: Column(
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 6, 16, 8),
+            child: Row(
+              children: [
+                ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 320),
+                  child: SizedBox(
+                    height: 38,
+                    child: TextField(
+                      controller: _searchController,
+                      onChanged: _onSearchChanged,
+                      decoration: InputDecoration(
+                        hintText: 'Search order or customer...',
+                        prefixIcon: const Icon(Icons.search, size: 18),
+                        suffixIcon: _searchQuery.trim().isEmpty
+                            ? null
+                            : IconButton(
+                          tooltip: 'Clear',
+                          icon: const Icon(Icons.close, size: 17),
+                          onPressed: () {
+                            _searchController.clear();
+                            _onSearchChanged('');
+                          },
+                        ),
+                        isDense: true,
+                        filled: true,
+                        fillColor: Colors.grey.shade100,
+                        contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 10,
+                          vertical: 8,
+                        ),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(10),
+                          borderSide: BorderSide.none,
+                        ),
+                        enabledBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(10),
+                          borderSide: BorderSide.none,
+                        ),
+                        focusedBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(10),
+                          borderSide: BorderSide.none,
+                        ),
+                      ),
+                    ),
                   ),
                 ),
-              );
-            }
-          }
-
-          final doc = filteredDocs[index];
-          final data = doc.data();
-
-          return _SalesOrderCard(
-            key: ValueKey(doc.id),
-            document: doc,
-            nameResolver: _getUserName,
-            onViewTap: () => _openSalesOrderPreview(data),
-            onDispatchTap: () => _showDispatchDialog(doc),
-            onApproveTap: () => _showApprovalDialog(doc),
-            onCancelTap: () => _cancelOrder(doc),
-            onUploadPOTap: () => _handlePOUpload(doc.id),
-            onViewPOTap: () {
-              final poData = data['purchaseOrder'];
-              if (poData != null && poData['url'] != null) {
-                _viewPO(poData['url']);
-              }
-            },
-            onCreateProformaTap: () => _createProformaInvoice(data),
-          );
-        },
-      ),
-    );
-  }
-
-  Widget _buildEmptyState({
-    required IconData icon, required String title, required String subtitle,
-    String? actionLabel, VoidCallback? onAction,
-  }) {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(32.0),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Container(
-              padding: const EdgeInsets.all(20),
-              decoration: BoxDecoration(color: Colors.white, shape: BoxShape.circle, boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 10, offset: const Offset(0, 4))]),
-              child: Icon(icon, size: 40, color: _zTextMuted.withOpacity(0.5)),
+                const SizedBox(width: 8),
+                SizedBox(
+                  height: 38,
+                  width: 38,
+                  child: Material(
+                    color: Colors.grey.shade100,
+                    borderRadius: BorderRadius.circular(10),
+                    child: InkWell(
+                      borderRadius: BorderRadius.circular(10),
+                      onTap: _openFilterSheet,
+                      child: Stack(
+                        alignment: Alignment.center,
+                        children: [
+                          Icon(
+                            Icons.tune_rounded,
+                            size: 18,
+                            color: Colors.grey.shade800,
+                          ),
+                          if (_hasActiveFilters)
+                            Positioned(
+                              right: 8,
+                              top: 8,
+                              child: Container(
+                                width: 7,
+                                height: 7,
+                                decoration: BoxDecoration(
+                                  color: Colors.blue.shade700,
+                                  shape: BoxShape.circle,
+                                ),
+                              ),
+                            ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+                const Spacer(),
+                _MiniStatText(label: 'Total', value: totalOrders.toString()),
+                const SizedBox(width: 10),
+                _MiniStatText(label: 'Rev', value: formattedRevenue),
+                const SizedBox(width: 10),
+                _MiniStatText(label: 'Confirmed', value: confirmedCount.toString()),
+                const SizedBox(width: 10),
+                _MiniStatText(label: 'Disp Pend', value: dispatchPendingCount.toString()),
+              ],
             ),
-            const SizedBox(height: 20),
-            Text(title, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: _zTextMain)),
-            const SizedBox(height: 8),
-            Text(subtitle, textAlign: TextAlign.center, style: const TextStyle(fontSize: 14, color: _zTextMuted, height: 1.5)),
-            if (actionLabel != null && onAction != null) ...[
-              const SizedBox(height: 24),
-              OutlinedButton.icon(
-                onPressed: onAction, icon: const Icon(Icons.refresh, size: 18), label: Text(actionLabel),
-                style: OutlinedButton.styleFrom(foregroundColor: _zPrimary, side: const BorderSide(color: _zPrimary), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8))),
-              ),
-            ]
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-// =========================================================
-// WIDGETS
-// =========================================================
-
-class _KpiCard extends StatelessWidget {
-  final String title;
-  final String value;
-  final IconData icon;
-  final Color color;
-
-  const _KpiCard({required this.title, required this.value, required this.icon, required this.color});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: 140,
-      margin: const EdgeInsets.only(right: 12),
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: _zBorder),
-        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 4, offset: const Offset(0, 2))],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Icon(icon, size: 16, color: color.withOpacity(0.8)),
-              const SizedBox(width: 6),
-              Expanded(child: Text(title, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: _zTextMuted), maxLines: 1, overflow: TextOverflow.ellipsis)),
-            ],
           ),
-          const SizedBox(height: 8),
-          Text(value, style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: color)),
+          if (_hasActiveFilters)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 4),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      'Filters applied',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: Colors.grey.shade700,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ),
+                  TextButton(
+                    onPressed: _resetFilters,
+                    child: const Text('Clear'),
+                  ),
+                ],
+              ),
+            ),
+          Expanded(
+            child: filteredDocs.isEmpty
+                ? _EmptyOrdersState(
+              hasSearch: _searchQuery.trim().isNotEmpty || _hasActiveFilters,
+              onReset: () {
+                _searchController.clear();
+                setState(() {
+                  _searchQuery = '';
+                });
+                _resetFilters();
+              },
+            )
+                : RefreshIndicator(
+              onRefresh: _fetchInitialData,
+              child: ListView.separated(
+                controller: _scrollController,
+                padding: const EdgeInsets.fromLTRB(16, 4, 16, 90),
+                itemCount: filteredDocs.length + (_hasMore ? 1 : 0),
+                separatorBuilder: (_, __) => const SizedBox(height: 8),
+                itemBuilder: (context, index) {
+                  if (index == filteredDocs.length) {
+                    return const Padding(
+                      padding: EdgeInsets.symmetric(vertical: 24),
+                      child: Center(child: CircularProgressIndicator(strokeWidth: 2)),
+                    );
+                  }
+
+                  final doc = filteredDocs[index];
+                  final data = doc.data();
+
+                  return _SalesOrderCard(
+                    key: ValueKey(doc.id),
+                    document: doc,
+                    nameResolver: _getUserName,
+                    onViewTap: () => _openSalesOrderPreview(data),
+                    onDispatchTap: () => _showDispatchDialog(doc),
+                    onApproveTap: () => _showApprovalDialog(doc),
+                    onCancelTap: () => _cancelOrder(doc),
+                    onUploadPOTap: () => _handlePOUpload(doc.id),
+                    onViewPOTap: () {
+                      final poData = data['purchaseOrder'];
+                      if (poData != null && poData['url'] != null) {
+                        _viewPO(poData['url']);
+                      }
+                    },
+                    onCreateProformaTap: () => _createProformaInvoice(data),
+                  );
+                },
+              ),
+            ),
+          ),
         ],
       ),
     );
@@ -1155,7 +1103,7 @@ class _SalesOrderCard extends StatelessWidget {
       date = dateRaw.toDate();
     }
 
-    final formattedDate = date != null ? DateFormat('dd MMM yyyy').format(date) : '--';
+    final formattedDate = date != null ? DateFormat('dd/MM/yyyy').format(date) : '-';
     final formattedAmount = NumberFormat.currency(
         symbol: '₹', locale: 'en_IN', decimalDigits: grandTotal.truncateToDouble() == grandTotal ? 0 : 2
     ).format(grandTotal);
@@ -1167,179 +1115,176 @@ class _SalesOrderCard extends StatelessWidget {
     final Map<String, dynamic>? poData = data['purchaseOrder'];
     final bool hasPO = poData != null && _parseSafeString(poData['url']).isNotEmpty;
 
-    // Audit Fields safely parsing
     final String createdByUid = _parseSafeString(data['createdBy']);
-    final String? explicitlyStoredName = data['createdByName']?.toString().trim();
-
-    String formattedCreatedAt = '--';
-    final createdAtRaw = data['createdAt'];
-    if (createdAtRaw != null && createdAtRaw is Timestamp) {
-      formattedCreatedAt = DateFormat('dd MMM yyyy, hh:mm a').format(createdAtRaw.toDate());
-    }
+    final String explicitlyStoredName = data['createdByName']?.toString().trim() ?? '';
 
     String formattedUpdatedAt = '--';
     final updatedAtRaw = data['updatedAt'];
     if (updatedAtRaw != null && updatedAtRaw is Timestamp) {
-      formattedUpdatedAt = DateFormat('dd MMM yyyy, hh:mm a').format(updatedAtRaw.toDate());
+      formattedUpdatedAt = DateFormat('dd/MM/yyyy').format(updatedAtRaw.toDate());
     }
 
     return Container(
-      margin: const EdgeInsets.only(bottom: 12),
       decoration: BoxDecoration(
-        color: _zCard,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: _zBorder, width: 0.8),
-        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.02), offset: const Offset(0, 2), blurRadius: 8)],
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(
+          color: Colors.grey.shade200,
+          width: 0.8,
+        ),
       ),
-      child: Material(
-        color: Colors.transparent,
-        borderRadius: BorderRadius.circular(12),
-        child: InkWell(
-          onTap: onViewTap,
-          borderRadius: BorderRadius.circular(12),
-          child: Padding(
-            padding: const EdgeInsets.all(16.0),
-            child: Column(
+      child: Padding(
+        padding: const EdgeInsets.all(10),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Row(
-                      children: [
-                        Text(soNumber, style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800, color: _zTextMain)),
-                        if (hasPO)
-                          const Padding(
-                            padding: EdgeInsets.only(left: 8.0),
-                            child: Icon(Icons.attachment_rounded, size: 16, color: _zPrimary),
-                          ),
-                      ],
+                CircleAvatar(
+                  radius: 18,
+                  backgroundColor: Colors.blue.shade50,
+                  child: Text(
+                    customerName.isNotEmpty
+                        ? customerName[0].toUpperCase()
+                        : '?',
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w700,
+                      color: Colors.blue.shade800,
                     ),
-                    Row(
-                      children: [
-                        _StatusBadge(status: status, type: 'Order'),
-                        PopupMenuButton<String>(
-                          icon: const Icon(Icons.more_vert, color: _zTextMuted, size: 20),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                          onSelected: (value) {
-                            if (value == 'view') onViewTap();
-                            if (value == 'dispatch') onDispatchTap();
-                            if (value == 'approve') onApproveTap();
-                            if (value == 'cancel') onCancelTap();
-                            if (value == 'view_po') onViewPOTap();
-                            if (value == 'upload_po') onUploadPOTap();
-                            if (value == 'create_proforma') onCreateProformaTap();
-                          },
-                          itemBuilder: (BuildContext context) => [
-                            const PopupMenuItem(value: 'view', child: Text('View Details')),
-                            const PopupMenuDivider(),
-                            if (hasPO)
-                              const PopupMenuItem(value: 'view_po', child: Text('View PO', style: TextStyle(color: _zPrimary, fontWeight: FontWeight.w600))),
-                            PopupMenuItem(
-                                value: 'upload_po',
-                                child: Text(hasPO ? 'Replace PO' : 'Upload PO', style: TextStyle(color: hasPO ? _zTextMuted : _zPrimary))
-                            ),
-                            const PopupMenuDivider(),
-                            const PopupMenuItem(
-                                value: 'create_proforma',
-                                child: Text('Create Proforma Invoice')
-                            ),
-                            const PopupMenuDivider(),
-                            if (canApprove) const PopupMenuItem(value: 'approve', child: Text('Approve / Reject')),
-                            if (canDispatch) const PopupMenuItem(value: 'dispatch', child: Text('Update Dispatch')),
-                            if (canCancel) const PopupMenuItem(value: 'cancel', child: Text('Cancel Order', style: TextStyle(color: _zDanger))),
-                          ],
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 12),
-                Row(
-                  children: [
-                    const Icon(Icons.business_center_rounded, size: 16, color: _zTextMuted),
-                    const SizedBox(width: 8),
-                    Expanded(child: Text(customerName, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: _zTextMain), maxLines: 1, overflow: TextOverflow.ellipsis)),
-                  ],
-                ),
-                const SizedBox(height: 14),
-                Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
-                  children: [
-                    _StatusBadge(status: approvalStatus, type: 'Approval'),
-                    _StatusBadge(status: dispatchStatus, type: 'Dispatch'),
-                  ],
-                ),
-                const SizedBox(height: 14),
-                const Divider(height: 1, color: _zBorder),
-                const SizedBox(height: 14),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Row(
-                      children: [
-                        const Icon(Icons.calendar_today_rounded, size: 14, color: _zTextMuted),
-                        const SizedBox(width: 6),
-                        Text(formattedDate, style: const TextStyle(fontSize: 13, color: _zTextMuted, fontWeight: FontWeight.w500)),
-                      ],
-                    ),
-                    Text(formattedAmount, style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w900, color: _zPrimary)),
-                  ],
-                ),
-                const SizedBox(height: 16),
-                Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                  decoration: BoxDecoration(
-                    color: _zBackground,
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: _zBorder.withOpacity(0.6)),
                   ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Row(
                         children: [
-                          const Icon(Icons.person_outline, size: 14, color: _zTextMuted),
-                          const SizedBox(width: 6),
-                          const Text('Created By: ', style: TextStyle(fontSize: 12, color: _zTextMuted, fontWeight: FontWeight.w600)),
-                          Expanded(
-                            child: (explicitlyStoredName != null && explicitlyStoredName.isNotEmpty)
-                                ? Text(explicitlyStoredName, style: const TextStyle(fontSize: 12, color: _zTextMain, fontWeight: FontWeight.w500), maxLines: 1, overflow: TextOverflow.ellipsis)
-                                : FutureBuilder<String>(
-                                future: nameResolver(createdByUid),
-                                builder: (context, snapshot) {
-                                  return Text(snapshot.data ?? '...', style: const TextStyle(fontSize: 12, color: _zTextMain, fontWeight: FontWeight.w500), maxLines: 1, overflow: TextOverflow.ellipsis);
-                                }
+                          Flexible(
+                            child: Text(
+                              soNumber,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                fontSize: 14.5,
+                                fontWeight: FontWeight.w700,
+                              ),
                             ),
                           ),
+                          if (hasPO)
+                            const Padding(
+                              padding: EdgeInsets.only(left: 6.0),
+                              child: Icon(Icons.attachment_rounded, size: 14, color: Colors.blue),
+                            ),
                         ],
                       ),
-                      const SizedBox(height: 6),
-                      Row(
-                        children: [
-                          const Icon(Icons.access_time, size: 14, color: _zTextMuted),
-                          const SizedBox(width: 6),
-                          const Text('Created At: ', style: TextStyle(fontSize: 12, color: _zTextMuted, fontWeight: FontWeight.w600)),
-                          Text(formattedCreatedAt, style: const TextStyle(fontSize: 12, color: _zTextMain, fontWeight: FontWeight.w500)),
-                        ],
+                      const SizedBox(height: 1),
+                      Text(
+                        customerName,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: 12.5,
+                          color: Colors.grey.shade600,
+                          fontWeight: FontWeight.w500,
+                        ),
                       ),
-                      const SizedBox(height: 6),
-                      Row(
-                        children: [
-                          const Icon(Icons.update, size: 14, color: _zTextMuted),
-                          const SizedBox(width: 6),
-                          const Text('Last Updated: ', style: TextStyle(fontSize: 12, color: _zTextMuted, fontWeight: FontWeight.w600)),
-                          Text(formattedUpdatedAt, style: const TextStyle(fontSize: 12, color: _zTextMain, fontWeight: FontWeight.w500)),
-                        ],
+                    ],
+                  ),
+                ),
+                SizedBox(
+                  width: 28,
+                  height: 28,
+                  child: PopupMenuButton<String>(
+                    padding: EdgeInsets.zero,
+                    tooltip: 'Actions',
+                    icon: Icon(Icons.more_vert, size: 20, color: Colors.grey.shade600),
+                    onSelected: (value) {
+                      if (value == 'view') onViewTap();
+                      if (value == 'dispatch') onDispatchTap();
+                      if (value == 'approve') onApproveTap();
+                      if (value == 'cancel') onCancelTap();
+                      if (value == 'view_po') onViewPOTap();
+                      if (value == 'upload_po') onUploadPOTap();
+                      if (value == 'create_proforma') onCreateProformaTap();
+                    },
+                    itemBuilder: (BuildContext context) => [
+                      const PopupMenuItem(value: 'view', child: Text('View Details')),
+                      const PopupMenuDivider(),
+                      if (hasPO)
+                        const PopupMenuItem(value: 'view_po', child: Text('View PO', style: TextStyle(color: Colors.blue, fontWeight: FontWeight.w600))),
+                      PopupMenuItem(
+                          value: 'upload_po',
+                          child: Text(hasPO ? 'Replace PO' : 'Upload PO', style: TextStyle(color: hasPO ? Colors.grey.shade700 : Colors.blue))
                       ),
+                      const PopupMenuDivider(),
+                      const PopupMenuItem(
+                          value: 'create_proforma',
+                          child: Text('Create Proforma Invoice')
+                      ),
+                      const PopupMenuDivider(),
+                      if (canApprove) const PopupMenuItem(value: 'approve', child: Text('Approve / Reject')),
+                      if (canDispatch) const PopupMenuItem(value: 'dispatch', child: Text('Update Dispatch')),
+                      if (canCancel) const PopupMenuItem(value: 'cancel', child: Text('Cancel Order', style: TextStyle(color: Colors.red))),
                     ],
                   ),
                 ),
               ],
             ),
-          ),
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 6,
+              runSpacing: 6,
+              children: [
+                _StatusBadge(status: status, type: 'Order'),
+                _StatusBadge(status: approvalStatus, type: 'Approval'),
+                _StatusBadge(status: dispatchStatus, type: 'Dispatch'),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 12,
+              runSpacing: 6,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              children: [
+                if (_parseSafeString(data['referenceQuotationId'] ?? data['quotationId']).isNotEmpty)
+                  _InlineInfo(
+                    icon: Icons.tag_outlined,
+                    text: 'Ref: ${_parseSafeString(data['referenceQuotationId'] ?? data['quotationId'])}',
+                  ),
+                _InlineInfo(
+                  icon: Icons.currency_rupee_outlined,
+                  text: formattedAmount,
+                ),
+                if (explicitlyStoredName.isNotEmpty)
+                  _InlineInfo(
+                    icon: Icons.person_outline,
+                    text: explicitlyStoredName,
+                  )
+                else
+                  FutureBuilder<String>(
+                    future: nameResolver(createdByUid),
+                    builder: (context, snapshot) {
+                      return _InlineInfo(
+                        icon: Icons.person_outline,
+                        text: snapshot.data ?? '...',
+                      );
+                    },
+                  ),
+                _InlineInfo(
+                  icon: Icons.add_circle_outline,
+                  text: 'Created: $formattedDate',
+                ),
+                if (formattedUpdatedAt != '--')
+                  _InlineInfo(
+                    icon: Icons.edit_outlined,
+                    text: 'Updated: $formattedUpdatedAt',
+                  ),
+              ],
+            ),
+          ],
         ),
       ),
     );
@@ -1370,7 +1315,6 @@ class _StatusBadge extends StatelessWidget {
       else if (s == 'packed') { bgColor = Colors.purple.shade50; textColor = Colors.purple.shade700; }
       else { bgColor = Colors.grey.shade100; textColor = Colors.grey.shade700; displayStatus = 'DISP PENDING'; }
     } else {
-      // Order Status
       if (s == 'confirmed') { bgColor = Colors.blue.shade50; textColor = Colors.blue.shade700; }
       else if (s == 'completed') { bgColor = Colors.green.shade50; textColor = Colors.green.shade700; }
       else if (s == 'cancelled') { bgColor = Colors.red.shade50; textColor = Colors.red.shade700; }
@@ -1378,40 +1322,66 @@ class _StatusBadge extends StatelessWidget {
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-      decoration: BoxDecoration(color: bgColor, borderRadius: BorderRadius.circular(6), border: Border.all(color: textColor.withOpacity(0.2))),
-      child: Text(displayStatus, style: TextStyle(color: textColor, fontSize: 10, fontWeight: FontWeight.w800, letterSpacing: 0.5)),
+      decoration: BoxDecoration(
+        color: bgColor,
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Text(
+        displayStatus,
+        style: TextStyle(
+          fontSize: 11,
+          fontWeight: FontWeight.w700,
+          color: textColor,
+        ),
+      ),
     );
   }
 }
 
-// Lightweight static skeleton loader
-class _SkeletonCard extends StatelessWidget {
-  const _SkeletonCard({Key? key}) : super(key: key);
+class _MiniStatText extends StatelessWidget {
+  final String label;
+  final String value;
+
+  const _MiniStatText({required this.label, required this.value});
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.all(16.0),
-      decoration: BoxDecoration(color: _zCard, borderRadius: BorderRadius.circular(12), border: Border.all(color: _zBorder, width: 0.8)),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+    return Text(
+      '$label: $value',
+      style: TextStyle(
+        fontSize: 12,
+        color: Colors.grey.shade700,
+        fontWeight: FontWeight.w600,
+      ),
+    );
+  }
+}
+
+class _InlineInfo extends StatelessWidget {
+  final IconData icon;
+  final String text;
+
+  const _InlineInfo({required this.icon, required this.text});
+
+  @override
+  Widget build(BuildContext context) {
+    return ConstrainedBox(
+      constraints: const BoxConstraints(maxWidth: 300),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
         children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: const [_ShimmerBox(width: 120, height: 18), _ShimmerBox(width: 70, height: 22, borderRadius: 6)],
-          ),
-          const SizedBox(height: 16),
-          Row(children: const [_ShimmerBox(width: 16, height: 16, borderRadius: 4), SizedBox(width: 8), _ShimmerBox(width: 180, height: 14)]),
-          const SizedBox(height: 16),
-          const Divider(height: 1, color: _zBorder),
-          const SizedBox(height: 16),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Row(children: const [_ShimmerBox(width: 14, height: 14, borderRadius: 4), SizedBox(width: 6), _ShimmerBox(width: 90, height: 12)]),
-              const _ShimmerBox(width: 100, height: 18),
-            ],
+          Icon(icon, size: 14, color: Colors.grey.shade600),
+          const SizedBox(width: 4),
+          Flexible(
+            child: Text(
+              text,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                fontSize: 12,
+                color: Colors.grey.shade800,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
           ),
         ],
       ),
@@ -1419,25 +1389,69 @@ class _SkeletonCard extends StatelessWidget {
   }
 }
 
-class _ShimmerBox extends StatefulWidget {
-  final double width;
-  final double height;
-  final double borderRadius;
-  const _ShimmerBox({Key? key, required this.width, required this.height, this.borderRadius = 8}) : super(key: key);
-  @override State<_ShimmerBox> createState() => _ShimmerBoxState();
-}
-class _ShimmerBoxState extends State<_ShimmerBox> with SingleTickerProviderStateMixin {
-  late AnimationController _controller;
-  late Animation<double> _animation;
-  @override void initState() {
-    super.initState();
-    _controller = AnimationController(vsync: this, duration: const Duration(milliseconds: 1200))..repeat(reverse: true);
-    _animation = Tween<double>(begin: 0.3, end: 0.7).animate(CurvedAnimation(parent: _controller, curve: Curves.easeInOutSine));
-  }
-  @override void dispose() { _controller.dispose(); super.dispose(); }
-  @override Widget build(BuildContext context) {
-    return AnimatedBuilder(animation: _animation, builder: (context, child) {
-      return Container(width: widget.width, height: widget.height, decoration: BoxDecoration(color: Colors.grey.shade200.withOpacity(_animation.value), borderRadius: BorderRadius.circular(widget.borderRadius)));
-    });
+class _EmptyOrdersState extends StatelessWidget {
+  final bool hasSearch;
+  final VoidCallback onReset;
+
+  const _EmptyOrdersState({required this.hasSearch, required this.onReset});
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        return SingleChildScrollView(
+          padding: const EdgeInsets.all(28),
+          child: ConstrainedBox(
+            constraints: BoxConstraints(minHeight: constraints.maxHeight - 40),
+            child: IntrinsicHeight(
+              child: Center(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    CircleAvatar(
+                      radius: 34,
+                      backgroundColor: Colors.blue.shade50,
+                      child: Icon(
+                        hasSearch ? Icons.search_off : Icons.inbox_outlined,
+                        size: 34,
+                        color: Colors.blue.shade700,
+                      ),
+                    ),
+                    const SizedBox(height: 18),
+                    Text(
+                      hasSearch
+                          ? 'No matching orders found'
+                          : 'No orders found',
+                      style: const TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w700,
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      hasSearch
+                          ? 'Try changing the search text or filter.'
+                          : 'No sales order records are available yet.',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        color: Colors.grey.shade700,
+                        fontSize: 14,
+                      ),
+                    ),
+                    const SizedBox(height: 18),
+                    if (hasSearch)
+                      OutlinedButton(
+                        onPressed: onReset,
+                        child: const Text('Reset Filters'),
+                      ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        );
+      },
+    );
   }
 }

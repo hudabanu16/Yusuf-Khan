@@ -235,21 +235,23 @@ class QuotationPdfGenerator {
     return t == 'salesorder' || t == 'so';
   }
 
-  static final PdfColor _primaryColor = PdfColor.fromInt(0xFF1E3A8A);
-  static final PdfColor _bgColor = PdfColor.fromInt(0xFFF8FAFC);
+  // Premium Corporate Gold Theme
+  static final PdfColor _primaryColor = PdfColor.fromInt(0xFF111827); // Charcoal black
+  static final PdfColor _accentColor = PdfColor.fromInt(0xFFC8A951); // Gold
+  static final PdfColor _bgColor = PdfColor.fromInt(0xFFF9FAFB); // Very light grey
   static final PdfColor _cardBgColor = PdfColors.white;
-  static final PdfColor _borderColor = PdfColor.fromInt(0xFFE5E7EB);
-  static final PdfColor _textMain = PdfColor.fromInt(0xFF111827);
-  static final PdfColor _textMuted = PdfColor.fromInt(0xFF6B7280);
-  static final PdfColor _zebraColor = PdfColor.fromInt(0xFFF8FAFC);
+  static final PdfColor _borderColor = PdfColor.fromInt(0xFFE5E7EB); // Light grey border
+  static final PdfColor _textMain = PdfColor.fromInt(0xFF111827); // Charcoal black
+  static final PdfColor _textMuted = PdfColor.fromInt(0xFF6B7280); // Muted grey
+  static final PdfColor _zebraColor = PdfColor.fromInt(0xFFF3F4F6); // Very subtle grey
 
   static pw.Widget _buildCard({required pw.Widget child}) {
     return pw.Container(
       width: double.infinity,
-      padding: const pw.EdgeInsets.all(14),
+      padding: const pw.EdgeInsets.all(16),
       decoration: pw.BoxDecoration(
         color: _cardBgColor,
-        borderRadius: pw.BorderRadius.circular(8),
+        borderRadius: pw.BorderRadius.circular(10),
         border: pw.Border.all(color: _borderColor, width: 1),
       ),
       child: child,
@@ -331,26 +333,28 @@ class QuotationPdfGenerator {
       pw.MultiPage(
         pageTheme: pw.PageTheme(
           pageFormat: format,
-          margin: const pw.EdgeInsets.all(32),
+          margin: const pw.EdgeInsets.all(36),
           buildBackground: (context) => pw.FullPage(
             ignoreMargins: true,
-            child: pw.Container(color: _bgColor),
+            child: pw.Container(color: _bgColor), // Clean soft background, no watermark
           ),
         ),
         build: (context) {
           return [
             _buildEnterpriseHeader(quotation, logoImage, isPreview, displayDocumentType),
-            pw.SizedBox(height: 20),
+            pw.SizedBox(height: 12),
+            pw.Container(height: 1.5, width: double.infinity, color: _accentColor), // Thin GOLD divider
+            pw.SizedBox(height: 24),
             _buildTwoColumnInfo(quotation, soNumber, quoteNumber, docDateStr, isSO),
-            pw.SizedBox(height: 16),
+            pw.SizedBox(height: 20),
 
             _buildSubjectBar(subjectStr),
-            pw.SizedBox(height: 16),
+            pw.SizedBox(height: 20),
 
             _buildProductsTable(items, isInterState),
-            pw.SizedBox(height: 16),
+            pw.SizedBox(height: 20),
             _buildTotalSummaryCard(quotation, isInterState, roundOff),
-            pw.SizedBox(height: 24),
+            pw.SizedBox(height: 28),
             _buildBottomSection(quotation),
           ];
         },
@@ -394,57 +398,73 @@ class QuotationPdfGenerator {
       children: [
         pw.Expanded(
           flex: 6,
-          child: pw.Column(
+          child: pw.Row(
             crossAxisAlignment: pw.CrossAxisAlignment.start,
             children: [
               if (logoImage != null) ...[
-                pw.Image(
-                  logoImage,
-                  height: 50,
-                  width: 160,
-                  fit: pw.BoxFit.contain,
-                ),
-                pw.SizedBox(height: 8),
-              ],
-              if (companyName.isNotEmpty) ...[
-                pw.Text(
-                  companyName.toUpperCase(),
-                  style: pw.TextStyle(
-                    color: _primaryColor,
-                    fontSize: 16,
-                    fontWeight: pw.FontWeight.bold,
+                pw.Container(
+                  padding: const pw.EdgeInsets.all(6),
+                  decoration: pw.BoxDecoration(
+                    color: PdfColors.white,
+                    border: pw.Border.all(color: _borderColor),
+                    borderRadius: pw.BorderRadius.circular(6),
+                  ),
+                  child: pw.Image(
+                    logoImage,
+                    height: 50,
+                    width: 50,
+                    fit: pw.BoxFit.contain,
                   ),
                 ),
-                pw.SizedBox(height: 4),
+                pw.SizedBox(width: 14),
               ],
-              if (companyAddress.isNotEmpty) ...[
-                pw.Text(
-                  companyAddress,
-                  style: pw.TextStyle(
-                    fontSize: 9,
-                    color: _textMuted,
-                    lineSpacing: 1.3,
-                  ),
+              pw.Expanded(
+                child: pw.Column(
+                  crossAxisAlignment: pw.CrossAxisAlignment.start,
+                  children: [
+                    if (companyName.isNotEmpty) ...[
+                      pw.Text(
+                        companyName.toUpperCase(),
+                        style: pw.TextStyle(
+                          color: _primaryColor, // Bold charcoal
+                          fontSize: 16,
+                          fontWeight: pw.FontWeight.bold,
+                          letterSpacing: 0.5,
+                        ),
+                      ),
+                      pw.SizedBox(height: 4),
+                    ],
+                    if (companyAddress.isNotEmpty) ...[
+                      pw.Text(
+                        companyAddress,
+                        style: pw.TextStyle(
+                          fontSize: 9,
+                          color: _textMuted,
+                          lineSpacing: 1.4,
+                        ),
+                      ),
+                      pw.SizedBox(height: 6),
+                    ],
+                    if (legalIds.isNotEmpty) ...[
+                      pw.Text(
+                        legalIds.join('  |  '),
+                        style: pw.TextStyle(
+                          fontSize: 9,
+                          fontWeight: pw.FontWeight.bold,
+                          color: _textMain,
+                        ),
+                      ),
+                      pw.SizedBox(height: 4),
+                    ],
+                    if (contacts.isNotEmpty) ...[
+                      pw.Text(
+                        contacts.join('  |  '),
+                        style: pw.TextStyle(fontSize: 9, color: _textMuted),
+                      ),
+                    ],
+                  ],
                 ),
-                pw.SizedBox(height: 6),
-              ],
-              if (legalIds.isNotEmpty) ...[
-                pw.Text(
-                  legalIds.join('  |  '),
-                  style: pw.TextStyle(
-                    fontSize: 9,
-                    fontWeight: pw.FontWeight.bold,
-                    color: _textMain,
-                  ),
-                ),
-                pw.SizedBox(height: 4),
-              ],
-              if (contacts.isNotEmpty) ...[
-                pw.Text(
-                  contacts.join('  |  '),
-                  style: pw.TextStyle(fontSize: 9, color: _textMuted),
-                ),
-              ],
+              ),
             ],
           ),
         ),
@@ -453,35 +473,37 @@ class QuotationPdfGenerator {
           flex: 4,
           child: pw.Column(
             crossAxisAlignment: pw.CrossAxisAlignment.end,
+            mainAxisAlignment: pw.MainAxisAlignment.start,
             children: [
               if (isPreview)
                 pw.Container(
-                  margin: const pw.EdgeInsets.only(bottom: 6),
+                  margin: const pw.EdgeInsets.only(bottom: 8),
                   padding: const pw.EdgeInsets.symmetric(
-                    horizontal: 8,
-                    vertical: 4,
+                    horizontal: 10,
+                    vertical: 5,
                   ),
                   decoration: pw.BoxDecoration(
-                    color: PdfColors.orange100,
+                    color: PdfColor.fromInt(0xFFFEF3C7),
                     borderRadius: pw.BorderRadius.circular(4),
-                    border: pw.Border.all(color: PdfColors.orange400),
+                    border: pw.Border.all(color: PdfColor.fromInt(0xFFF59E0B)),
                   ),
                   child: pw.Text(
                     'PREVIEW',
                     style: pw.TextStyle(
-                      color: PdfColors.orange800,
-                      fontSize: 9,
+                      color: PdfColor.fromInt(0xFFD97706),
+                      fontSize: 10,
                       fontWeight: pw.FontWeight.bold,
+                      letterSpacing: 1.2,
                     ),
                   ),
                 ),
               pw.Text(
                 displayDocumentType.toUpperCase(),
                 style: pw.TextStyle(
-                  color: _primaryColor,
-                  fontSize: 24,
+                  color: _accentColor, // Document type in GOLD
+                  fontSize: 26,
                   fontWeight: pw.FontWeight.bold,
-                  letterSpacing: 2.0,
+                  letterSpacing: 1.5,
                 ),
               ),
             ],
@@ -511,80 +533,93 @@ class QuotationPdfGenerator {
       crossAxisAlignment: pw.CrossAxisAlignment.start,
       children: [
         pw.Expanded(
-          flex: 5,
+          flex: 11,
           child: _buildCard(
             child: pw.Column(
               crossAxisAlignment: pw.CrossAxisAlignment.start,
               children: [
                 pw.Text(
-                  'Bill To:',
+                  'BILL TO',
                   style: pw.TextStyle(
-                    fontSize: 9,
+                    fontSize: 10,
                     color: _textMuted,
                     fontWeight: pw.FontWeight.bold,
+                    letterSpacing: 0.5,
                   ),
                 ),
-                pw.SizedBox(height: 6),
+                pw.SizedBox(height: 10),
                 if (clientName.isNotEmpty) ...[
                   pw.Text(
                     clientName.toUpperCase(),
                     style: pw.TextStyle(
-                      fontSize: 12,
+                      fontSize: 13,
                       fontWeight: pw.FontWeight.bold,
                       color: _textMain,
                     ),
                   ),
-                  pw.SizedBox(height: 4),
+                  pw.SizedBox(height: 6),
                 ],
                 if (clientAddress.isNotEmpty)
                   pw.Text(
                     clientAddress,
                     style: pw.TextStyle(
-                      fontSize: 9,
+                      fontSize: 10,
                       color: _textMain,
-                      lineSpacing: 1.4,
+                      lineSpacing: 1.5,
                     ),
                   ),
                 if (customerState.isNotEmpty)
                   pw.Text(
                     'State: $customerState',
-                    style: pw.TextStyle(fontSize: 9, color: _textMain),
+                    style: pw.TextStyle(fontSize: 10, color: _textMain, lineSpacing: 1.5),
                   ),
-                pw.SizedBox(height: 6),
+                pw.SizedBox(height: 8),
                 if (gstNo.isNotEmpty)
                   pw.Text(
                     'GSTIN: $gstNo',
                     style: pw.TextStyle(
-                      fontSize: 9,
+                      fontSize: 10,
                       fontWeight: pw.FontWeight.bold,
                       color: _textMain,
                     ),
                   ),
+                pw.SizedBox(height: 4),
                 if (contactPerson.isNotEmpty)
                   pw.Text(
                     'Attn: $contactPerson',
                     style: pw.TextStyle(
-                      fontSize: 9,
+                      fontSize: 10,
                       fontWeight: pw.FontWeight.bold,
+                      color: _textMain,
                     ),
                   ),
                 if (clientMobile.isNotEmpty)
                   pw.Text(
                     'Ph: $clientMobile',
-                    style: pw.TextStyle(fontSize: 9),
+                    style: pw.TextStyle(fontSize: 10, color: _textMain),
                   ),
               ],
             ),
           ),
         ),
-        pw.SizedBox(width: 16),
+        pw.SizedBox(width: 20),
         pw.Expanded(
-          flex: 4,
+          flex: 9,
           child: _buildCard(
             child: pw.Column(
               crossAxisAlignment: pw.CrossAxisAlignment.start,
               mainAxisAlignment: pw.MainAxisAlignment.center,
               children: [
+                pw.Text(
+                  'DOCUMENT DETAILS',
+                  style: pw.TextStyle(
+                    fontSize: 10,
+                    color: _textMuted,
+                    fontWeight: pw.FontWeight.bold,
+                    letterSpacing: 0.5,
+                  ),
+                ),
+                pw.SizedBox(height: 12),
                 if (isSO && soNumber.isNotEmpty)
                   _buildMetaRow('Sales Order No.', soNumber),
                 if (quoteNumber.isNotEmpty)
@@ -605,22 +640,21 @@ class QuotationPdfGenerator {
   static pw.Widget _buildMetaRow(String label, String value) {
     if (value.trim().isEmpty) return pw.SizedBox.shrink();
     return pw.Padding(
-      padding: const pw.EdgeInsets.only(bottom: 8),
+      padding: const pw.EdgeInsets.only(bottom: 10),
       child: pw.Row(
         mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
         children: [
           pw.Text(
             label,
             style: pw.TextStyle(
-              fontSize: 9,
+              fontSize: 10,
               color: _textMuted,
-              fontWeight: pw.FontWeight.bold,
             ),
           ),
           pw.Text(
             value,
             style: pw.TextStyle(
-              fontSize: 9,
+              fontSize: 10,
               fontWeight: pw.FontWeight.bold,
               color: _textMain,
             ),
@@ -633,11 +667,11 @@ class QuotationPdfGenerator {
   static pw.Widget _buildSubjectBar(String subject) {
     return pw.Container(
       width: double.infinity,
-      padding: const pw.EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+      padding: const pw.EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       decoration: pw.BoxDecoration(
-        color: PdfColor.fromInt(0xFFEFF6FF),
-        borderRadius: pw.BorderRadius.circular(6),
-        border: pw.Border.all(color: PdfColor.fromInt(0xFFDBEAFE)),
+        color: _cardBgColor,
+        borderRadius: pw.BorderRadius.circular(8),
+        border: pw.Border.all(color: _borderColor),
       ),
       child: pw.RichText(
         text: pw.TextSpan(
@@ -645,15 +679,15 @@ class QuotationPdfGenerator {
             pw.TextSpan(
               text: 'Subject: ',
               style: pw.TextStyle(
-                fontSize: 10,
+                fontSize: 11,
                 fontWeight: pw.FontWeight.bold,
-                color: _primaryColor,
+                color: _textMuted,
               ),
             ),
             pw.TextSpan(
               text: subject,
               style: pw.TextStyle(
-                fontSize: 10,
+                fontSize: 11,
                 fontWeight: pw.FontWeight.bold,
                 color: _textMain,
               ),
@@ -670,10 +704,10 @@ class QuotationPdfGenerator {
       ) {
     if (items.isEmpty) {
       return pw.Container(
-        padding: const pw.EdgeInsets.all(24),
+        padding: const pw.EdgeInsets.all(32),
         decoration: pw.BoxDecoration(
           color: _cardBgColor,
-          borderRadius: pw.BorderRadius.circular(8),
+          borderRadius: pw.BorderRadius.circular(10),
           border: pw.Border.all(color: _borderColor),
         ),
         alignment: pw.Alignment.center,
@@ -691,31 +725,31 @@ class QuotationPdfGenerator {
     return pw.Container(
       decoration: pw.BoxDecoration(
         color: _cardBgColor,
-        borderRadius: pw.BorderRadius.circular(8),
+        borderRadius: pw.BorderRadius.circular(10),
         border: pw.Border.all(color: _borderColor),
       ),
       child: pw.Table(
         columnWidths: {
-          0: const pw.FixedColumnWidth(35),
+          0: const pw.FixedColumnWidth(40),
           1: const pw.FlexColumnWidth(3.5),
-          2: const pw.FixedColumnWidth(60),
-          3: const pw.FixedColumnWidth(55),
-          4: const pw.FixedColumnWidth(75),
-          5: const pw.FixedColumnWidth(75),
-          6: const pw.FixedColumnWidth(85),
+          2: const pw.FixedColumnWidth(70),
+          3: const pw.FixedColumnWidth(60),
+          4: const pw.FixedColumnWidth(80),
+          5: const pw.FixedColumnWidth(80),
+          6: const pw.FixedColumnWidth(90),
         },
         children: [
           pw.TableRow(
             decoration: pw.BoxDecoration(
-              color: _primaryColor,
+              color: _primaryColor, // Charcoal background
               borderRadius: const pw.BorderRadius.vertical(
-                top: pw.Radius.circular(7),
+                top: pw.Radius.circular(9),
               ),
             ),
             children:
             [
               'S.No',
-              'Description',
+              'Item Description',
               'HSN/SAC',
               'Qty',
               'Rate',
@@ -724,8 +758,8 @@ class QuotationPdfGenerator {
             ].map((text) {
               return pw.Container(
                 padding: const pw.EdgeInsets.symmetric(
-                  vertical: 10,
-                  horizontal: 8,
+                  vertical: 12,
+                  horizontal: 10,
                 ),
                 alignment:
                 (text == 'S.No' ||
@@ -733,15 +767,16 @@ class QuotationPdfGenerator {
                     text == 'HSN/SAC' ||
                     text == 'Tax')
                     ? pw.Alignment.center
-                    : (text == 'Description'
+                    : (text == 'Item Description'
                     ? pw.Alignment.centerLeft
                     : pw.Alignment.centerRight),
                 child: pw.Text(
                   text,
                   style: pw.TextStyle(
-                    color: PdfColors.white,
-                    fontSize: 9,
+                    color: PdfColors.white, // White header text
+                    fontSize: 10,
                     fontWeight: pw.FontWeight.bold,
+                    letterSpacing: 0.5,
                   ),
                 ),
               );
@@ -763,12 +798,12 @@ class QuotationPdfGenerator {
                 style: pw.TextStyle(
                   fontSize: 10,
                   fontWeight: pw.FontWeight.bold,
-                  color: _textMain,
+                  color: _primaryColor,
                 ),
               ),
             ];
             if (item.description.trim().isNotEmpty) {
-              descWidgets.add(pw.SizedBox(height: 4));
+              descWidgets.add(pw.SizedBox(height: 6));
               final lines = item.description.split('\n');
               for (var line in lines) {
                 if (line.trim().isNotEmpty) {
@@ -776,9 +811,9 @@ class QuotationPdfGenerator {
                     pw.Text(
                       line.trim(),
                       style: pw.TextStyle(
-                        fontSize: 8,
+                        fontSize: 9,
                         color: _textMuted,
-                        lineSpacing: 1.2,
+                        lineSpacing: 1.4,
                       ),
                     ),
                   );
@@ -786,14 +821,14 @@ class QuotationPdfGenerator {
               }
             }
             if (item.discountPercent > 0) {
-              descWidgets.add(pw.SizedBox(height: 4));
+              descWidgets.add(pw.SizedBox(height: 6));
               descWidgets.add(
                 pw.Text(
-                  'Disc: ${item.discountPercent}% applied',
+                  'Discount: ${item.discountPercent}% applied',
                   style: pw.TextStyle(
-                    fontSize: 8,
+                    fontSize: 9,
                     fontStyle: pw.FontStyle.italic,
-                    color: _primaryColor,
+                    color: _accentColor,
                   ),
                 ),
               );
@@ -805,8 +840,8 @@ class QuotationPdfGenerator {
                 }) {
               return pw.Container(
                 padding: const pw.EdgeInsets.symmetric(
-                  vertical: 10,
-                  horizontal: 8,
+                  vertical: 14,
+                  horizontal: 10,
                 ),
                 alignment: align,
                 child: child,
@@ -822,7 +857,7 @@ class QuotationPdfGenerator {
                 pw.Text(
                   text,
                   style: pw.TextStyle(
-                    fontSize: 9,
+                    fontSize: 10,
                     color: _textMain,
                     fontWeight: bold ? pw.FontWeight.bold : null,
                   ),
@@ -834,7 +869,7 @@ class QuotationPdfGenerator {
 
             return pw.TableRow(
               decoration: pw.BoxDecoration(
-                color: i % 2 == 1 ? _zebraColor : _cardBgColor,
+                color: i % 2 == 1 ? _zebraColor : _cardBgColor, // Subtle grey zebra
                 border: pw.Border(
                   bottom: pw.BorderSide(
                     color: i == items.length - 1
@@ -860,7 +895,7 @@ class QuotationPdfGenerator {
                 ),
                 textCell(_currency(item.unitPrice)),
                 textCell(taxStr, align: pw.Alignment.centerRight),
-                textCell(_currency(item.totalAmount), bold: true),
+                textCell(_currency(item.totalAmount), bold: true), // Amount column bold
               ],
             );
           }),
@@ -876,23 +911,23 @@ class QuotationPdfGenerator {
       ) {
     pw.Widget calcRow(String label, String value, {bool bold = false}) {
       return pw.Padding(
-        padding: const pw.EdgeInsets.symmetric(vertical: 6, horizontal: 16),
+        padding: const pw.EdgeInsets.symmetric(vertical: 8, horizontal: 16),
         child: pw.Row(
           mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
           children: [
             pw.Text(
               label,
               style: pw.TextStyle(
-                fontSize: 10,
-                color: bold ? _textMain : _textMuted,
+                fontSize: 11,
+                color: bold ? _primaryColor : _textMuted,
                 fontWeight: bold ? pw.FontWeight.bold : null,
               ),
             ),
             pw.Text(
               value,
               style: pw.TextStyle(
-                fontSize: 10,
-                color: _textMain,
+                fontSize: 11,
+                color: bold ? _primaryColor : _textMain,
                 fontWeight: bold ? pw.FontWeight.bold : null,
               ),
             ),
@@ -913,23 +948,26 @@ class QuotationPdfGenerator {
       mainAxisAlignment: pw.MainAxisAlignment.end,
       children: [
         pw.Container(
-          width: 300,
+          width: 320,
           decoration: pw.BoxDecoration(
             color: _cardBgColor,
-            borderRadius: pw.BorderRadius.circular(8),
+            borderRadius: pw.BorderRadius.circular(10),
             border: pw.Border.all(color: _borderColor),
           ),
           child: pw.Column(
             crossAxisAlignment: pw.CrossAxisAlignment.stretch,
             children: [
-              pw.SizedBox(height: 8),
+              pw.SizedBox(height: 10),
               calcRow('Subtotal', _currency(subtotal)),
               if (itemDiscount > 0)
                 calcRow('Discount', '-${_currency(itemDiscount)}'),
 
-              pw.Divider(color: _borderColor, thickness: 0.5),
+              pw.Padding(
+                padding: const pw.EdgeInsets.symmetric(horizontal: 16),
+                child: pw.Divider(color: _borderColor, thickness: 1),
+              ),
               calcRow('Taxable Value', _currency(taxableValue), bold: true),
-              pw.SizedBox(height: 4),
+              pw.SizedBox(height: 6),
 
               if (!isInterState) ...[
                 calcRow('CGST', _currency(cgst)),
@@ -939,17 +977,17 @@ class QuotationPdfGenerator {
               ],
 
               if (roundOff != 0) calcRow('Round Off', _currency(roundOff)),
-              pw.SizedBox(height: 8),
+              pw.SizedBox(height: 12),
 
               pw.Container(
                 decoration: pw.BoxDecoration(
-                  color: _primaryColor,
+                  color: _accentColor, // GOLD BACKGROUND
                   borderRadius: const pw.BorderRadius.vertical(
-                    bottom: pw.Radius.circular(7),
+                    bottom: pw.Radius.circular(9),
                   ),
                 ),
                 padding: const pw.EdgeInsets.symmetric(
-                  vertical: 16,
+                  vertical: 18,
                   horizontal: 16,
                 ),
                 child: pw.Row(
@@ -958,16 +996,17 @@ class QuotationPdfGenerator {
                     pw.Text(
                       'GRAND TOTAL',
                       style: pw.TextStyle(
-                        fontSize: 14,
-                        color: PdfColors.white,
+                        fontSize: 15, // Bigger font
+                        color: PdfColors.white, // White text
                         fontWeight: pw.FontWeight.bold,
+                        letterSpacing: 1.0,
                       ),
                     ),
                     pw.Text(
                       _currency(finalTotal),
                       style: pw.TextStyle(
-                        fontSize: 16,
-                        color: PdfColors.white,
+                        fontSize: 18, // Bigger font
+                        color: PdfColors.white, // White text
                         fontWeight: pw.FontWeight.bold,
                       ),
                     ),
@@ -998,14 +1037,15 @@ class QuotationPdfGenerator {
               crossAxisAlignment: pw.CrossAxisAlignment.start,
               children: [
                 pw.Text(
-                  'Terms & Conditions',
+                  'TERMS & CONDITIONS',
                   style: pw.TextStyle(
-                    fontSize: 11,
+                    fontSize: 10,
                     fontWeight: pw.FontWeight.bold,
-                    color: _primaryColor,
+                    color: _textMuted,
+                    letterSpacing: 0.5,
                   ),
                 ),
-                pw.SizedBox(height: 12),
+                pw.SizedBox(height: 14),
                 if (terms is List && terms.isNotEmpty)
                   ...terms.map((term) {
                     if (term == null ||
@@ -1014,16 +1054,16 @@ class QuotationPdfGenerator {
                       return pw.SizedBox.shrink();
                     }
                     return pw.Padding(
-                      padding: const pw.EdgeInsets.only(bottom: 6),
+                      padding: const pw.EdgeInsets.only(bottom: 8),
                       child: pw.Row(
                         crossAxisAlignment: pw.CrossAxisAlignment.start,
                         children: [
                           pw.Container(
-                            margin: const pw.EdgeInsets.only(top: 4, right: 8),
-                            height: 3,
-                            width: 3,
+                            margin: const pw.EdgeInsets.only(top: 5, right: 10),
+                            height: 4,
+                            width: 4,
                             decoration: pw.BoxDecoration(
-                              color: _primaryColor,
+                              color: _accentColor, // Gold dots
                               shape: pw.BoxShape.circle,
                             ),
                           ),
@@ -1034,7 +1074,7 @@ class QuotationPdfGenerator {
                                   pw.TextSpan(
                                     text: '${_safeString(term['title'])}: ',
                                     style: pw.TextStyle(
-                                      fontSize: 9,
+                                      fontSize: 10,
                                       fontWeight: pw.FontWeight.bold,
                                       color: _textMain,
                                     ),
@@ -1042,9 +1082,9 @@ class QuotationPdfGenerator {
                                   pw.TextSpan(
                                     text: _safeString(term['value']),
                                     style: pw.TextStyle(
-                                      fontSize: 9,
+                                      fontSize: 10,
                                       color: _textMuted,
-                                      lineSpacing: 1.3,
+                                      lineSpacing: 1.4,
                                     ),
                                   ),
                                 ],
@@ -1060,7 +1100,7 @@ class QuotationPdfGenerator {
           ),
         ),
 
-        pw.SizedBox(width: 16),
+        pw.SizedBox(width: 20),
 
         pw.Expanded(
           flex: 4,
@@ -1072,37 +1112,41 @@ class QuotationPdfGenerator {
                   pw.Text(
                     'For $companyName',
                     style: pw.TextStyle(
-                      fontSize: 10,
+                      fontSize: 11,
                       fontWeight: pw.FontWeight.bold,
-                      color: _textMain,
+                      color: _primaryColor,
                     ),
                     textAlign: pw.TextAlign.right,
                   ),
-                pw.SizedBox(height: 48),
+                pw.SizedBox(height: 54),
 
                 if (sigName.isNotEmpty)
                   pw.Text(
                     sigName,
                     style: pw.TextStyle(
-                      fontSize: 11,
+                      fontSize: 12,
                       fontWeight: pw.FontWeight.bold,
                       color: _textMain,
                     ),
                   ),
 
                 if (sigDesignation.isNotEmpty) ...[
-                  pw.SizedBox(height: 2),
+                  pw.SizedBox(height: 3),
                   pw.Text(
                     sigDesignation,
-                    style: pw.TextStyle(fontSize: 9, color: _primaryColor),
+                    style: pw.TextStyle(
+                      fontSize: 10,
+                      color: _primaryColor,
+                      fontWeight: pw.FontWeight.bold,
+                    ),
                   ),
                 ],
 
                 if (sigPhone.isNotEmpty) ...[
-                  pw.SizedBox(height: 2),
+                  pw.SizedBox(height: 3),
                   pw.Text(
                     sigPhone,
-                    style: pw.TextStyle(fontSize: 9, color: _textMuted),
+                    style: pw.TextStyle(fontSize: 10, color: _textMuted),
                   ),
                 ],
               ],
@@ -1115,10 +1159,10 @@ class QuotationPdfGenerator {
 
   static pw.Widget _buildPageFooter(pw.Context context, bool isSO) {
     return pw.Container(
-      margin: const pw.EdgeInsets.only(top: 16),
-      padding: const pw.EdgeInsets.only(top: 8),
+      margin: const pw.EdgeInsets.only(top: 20),
+      padding: const pw.EdgeInsets.only(top: 12),
       decoration: pw.BoxDecoration(
-        border: pw.Border(top: pw.BorderSide(color: _borderColor)),
+        border: pw.Border(top: pw.BorderSide(color: _borderColor, width: 1)),
       ),
       child: pw.Row(
         mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
@@ -1128,14 +1172,18 @@ class QuotationPdfGenerator {
                 ? 'This is a system generated Sales Order.'
                 : 'This is a computer generated document.',
             style: pw.TextStyle(
-              fontSize: 8,
+              fontSize: 9,
               fontStyle: pw.FontStyle.italic,
               color: _textMuted,
             ),
           ),
           pw.Text(
             'Page ${context.pageNumber} of ${context.pagesCount}',
-            style: pw.TextStyle(fontSize: 8, color: _textMuted),
+            style: pw.TextStyle(
+              fontSize: 9,
+              fontWeight: pw.FontWeight.bold,
+              color: _textMuted,
+            ),
           ),
         ],
       ),
@@ -1182,7 +1230,7 @@ class QuotationPreviewScreen extends StatelessWidget {
 
     return Scaffold(
       appBar: AppBar(
-        backgroundColor: const Color(0xFF1E3A8A),
+        backgroundColor: const Color(0xFF111827), // Charcoal black
         foregroundColor: Colors.white,
         title: Text(
           displayTitle,

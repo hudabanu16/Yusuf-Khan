@@ -2,6 +2,9 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
+// Import the proper, independent Proforma Invoice PDF Generator
+import 'proforma_invoice_pdf_generator.dart';
+
 const Color primaryColor = Color(0xFF1E3A8A);
 const Color accentColor = Color(0xFF2563EB);
 const Color backgroundLight = Color(0xFFF8FAFC);
@@ -10,7 +13,7 @@ const String proformaSeriesPrefix = 'PI';
 // ==========================================
 // MODELS
 // ==========================================
-class ProformaLineItem {
+class ProformaLocalItem {
   String id;
   String productId;
   String name;
@@ -25,7 +28,7 @@ class ProformaLineItem {
   double igstPercent;
   double availableStock;
 
-  ProformaLineItem({
+  ProformaLocalItem({
     required this.id,
     required this.productId,
     required this.name,
@@ -68,8 +71,8 @@ class ProformaLineItem {
     };
   }
 
-  factory ProformaLineItem.fromMap(Map<String, dynamic> map) {
-    return ProformaLineItem(
+  factory ProformaLocalItem.fromMap(Map<String, dynamic> map) {
+    return ProformaLocalItem(
       id: map['id']?.toString() ?? '',
       productId: map['productId']?.toString() ?? '',
       name: map['name']?.toString() ?? '',
@@ -87,11 +90,11 @@ class ProformaLineItem {
   }
 }
 
-class TermRow {
+class ProformaTermRow {
   final TextEditingController titleCtrl;
   final TextEditingController valueCtrl;
 
-  TermRow({String title = '', String value = ''})
+  ProformaTermRow({String title = '', String value = ''})
       : titleCtrl = TextEditingController(text: title),
         valueCtrl = TextEditingController(text: value);
 
@@ -108,14 +111,18 @@ class ProformaScreen extends StatefulWidget {
   final String companyId;
   final String? proformaId;
   final Map<String, dynamic>? inquirySeed;
+  final Map<String, dynamic>? initialData;
   final Map<String, dynamic>? existingProforma;
+  final String? source;
 
   const ProformaScreen({
     super.key,
     required this.companyId,
     this.proformaId,
     this.inquirySeed,
+    this.initialData,
     this.existingProforma,
+    this.source,
   });
 
   @override
@@ -137,7 +144,7 @@ class _ProformaScreenState extends State<ProformaScreen> {
   String _companyCin = '';
   String _companyPan = '';
   String _companyWebsite = '';
-  String _companyBankDetails = '';
+  dynamic _companyBankDetails;
   String _companyLogoUrl = '';
   String _companyState = '';
   String _proformaPrefix = proformaSeriesPrefix;
@@ -156,7 +163,7 @@ class _ProformaScreenState extends State<ProformaScreen> {
   final TextEditingController _customerStateController = TextEditingController();
   Map<String, dynamic>? _customerInsights;
 
-  bool _isSameAsBilling = true;
+  bool _isSameAsBilling = false;
   final TextEditingController _shippingNameController = TextEditingController();
   final TextEditingController _shippingAddressController = TextEditingController();
   final TextEditingController _shippingEmailController = TextEditingController();
@@ -167,8 +174,13 @@ class _ProformaScreenState extends State<ProformaScreen> {
 
   final TextEditingController _proformaNumberController = TextEditingController();
   final TextEditingController _subjectController = TextEditingController();
+
+  // Document Links Pipeline
   String? _linkedInquiryId;
   String? _linkedInquiryNumber;
+  String? _linkedQuotationNumber;
+  String? _linkedSalesOrderNumber;
+
   final TextEditingController _inquiryRefNoteController = TextEditingController();
 
   DateTime _inquiryDate = DateTime.now();
@@ -187,7 +199,7 @@ class _ProformaScreenState extends State<ProformaScreen> {
   ];
   String _selectedInquirySource = 'Verbal';
 
-  List<ProformaLineItem> _items = [];
+  List<ProformaLocalItem> _items = [];
   double _globalDiscountPercent = 0.0;
 
   double _cachedSubtotal = 0.0;
@@ -209,10 +221,19 @@ class _ProformaScreenState extends State<ProformaScreen> {
   final TextEditingController _advancePercentController = TextEditingController(text: '50.0');
   final TextEditingController _balancePercentController = TextEditingController(text: '50.0');
 
-  List<TermRow> _dynamicTerms = [];
+  List<ProformaTermRow> _dynamicTerms = [];
   bool _packingChargesExtra = true;
 
-  final TextEditingController _bankDetailsController = TextEditingController();
+  final TextEditingController _accountHolderNameController = TextEditingController();
+  final TextEditingController _bankNameController = TextEditingController();
+  final TextEditingController _accountNumberController = TextEditingController();
+  final TextEditingController _ifscController = TextEditingController();
+  final TextEditingController _branchController = TextEditingController();
+  final TextEditingController _branchAddressController = TextEditingController();
+  final TextEditingController _branchCodeController = TextEditingController();
+  final TextEditingController _micrController = TextEditingController();
+  final TextEditingController _swiftController = TextEditingController();
+
   final TextEditingController _signNameController = TextEditingController();
   final TextEditingController _signDesignationController = TextEditingController();
   final TextEditingController _signPhoneController = TextEditingController();
@@ -284,6 +305,30 @@ class _ProformaScreenState extends State<ProformaScreen> {
     _shippingStateController.text = _customerStateController.text;
   }
 
+  void _applyBankDetails(dynamic bankData) {
+    if (bankData is Map) {
+      _accountHolderNameController.text = bankData['accountHolderName']?.toString() ?? '';
+      _bankNameController.text = bankData['bankName']?.toString() ?? '';
+      _accountNumberController.text = bankData['accountNumber']?.toString() ?? '';
+      _ifscController.text = bankData['ifsc']?.toString() ?? '';
+      _branchController.text = bankData['branch']?.toString() ?? '';
+      _branchAddressController.text = bankData['branchAddress']?.toString() ?? '';
+      _branchCodeController.text = bankData['branchCode']?.toString() ?? '';
+      _micrController.text = bankData['micr']?.toString() ?? '';
+      _swiftController.text = bankData['swift']?.toString() ?? '';
+    } else if (bankData is String && bankData.isNotEmpty) {
+      _accountHolderNameController.text = '';
+      _bankNameController.text = bankData;
+      _accountNumberController.text = '';
+      _ifscController.text = '';
+      _branchController.text = '';
+      _branchAddressController.text = '';
+      _branchCodeController.text = '';
+      _micrController.text = '';
+      _swiftController.text = '';
+    }
+  }
+
   void _loadExistingProforma(Map<String, dynamic> data) {
     _proformaNumberController.text = data['proformaNumber']?.toString() ?? '';
     _subjectController.text = data['subject']?.toString() ?? '';
@@ -298,7 +343,7 @@ class _ProformaScreenState extends State<ProformaScreen> {
     _gstController.text = data['gstNo']?.toString() ?? '';
     _customerStateController.text = data['customerState']?.toString() ?? '';
 
-    _isSameAsBilling = data['isSameAsBilling'] as bool? ?? true;
+    _isSameAsBilling = data['isSameAsBilling'] as bool? ?? false;
     _shippingNameController.text = data['shippingName']?.toString() ?? '';
     _shippingAddressController.text = data['shippingAddress']?.toString() ?? '';
     _shippingEmailController.text = data['shippingEmail']?.toString() ?? '';
@@ -309,6 +354,9 @@ class _ProformaScreenState extends State<ProformaScreen> {
 
     _linkedInquiryId = data['inquiryId']?.toString();
     _linkedInquiryNumber = data['inquiryNumber']?.toString();
+    _linkedQuotationNumber = data['quotationNumber']?.toString();
+    _linkedSalesOrderNumber = data['salesOrderNumber']?.toString();
+
     _selectedInquirySource = data['inquirySource']?.toString() ?? 'Verbal';
     _inquiryDate = (data['inquiryDate'] as Timestamp?)?.toDate() ?? DateTime.now();
     _inquiryRefNoteController.text = data['inquiryReference']?.toString() ?? '';
@@ -318,7 +366,7 @@ class _ProformaScreenState extends State<ProformaScreen> {
 
     if (data['items'] != null) {
       _items = (data['items'] as List)
-          .map((i) => ProformaLineItem.fromMap(i as Map<String, dynamic>))
+          .map((i) => ProformaLocalItem.fromMap(i as Map<String, dynamic>))
           .toList();
     }
 
@@ -331,11 +379,17 @@ class _ProformaScreenState extends State<ProformaScreen> {
     _advancePercentController.text = _advancePercent.toString();
     _balancePercentController.text = _balancePercent.toString();
 
-    String loadedBankDetails = data['bankDetails']?.toString() ?? '';
-    _bankDetailsController.text = loadedBankDetails.isNotEmpty ? loadedBankDetails : _companyBankDetails;
+    dynamic loadedBankDetails = data['bankDetails'];
+    if (loadedBankDetails != null && (loadedBankDetails is Map ? loadedBankDetails.isNotEmpty : loadedBankDetails.toString().isNotEmpty)) {
+      _applyBankDetails(loadedBankDetails);
+    } else {
+      _applyBankDetails(_companyBankDetails);
+    }
 
     _signNameController.text = data['signatureName']?.toString() ?? '';
-    _signDesignationController.text = data['signatureDesignation']?.toString() ?? '';
+    if (data.containsKey('signatureDesignation')) {
+      _signDesignationController.text = data['signatureDesignation']?.toString() ?? '';
+    }
     _signPhoneController.text = data['signaturePhone']?.toString() ?? '';
 
     for (var t in _dynamicTerms) {
@@ -345,7 +399,7 @@ class _ProformaScreenState extends State<ProformaScreen> {
 
     if (data['dynamicTerms'] != null) {
       _dynamicTerms = (data['dynamicTerms'] as List)
-          .map((e) => TermRow(
+          .map((e) => ProformaTermRow(
         title: e['title']?.toString() ?? '',
         value: e['value']?.toString() ?? '',
       ))
@@ -353,7 +407,7 @@ class _ProformaScreenState extends State<ProformaScreen> {
     } else {
       void addIfValid(String title, String? val) {
         if (val != null && val.trim().isNotEmpty) {
-          _dynamicTerms.add(TermRow(title: title, value: val.trim()));
+          _dynamicTerms.add(ProformaTermRow(title: title, value: val.trim()));
         }
       }
 
@@ -404,7 +458,16 @@ class _ProformaScreenState extends State<ProformaScreen> {
     _advancePercentController.dispose();
     _balancePercentController.dispose();
 
-    _bankDetailsController.dispose();
+    _accountHolderNameController.dispose();
+    _bankNameController.dispose();
+    _accountNumberController.dispose();
+    _ifscController.dispose();
+    _branchController.dispose();
+    _branchAddressController.dispose();
+    _branchCodeController.dispose();
+    _micrController.dispose();
+    _swiftController.dispose();
+
     _signNameController.dispose();
     _signDesignationController.dispose();
     _signPhoneController.dispose();
@@ -427,8 +490,13 @@ class _ProformaScreenState extends State<ProformaScreen> {
       _currentUserRole = (data['role'] ?? 'sales').toString().trim();
       _currentUserName = (data['name'] ?? data['fullName'] ?? '').toString().trim();
 
+      String userDesignation = (data['designation'] ?? data['role'] ?? data['jobTitle'] ?? 'Authorized Signatory').toString().trim();
+      if (userDesignation.isEmpty) {
+        userDesignation = 'Authorized Signatory';
+      }
+
       if (_signNameController.text.isEmpty) _signNameController.text = _currentUserName;
-      if (_signDesignationController.text.isEmpty) _signDesignationController.text = _currentUserRole.toUpperCase();
+      if (_signDesignationController.text.isEmpty) _signDesignationController.text = userDesignation;
     } catch (e) {
       _setError('Failed to load user context.');
     }
@@ -448,7 +516,7 @@ class _ProformaScreenState extends State<ProformaScreen> {
       _companyGst = (data['gstNo'] ?? data['gst'] ?? '').toString();
       _companyCin = (data['cin'] ?? '').toString();
       _companyPan = (data['pan'] ?? '').toString();
-      _companyBankDetails = (data['bankDetails'] ?? '').toString();
+      _companyBankDetails = data['bankDetails'];
       _companyLogoUrl = (data['logoUrl'] ?? '').toString();
       _companyState = (data['state'] ?? '').toString().trim().toLowerCase();
 
@@ -488,7 +556,7 @@ class _ProformaScreenState extends State<ProformaScreen> {
     } catch (_) {}
   }
 
-  Future<ProformaLineItem?> _hydrateProductItem(Map<String, dynamic> rawItem) async {
+  Future<ProformaLocalItem?> _hydrateProductItem(Map<String, dynamic> rawItem) async {
     final Map<String, dynamic> i = Map<String, dynamic>.from(rawItem);
     String productId = (i['productId'] ?? i['itemId'] ?? '').toString();
     String name = (i['name'] ?? i['productName'] ?? i['itemName'] ?? '').toString();
@@ -533,7 +601,7 @@ class _ProformaScreenState extends State<ProformaScreen> {
       } catch (_) {}
     }
 
-    return ProformaLineItem(
+    return ProformaLocalItem(
       id: (i['id'] ?? DateTime.now().millisecondsSinceEpoch.toString()).toString(),
       productId: productId,
       name: name,
@@ -551,11 +619,14 @@ class _ProformaScreenState extends State<ProformaScreen> {
   }
 
   Future<void> _applyInquirySeedIfNeeded() async {
-    final seed = widget.inquirySeed;
+    final seed = widget.inquirySeed ?? widget.initialData;
     if (seed == null || seed.isEmpty) return;
 
+    // FIX: Only accept true document business numbers, DO NOT accept Firestore IDs (like referenceQuotationId)
     _linkedInquiryId = seed['id']?.toString() ?? seed['inquiryId']?.toString();
     _linkedInquiryNumber = seed['inquiryNumber']?.toString() ?? seed['inquiryCode']?.toString();
+    _linkedQuotationNumber = seed['quotationNumber']?.toString() ?? seed['quoteNumber']?.toString();
+    _linkedSalesOrderNumber = seed['salesOrderNumber']?.toString() ?? seed['soNumber']?.toString();
 
     final seededCustomerId = (seed['customerId'] ?? '').toString().trim();
     if (seededCustomerId.isNotEmpty) {
@@ -568,12 +639,17 @@ class _ProformaScreenState extends State<ProformaScreen> {
       _addressController.text = (seed['address'] ?? seed['location'] ?? seed['customerAddress'] ?? seed['clientAddress'] ?? '').toString().trim();
       _gstController.text = (seed['gstNo'] ?? seed['gst'] ?? '').toString().trim();
       _customerStateController.text = (seed['state'] ?? seed['customerState'] ?? '').toString().trim();
-
-      if (_isSameAsBilling) {
-        _copyBillingToShipping();
-      }
-      _checkInterState();
     }
+
+    _isSameAsBilling = false;
+    _shippingNameController.text = '';
+    _shippingAddressController.text = '';
+    _shippingEmailController.text = '';
+    _shippingMobileController.text = '';
+    _shippingContactPersonController.text = '';
+    _shippingGstController.text = '';
+    _shippingStateController.text = '';
+    _checkInterState();
 
     final subject = (seed['subject'] ?? seed['inquirySubject'] ?? '').toString().trim();
     if (subject.isNotEmpty) _subjectController.text = subject;
@@ -596,14 +672,14 @@ class _ProformaScreenState extends State<ProformaScreen> {
 
     final rawItems = seed['items'] ?? seed['products'];
     if (rawItems != null && rawItems is List && rawItems.isNotEmpty) {
-      List<Future<ProformaLineItem?>> tasks = [];
+      List<Future<ProformaLocalItem?>> tasks = [];
       for (var rawItem in rawItems) {
         if (rawItem == null || rawItem is! Map) continue;
         tasks.add(_hydrateProductItem(rawItem as Map<String, dynamic>));
       }
 
       final results = await Future.wait(tasks);
-      _items = results.whereType<ProformaLineItem>().toList();
+      _items = results.whereType<ProformaLocalItem>().toList();
       _recalculateTaxes();
     }
   }
@@ -662,15 +738,20 @@ class _ProformaScreenState extends State<ProformaScreen> {
         _balancePercentController.text = _balancePercent.toString();
 
         if (widget.existingProforma == null && widget.proformaId == null) {
-          String savedBankDetails = data['bankDetails']?.toString() ?? '';
-          _bankDetailsController.text = savedBankDetails.isNotEmpty ? savedBankDetails : _companyBankDetails;
+          dynamic savedBankDetails = data['bankDetails'];
+          if (savedBankDetails != null && (savedBankDetails is Map ? savedBankDetails.isNotEmpty : savedBankDetails.toString().isNotEmpty)) {
+            _applyBankDetails(savedBankDetails);
+          } else {
+            _applyBankDetails(_companyBankDetails);
+          }
         }
 
         if (_signNameController.text.isEmpty) {
           _signNameController.text = data['signatureName']?.toString() ?? _currentUserName;
         }
-        if (_signDesignationController.text.isEmpty) {
-          _signDesignationController.text = data['signatureDesignation']?.toString() ?? _currentUserRole.toUpperCase();
+        if (data.containsKey('signatureDesignation')) {
+          String savedSigDesig = data['signatureDesignation']?.toString() ?? '';
+          if (savedSigDesig.isNotEmpty) _signDesignationController.text = savedSigDesig;
         }
         if (_signPhoneController.text.isEmpty) {
           _signPhoneController.text = data['signaturePhone']?.toString() ?? '';
@@ -679,30 +760,30 @@ class _ProformaScreenState extends State<ProformaScreen> {
         if (widget.existingProforma == null) {
           if (data['dynamicTerms'] != null && (data['dynamicTerms'] as List).isNotEmpty) {
             _dynamicTerms = (data['dynamicTerms'] as List)
-                .map((e) => TermRow(
+                .map((e) => ProformaTermRow(
               title: e['title']?.toString() ?? '',
               value: e['value']?.toString() ?? '',
             ))
                 .toList();
           } else {
             _dynamicTerms = [
-              TermRow(title: 'Payment', value: 'Advance against PO, balance against PI.'),
-              TermRow(title: 'Delivery', value: 'Within 4-6 weeks from PO and advance.'),
-              TermRow(title: 'Validity', value: '30 days from date of Proforma.'),
+              ProformaTermRow(title: 'Payment', value: 'Advance against PO, balance against PI.'),
+              ProformaTermRow(title: 'Delivery', value: 'Within 4-6 weeks from PO and advance.'),
+              ProformaTermRow(title: 'Validity', value: '30 days from date of Proforma.'),
             ];
           }
         }
       } else if (widget.existingProforma == null && widget.proformaId == null) {
-        _bankDetailsController.text = _companyBankDetails;
+        _applyBankDetails(_companyBankDetails);
         _dynamicTerms = [
-          TermRow(title: 'Payment', value: 'Advance against PO, balance against PI.'),
-          TermRow(title: 'Delivery', value: 'Within 4-6 weeks from PO and advance.'),
-          TermRow(title: 'Validity', value: '30 days from date of Proforma.'),
+          ProformaTermRow(title: 'Payment', value: 'Advance against PO, balance against PI.'),
+          ProformaTermRow(title: 'Delivery', value: 'Within 4-6 weeks from PO and advance.'),
+          ProformaTermRow(title: 'Validity', value: '30 days from date of Proforma.'),
         ];
       }
     } catch (_) {
       if (widget.existingProforma == null && widget.proformaId == null) {
-        _bankDetailsController.text = _companyBankDetails;
+        _applyBankDetails(_companyBankDetails);
       }
     }
   }
@@ -859,16 +940,24 @@ class _ProformaScreenState extends State<ProformaScreen> {
         await _ensureUniqueNumber(generatedNo);
       }
 
-      if (_isSameAsBilling) {
-        _copyBillingToShipping();
-      }
-
       final mappedTerms = _dynamicTerms.map((e) => {
         'title': e.titleCtrl.text.trim(),
         'value': e.valueCtrl.text.trim(),
       }).toList();
 
       final mappedItems = _items.map((e) => e.toMap()).toList();
+
+      final bankDetailsMap = {
+        'accountHolderName': _accountHolderNameController.text.trim(),
+        'bankName': _bankNameController.text.trim(),
+        'accountNumber': _accountNumberController.text.trim(),
+        'ifsc': _ifscController.text.trim(),
+        'micr': _micrController.text.trim(),
+        'branch': _branchController.text.trim(),
+        'branchCode': _branchCodeController.text.trim(),
+        'branchAddress': _branchAddressController.text.trim(),
+        'swift': _swiftController.text.trim(),
+      };
 
       final payload = {
         'id': docRef.id,
@@ -898,6 +987,9 @@ class _ProformaScreenState extends State<ProformaScreen> {
 
         'inquiryId': _linkedInquiryId ?? '',
         'inquiryNumber': _linkedInquiryNumber ?? '',
+        'quotationNumber': _linkedQuotationNumber ?? '',
+        'salesOrderNumber': _linkedSalesOrderNumber ?? '',
+
         'inquirySource': _selectedInquirySource,
         'inquiryDate': Timestamp.fromDate(_inquiryDate),
         'inquiryReference': _inquiryRefNoteController.text.trim(),
@@ -925,7 +1017,7 @@ class _ProformaScreenState extends State<ProformaScreen> {
         'balanceAmount': _balanceAmount,
         'packingChargesExtra': _packingChargesExtra,
 
-        'bankDetails': _bankDetailsController.text.trim(),
+        'bankDetails': bankDetailsMap,
 
         'signatureName': _signNameController.text.trim(),
         'signatureDesignation': _signDesignationController.text.trim(),
@@ -1018,7 +1110,7 @@ class _ProformaScreenState extends State<ProformaScreen> {
         'dynamicTerms': mappedTerms,
         'advancePercent': _advancePercent,
         'balancePercent': _balancePercent,
-        'bankDetails': _bankDetailsController.text.trim(),
+        'bankDetails': bankDetailsMap,
         'signatureName': _signNameController.text.trim(),
         'signatureDesignation': _signDesignationController.text.trim(),
         'signaturePhone': _signPhoneController.text.trim(),
@@ -1035,11 +1127,115 @@ class _ProformaScreenState extends State<ProformaScreen> {
     }
   }
 
+  Map<String, dynamic> _buildProformaMap() {
+    final tempNo = _isAutoQuoteNumberPlaceholder(_proformaNumberController.text)
+        ? '$_proformaPrefix/Preview/${_currentFinancialYearShort()}'
+        : _proformaNumberController.text;
+
+    return {
+      'id': widget.proformaId ?? 'N/A',
+      'proformaNumber': tempNo,
+      'documentType': 'Proforma Invoice',
+      'createdAt': Timestamp.fromDate(_proformaDate),
+      'date': Timestamp.fromDate(_proformaDate),
+      'subject': _subjectController.text.trim(),
+
+      'clientName': _clientNameController.text.trim(),
+      'clientAddress': _addressController.text.trim(),
+      'customerState': _customerStateController.text.trim(),
+      'gstNo': _gstController.text.trim(),
+      'contactPerson': _contactPersonController.text.trim(),
+      'clientMobile': _mobileController.text.trim(),
+      'clientEmail': _emailController.text.trim(),
+      'isInterState': _isInterState,
+
+      'shippingName': _isSameAsBilling ? _clientNameController.text.trim() : _shippingNameController.text.trim(),
+      'shippingAddress': _isSameAsBilling ? _addressController.text.trim() : _shippingAddressController.text.trim(),
+      'shippingGst': _isSameAsBilling ? _gstController.text.trim() : _shippingGstController.text.trim(),
+      'shippingContactPerson': _isSameAsBilling ? _contactPersonController.text.trim() : _shippingContactPersonController.text.trim(),
+      'shippingMobile': _isSameAsBilling ? _mobileController.text.trim() : _shippingMobileController.text.trim(),
+      'shippingState': _isSameAsBilling ? _customerStateController.text.trim() : _shippingStateController.text.trim(),
+
+      'companyName': _companyName,
+      'companyAddress': _companyAddress,
+      'companyPhone': _companyPhone,
+      'companyEmail': _companyEmail,
+      'companyGst': _companyGst,
+      'companyPan': _companyPan,
+      'companyCin': _companyCin,
+      'companyWebsite': _companyWebsite,
+      'companyLogoUrl': _companyLogoUrl,
+
+      'totalSubtotal': _cachedSubtotal,
+      'totalItemDiscount': _cachedItemDiscount,
+      'globalDiscountPercent': _globalDiscountPercent,
+      'globalDiscountAmount': _cachedGlobalDiscountAmount,
+      'totalTaxableAmount': _cachedTaxableAmount,
+      'totalCgst': _cachedCgst,
+      'totalSgst': _cachedSgst,
+      'totalIgst': _cachedIgst,
+      'totalTaxAmount': _cachedCgst + _cachedSgst + _cachedIgst,
+      'grandTotal': _cachedGrandTotal,
+      'roundOff': _cachedRoundOff,
+      'finalTotal': _cachedFinalTotal,
+
+      'advancePercent': _advancePercent,
+      'balancePercent': _balancePercent,
+      'advanceAmount': _advanceAmount,
+      'balanceAmount': _balanceAmount,
+      'packingChargesExtra': _packingChargesExtra,
+
+      'dynamicTerms': _dynamicTerms.map((e) => {
+        'title': e.titleCtrl.text.trim(),
+        'value': e.valueCtrl.text.trim(),
+      }).toList(),
+
+      'bankDetails': {
+        'accountHolderName': _accountHolderNameController.text.trim(),
+        'bankName': _bankNameController.text.trim(),
+        'accountNumber': _accountNumberController.text.trim(),
+        'ifsc': _ifscController.text.trim(),
+        'micr': _micrController.text.trim(),
+        'branch': _branchController.text.trim(),
+        'branchCode': _branchCodeController.text.trim(),
+        'branchAddress': _branchAddressController.text.trim(),
+        'swift': _swiftController.text.trim(),
+      },
+
+      'signatureName': _signNameController.text.trim(),
+      'signatureDesignation': _signDesignationController.text.trim(),
+      'signaturePhone': _signPhoneController.text.trim(),
+
+      // FIX: Ensuring we safely pass empty string if null, without hyphens
+      'inquiryNumber': _linkedInquiryNumber ?? '',
+      'quotationNumber': _linkedQuotationNumber ?? '',
+      'salesOrderNumber': _linkedSalesOrderNumber ?? '',
+
+      'proformaDateStr': '${_proformaDate.day.toString().padLeft(2, '0')}/${_proformaDate.month.toString().padLeft(2, '0')}/${_proformaDate.year}',
+      'nextFollowUpDate': _nextFollowUpDate != null ? Timestamp.fromDate(_nextFollowUpDate!) : null,
+      'followUpNotes': _followUpNotesController.text.trim(),
+      'inquirySource': _selectedInquirySource,
+      'inquiryDate': Timestamp.fromDate(_inquiryDate),
+    };
+  }
+
+  List<ProformaLocalItem> _buildProformaItems() {
+    return _items;
+  }
+
   void _onPreviewPressed() {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Proforma PDF preview integration pending.'),
-        backgroundColor: Colors.blue,
+    if (_items.isEmpty) {
+      _showSnack('Please add at least one item to preview.', isError: true);
+      return;
+    }
+
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => ProformaPreviewScreen(
+          data: _buildProformaMap(),
+          items: _buildProformaItems(),
+        ),
       ),
     );
   }
@@ -1292,7 +1488,7 @@ class _ProformaScreenState extends State<ProformaScreen> {
     );
   }
 
-  void _showAddItemModal([ProformaLineItem? itemToEdit, int? index]) {
+  void _showAddItemModal([ProformaLocalItem? itemToEdit, int? index]) {
     final formKey = GlobalKey<FormState>();
     final nameCtrl = TextEditingController(text: itemToEdit?.name ?? '');
     final descCtrl = TextEditingController(text: itemToEdit?.description ?? '');
@@ -1473,7 +1669,7 @@ class _ProformaScreenState extends State<ProformaScreen> {
                             sgst = gstVal / 2;
                           }
 
-                          final newItem = ProformaLineItem(
+                          final newItem = ProformaLocalItem(
                             id: currentId,
                             productId: productId,
                             name: nameCtrl.text.trim(),
@@ -1732,7 +1928,13 @@ class _ProformaScreenState extends State<ProformaScreen> {
                                   if (val) {
                                     _copyBillingToShipping();
                                   } else {
-                                    _copyBillingToShipping();
+                                    _shippingNameController.text = '';
+                                    _shippingAddressController.text = '';
+                                    _shippingEmailController.text = '';
+                                    _shippingMobileController.text = '';
+                                    _shippingContactPersonController.text = '';
+                                    _shippingGstController.text = '';
+                                    _shippingStateController.text = '';
                                   }
                                   _checkInterState();
                                 });
@@ -2021,7 +2223,7 @@ class _ProformaScreenState extends State<ProformaScreen> {
                               'Terms & Conditions',
                               Icons.gavel_outlined,
                               trailing: OutlinedButton.icon(
-                                onPressed: () => setState(() => _dynamicTerms.add(TermRow())),
+                                onPressed: () => setState(() => _dynamicTerms.add(ProformaTermRow())),
                                 icon: const Icon(Icons.add, size: 18),
                                 label: const Text('Add Term'),
                                 style: OutlinedButton.styleFrom(
@@ -2066,10 +2268,35 @@ class _ProformaScreenState extends State<ProformaScreen> {
                             const Divider(height: 30),
 
                             _buildSectionHeader('Bank Details', Icons.account_balance),
-                            _buildItemTextField(
-                              _bankDetailsController,
-                              'Bank Details (Account No, IFSC, Bank Name, Branch)',
-                              maxLines: 4,
+                            _buildItemTextField(_accountHolderNameController, 'Account Holder Name'),
+                            Row(
+                              children: [
+                                Expanded(child: _buildItemTextField(_bankNameController, 'Bank Name')),
+                                const SizedBox(width: 10),
+                                Expanded(child: _buildItemTextField(_accountNumberController, 'Account Number')),
+                              ],
+                            ),
+                            Row(
+                              children: [
+                                Expanded(child: _buildItemTextField(_ifscController, 'IFSC Code')),
+                                const SizedBox(width: 10),
+                                Expanded(child: _buildItemTextField(_micrController, 'MICR Code')),
+                              ],
+                            ),
+                            Row(
+                              children: [
+                                Expanded(child: _buildItemTextField(_branchController, 'Branch Name')),
+                                const SizedBox(width: 10),
+                                Expanded(child: _buildItemTextField(_branchCodeController, 'Branch Code')),
+                              ],
+                            ),
+                            _buildItemTextField(_branchAddressController, 'Branch Address', maxLines: 2),
+                            Row(
+                              children: [
+                                Expanded(child: _buildItemTextField(_swiftController, 'SWIFT Code')),
+                                const SizedBox(width: 10),
+                                const Spacer(),
+                              ],
                             ),
 
                             const Divider(height: 30),
