@@ -1,8 +1,9 @@
+// ==========================================
+// FILE 1: lib/modules/finance/proforma_invoice/proforma_screen.dart
+// ==========================================
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
-
-// Import the proper, independent Proforma Invoice PDF Generator
 import 'proforma_invoice_pdf_generator.dart';
 
 const Color primaryColor = Color(0xFF1E3A8A);
@@ -154,8 +155,8 @@ class _ProformaScreenState extends State<ProformaScreen> {
   bool _isInterState = false;
 
   String? _selectedCustomerId;
-  final TextEditingController _clientNameController = TextEditingController();
-  final TextEditingController _addressController = TextEditingController();
+  final TextEditingController _customerNameController = TextEditingController();
+  final TextEditingController _billingAddressController = TextEditingController();
   final TextEditingController _emailController = TextEditingController();
   final TextEditingController _mobileController = TextEditingController();
   final TextEditingController _contactPersonController = TextEditingController();
@@ -209,6 +210,7 @@ class _ProformaScreenState extends State<ProformaScreen> {
   double _cachedCgst = 0.0;
   double _cachedSgst = 0.0;
   double _cachedIgst = 0.0;
+  double _cachedTaxAmount = 0.0;
   double _cachedGrandTotal = 0.0;
   double _cachedRoundOff = 0.0;
   double _cachedFinalTotal = 0.0;
@@ -246,8 +248,8 @@ class _ProformaScreenState extends State<ProformaScreen> {
   }
 
   void _setupSyncListeners() {
-    _clientNameController.addListener(() { if (_isSameAsBilling) _shippingNameController.text = _clientNameController.text; });
-    _addressController.addListener(() { if (_isSameAsBilling) _shippingAddressController.text = _addressController.text; });
+    _customerNameController.addListener(() { if (_isSameAsBilling) _shippingNameController.text = _customerNameController.text; });
+    _billingAddressController.addListener(() { if (_isSameAsBilling) _shippingAddressController.text = _billingAddressController.text; });
     _emailController.addListener(() { if (_isSameAsBilling) _shippingEmailController.text = _emailController.text; });
     _mobileController.addListener(() { if (_isSameAsBilling) _shippingMobileController.text = _mobileController.text; });
     _contactPersonController.addListener(() { if (_isSameAsBilling) _shippingContactPersonController.text = _contactPersonController.text; });
@@ -296,8 +298,8 @@ class _ProformaScreenState extends State<ProformaScreen> {
   }
 
   void _copyBillingToShipping() {
-    _shippingNameController.text = _clientNameController.text;
-    _shippingAddressController.text = _addressController.text;
+    _shippingNameController.text = _customerNameController.text;
+    _shippingAddressController.text = _billingAddressController.text;
     _shippingEmailController.text = _emailController.text;
     _shippingMobileController.text = _mobileController.text;
     _shippingContactPersonController.text = _contactPersonController.text;
@@ -335,10 +337,10 @@ class _ProformaScreenState extends State<ProformaScreen> {
     _proformaDate = (data['proformaDate'] as Timestamp?)?.toDate() ?? DateTime.now();
 
     _selectedCustomerId = data['customerId']?.toString();
-    _clientNameController.text = data['clientName']?.toString() ?? '';
-    _addressController.text = data['clientAddress']?.toString() ?? '';
-    _emailController.text = data['clientEmail']?.toString() ?? '';
-    _mobileController.text = data['clientMobile']?.toString() ?? '';
+    _customerNameController.text = data['customerName']?.toString() ?? data['clientName']?.toString() ?? '';
+    _billingAddressController.text = data['billingAddress']?.toString() ?? data['clientAddress']?.toString() ?? '';
+    _emailController.text = data['email']?.toString() ?? data['clientEmail']?.toString() ?? '';
+    _mobileController.text = data['mobile']?.toString() ?? data['clientMobile']?.toString() ?? '';
     _contactPersonController.text = data['contactPerson']?.toString() ?? '';
     _gstController.text = data['gstNo']?.toString() ?? '';
     _customerStateController.text = data['customerState']?.toString() ?? '';
@@ -435,8 +437,8 @@ class _ProformaScreenState extends State<ProformaScreen> {
 
   @override
   void dispose() {
-    _clientNameController.dispose();
-    _addressController.dispose();
+    _customerNameController.dispose();
+    _billingAddressController.dispose();
     _emailController.dispose();
     _mobileController.dispose();
     _contactPersonController.dispose();
@@ -538,8 +540,8 @@ class _ProformaScreenState extends State<ProformaScreen> {
       if (doc.exists && doc.data() != null) {
         final data = doc.data()!;
         _selectedCustomerId = customerId;
-        _clientNameController.text = (data['companyName'] ?? data['name'] ?? '').toString();
-        _addressController.text = (data['address'] ?? data['billingAddress'] ?? '').toString();
+        _customerNameController.text = (data['companyName'] ?? data['name'] ?? '').toString();
+        _billingAddressController.text = (data['address'] ?? data['billingAddress'] ?? '').toString();
         _emailController.text = (data['email'] ?? '').toString();
         _mobileController.text = (data['mobile'] ?? data['phone'] ?? '').toString();
         _contactPersonController.text = (data['contactPerson'] ?? data['contactName'] ?? '').toString();
@@ -622,7 +624,6 @@ class _ProformaScreenState extends State<ProformaScreen> {
     final seed = widget.inquirySeed ?? widget.initialData;
     if (seed == null || seed.isEmpty) return;
 
-    // FIX: Only accept true document business numbers, DO NOT accept Firestore IDs (like referenceQuotationId)
     _linkedInquiryId = seed['id']?.toString() ?? seed['inquiryId']?.toString();
     _linkedInquiryNumber = seed['inquiryNumber']?.toString() ?? seed['inquiryCode']?.toString();
     _linkedQuotationNumber = seed['quotationNumber']?.toString() ?? seed['quoteNumber']?.toString();
@@ -632,11 +633,11 @@ class _ProformaScreenState extends State<ProformaScreen> {
     if (seededCustomerId.isNotEmpty) {
       await _loadCustomerFromFirestore(seededCustomerId);
     } else {
-      _clientNameController.text = (seed['customerName'] ?? seed['companyName'] ?? seed['clientName'] ?? '').toString().trim();
+      _customerNameController.text = (seed['customerName'] ?? seed['companyName'] ?? seed['clientName'] ?? '').toString().trim();
       _contactPersonController.text = (seed['contactPerson'] ?? seed['contactName'] ?? '').toString().trim();
       _emailController.text = (seed['email'] ?? seed['contactEmail'] ?? seed['clientEmail'] ?? '').toString().trim();
       _mobileController.text = (seed['mobile'] ?? seed['contactPhone'] ?? seed['contactMobile'] ?? seed['clientMobile'] ?? '').toString().trim();
-      _addressController.text = (seed['address'] ?? seed['location'] ?? seed['customerAddress'] ?? seed['clientAddress'] ?? '').toString().trim();
+      _billingAddressController.text = (seed['billingAddress'] ?? seed['address'] ?? seed['location'] ?? seed['customerAddress'] ?? seed['clientAddress'] ?? '').toString().trim();
       _gstController.text = (seed['gstNo'] ?? seed['gst'] ?? '').toString().trim();
       _customerStateController.text = (seed['state'] ?? seed['customerState'] ?? '').toString().trim();
     }
@@ -833,7 +834,8 @@ class _ProformaScreenState extends State<ProformaScreen> {
 
     _cachedGlobalDiscountAmount = (_cachedSubtotal - _cachedItemDiscount) * (_globalDiscountPercent / 100);
     _cachedTaxableAmount = _cachedSubtotal - _cachedItemDiscount - _cachedGlobalDiscountAmount;
-    _cachedGrandTotal = _cachedTaxableAmount + _cachedCgst + _cachedSgst + _cachedIgst;
+    _cachedTaxAmount = _cachedCgst + _cachedSgst + _cachedIgst;
+    _cachedGrandTotal = _cachedTaxableAmount + _cachedTaxAmount;
 
     _cachedFinalTotal = _cachedGrandTotal.roundToDouble();
     _cachedRoundOff = _cachedFinalTotal - _cachedGrandTotal;
@@ -959,6 +961,7 @@ class _ProformaScreenState extends State<ProformaScreen> {
         'swift': _swiftController.text.trim(),
       };
 
+      // STANDARDIZED PAYLOAD
       final payload = {
         'id': docRef.id,
         'companyId': widget.companyId,
@@ -967,10 +970,10 @@ class _ProformaScreenState extends State<ProformaScreen> {
         'status': 'draft',
 
         'customerId': _selectedCustomerId,
-        'clientName': _clientNameController.text.trim(),
-        'clientAddress': _addressController.text.trim(),
-        'clientEmail': _emailController.text.trim(),
-        'clientMobile': _mobileController.text.trim(),
+        'customerName': _customerNameController.text.trim(),
+        'billingAddress': _billingAddressController.text.trim(),
+        'email': _emailController.text.trim(),
+        'mobile': _mobileController.text.trim(),
         'contactPerson': _contactPersonController.text.trim(),
         'gstNo': _gstController.text.trim(),
         'customerState': _customerStateController.text.trim(),
@@ -997,7 +1000,7 @@ class _ProformaScreenState extends State<ProformaScreen> {
         'nextFollowUpDate': _nextFollowUpDate != null ? Timestamp.fromDate(_nextFollowUpDate!) : null,
         'followUpNotes': _followUpNotesController.text.trim(),
 
-        'totalSubtotal': _cachedSubtotal,
+        'subTotal': _cachedSubtotal,
         'totalItemDiscount': _cachedItemDiscount,
         'globalDiscountPercent': _globalDiscountPercent,
         'globalDiscountAmount': _cachedGlobalDiscountAmount,
@@ -1005,6 +1008,7 @@ class _ProformaScreenState extends State<ProformaScreen> {
         'totalCgst': _cachedCgst,
         'totalSgst': _cachedSgst,
         'totalIgst': _cachedIgst,
+        'taxAmount': _cachedTaxAmount,
         'grandTotal': _cachedGrandTotal,
         'roundOff': _cachedRoundOff,
         'finalTotal': _cachedFinalTotal,
@@ -1033,6 +1037,7 @@ class _ProformaScreenState extends State<ProformaScreen> {
 
       if (!isUpdate) {
         payload['createdBy'] = _currentUserUid!;
+        payload['createdByName'] = _currentUserName;
         payload['createdAt'] = FieldValue.serverTimestamp();
       }
 
@@ -1132,25 +1137,26 @@ class _ProformaScreenState extends State<ProformaScreen> {
         ? '$_proformaPrefix/Preview/${_currentFinancialYearShort()}'
         : _proformaNumberController.text;
 
+    // MATCHES STANDARDIZED PAYLOAD EXACTLY
     return {
       'id': widget.proformaId ?? 'N/A',
       'proformaNumber': tempNo,
       'documentType': 'Proforma Invoice',
-      'createdAt': Timestamp.fromDate(_proformaDate),
-      'date': Timestamp.fromDate(_proformaDate),
+      'createdAt': _proformaDate, // Using DateTime for preview logic explicitly
+      'proformaDate': _proformaDate,
       'subject': _subjectController.text.trim(),
 
-      'clientName': _clientNameController.text.trim(),
-      'clientAddress': _addressController.text.trim(),
+      'customerName': _customerNameController.text.trim(),
+      'billingAddress': _billingAddressController.text.trim(),
       'customerState': _customerStateController.text.trim(),
       'gstNo': _gstController.text.trim(),
       'contactPerson': _contactPersonController.text.trim(),
-      'clientMobile': _mobileController.text.trim(),
-      'clientEmail': _emailController.text.trim(),
+      'mobile': _mobileController.text.trim(),
+      'email': _emailController.text.trim(),
       'isInterState': _isInterState,
 
-      'shippingName': _isSameAsBilling ? _clientNameController.text.trim() : _shippingNameController.text.trim(),
-      'shippingAddress': _isSameAsBilling ? _addressController.text.trim() : _shippingAddressController.text.trim(),
+      'shippingName': _isSameAsBilling ? _customerNameController.text.trim() : _shippingNameController.text.trim(),
+      'shippingAddress': _isSameAsBilling ? _billingAddressController.text.trim() : _shippingAddressController.text.trim(),
       'shippingGst': _isSameAsBilling ? _gstController.text.trim() : _shippingGstController.text.trim(),
       'shippingContactPerson': _isSameAsBilling ? _contactPersonController.text.trim() : _shippingContactPersonController.text.trim(),
       'shippingMobile': _isSameAsBilling ? _mobileController.text.trim() : _shippingMobileController.text.trim(),
@@ -1166,7 +1172,7 @@ class _ProformaScreenState extends State<ProformaScreen> {
       'companyWebsite': _companyWebsite,
       'companyLogoUrl': _companyLogoUrl,
 
-      'totalSubtotal': _cachedSubtotal,
+      'subTotal': _cachedSubtotal,
       'totalItemDiscount': _cachedItemDiscount,
       'globalDiscountPercent': _globalDiscountPercent,
       'globalDiscountAmount': _cachedGlobalDiscountAmount,
@@ -1174,7 +1180,7 @@ class _ProformaScreenState extends State<ProformaScreen> {
       'totalCgst': _cachedCgst,
       'totalSgst': _cachedSgst,
       'totalIgst': _cachedIgst,
-      'totalTaxAmount': _cachedCgst + _cachedSgst + _cachedIgst,
+      'taxAmount': _cachedTaxAmount,
       'grandTotal': _cachedGrandTotal,
       'roundOff': _cachedRoundOff,
       'finalTotal': _cachedFinalTotal,
@@ -1206,16 +1212,12 @@ class _ProformaScreenState extends State<ProformaScreen> {
       'signatureDesignation': _signDesignationController.text.trim(),
       'signaturePhone': _signPhoneController.text.trim(),
 
-      // FIX: Ensuring we safely pass empty string if null, without hyphens
       'inquiryNumber': _linkedInquiryNumber ?? '',
       'quotationNumber': _linkedQuotationNumber ?? '',
       'salesOrderNumber': _linkedSalesOrderNumber ?? '',
 
-      'proformaDateStr': '${_proformaDate.day.toString().padLeft(2, '0')}/${_proformaDate.month.toString().padLeft(2, '0')}/${_proformaDate.year}',
-      'nextFollowUpDate': _nextFollowUpDate != null ? Timestamp.fromDate(_nextFollowUpDate!) : null,
-      'followUpNotes': _followUpNotesController.text.trim(),
-      'inquirySource': _selectedInquirySource,
-      'inquiryDate': Timestamp.fromDate(_inquiryDate),
+      'createdBy': _currentUserUid,
+      'createdByName': _currentUserName,
     };
   }
 
@@ -1884,11 +1886,11 @@ class _ProformaScreenState extends State<ProformaScreen> {
                                 ),
                               ),
                             _buildItemTextField(
-                              _clientNameController,
-                              'Company Name *',
+                              _customerNameController,
+                              'Customer Name *',
                               validator: (v) => v!.isEmpty ? 'Required' : null,
                             ),
-                            _buildItemTextField(_addressController, 'Billing Address', maxLines: 2),
+                            _buildItemTextField(_billingAddressController, 'Billing Address', maxLines: 2),
                             Row(
                               children: [
                                 Expanded(child: _buildItemTextField(_contactPersonController, 'Contact Person')),

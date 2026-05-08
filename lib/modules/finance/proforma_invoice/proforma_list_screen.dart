@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:QUIK/modules/finance/proforma_invoice/proforma_screen.dart';
+import 'package:QUIK/modules/finance/proforma_invoice/proforma_invoice_pdf_generator.dart';
 
 class ProformaListScreen extends StatefulWidget {
   final String companyId;
@@ -21,6 +22,8 @@ class _ProformaListScreenState extends State<ProformaListScreen> {
   String _statusFilter = 'All';
   String _sortOption = 'Date: Newest';
   bool _isLoading = false;
+
+  final Map<String, String> _userNamesCache = {};
 
   final List<String> _statuses = [
     'All',
@@ -108,6 +111,58 @@ class _ProformaListScreenState extends State<ProformaListScreen> {
       ),
     ) ??
         false;
+  }
+
+  // ==========================================
+  // USER NAME CACHING LOGIC
+  // ==========================================
+
+  String _getCreatorName(Map<String, dynamic> data) {
+    final String createdByName = (data['createdByName'] ?? '').toString().trim();
+    if (createdByName.isNotEmpty) return createdByName;
+
+    final String uid = (data['createdBy'] ?? '').toString().trim();
+    if (uid.isEmpty) return 'Unknown';
+
+    if (_userNamesCache.containsKey(uid)) {
+      return _userNamesCache[uid]!;
+    }
+
+    _fetchAndCacheUserName(uid);
+    return 'Fetching...';
+  }
+
+  Future<void> _fetchAndCacheUserName(String uid) async {
+    _userNamesCache[uid] = 'Fetching...';
+    try {
+      final doc = await FirebaseFirestore.instance
+          .collection('companies')
+          .doc(widget.companyId)
+          .collection('users')
+          .doc(uid)
+          .get();
+
+      if (doc.exists && doc.data() != null) {
+        final name = (doc.data()!['name'] ?? doc.data()!['fullName'] ?? 'Unknown').toString().trim();
+        if (mounted) {
+          setState(() {
+            _userNamesCache[uid] = name.isNotEmpty ? name : 'Unknown';
+          });
+        }
+      } else {
+        if (mounted) {
+          setState(() {
+            _userNamesCache[uid] = 'Unknown';
+          });
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _userNamesCache[uid] = 'Unknown';
+        });
+      }
+    }
   }
 
   // ==========================================
@@ -208,14 +263,12 @@ class _ProformaListScreenState extends State<ProformaListScreen> {
       final db = FirebaseFirestore.instance;
       final batch = db.batch();
 
-      // 1. Generate new Tax Invoice Document Reference
       final invoiceRef = db
           .collection('companies')
           .doc(widget.companyId)
           .collection('invoices')
           .doc();
 
-      // 2. Draft the Tax Invoice Data mapping
       final invoiceData = {
         'customerId': data['customerId'],
         'customerName': data['customerName'] ?? data['clientName'],
@@ -234,7 +287,6 @@ class _ProformaListScreenState extends State<ProformaListScreen> {
 
       batch.set(invoiceRef, invoiceData);
 
-      // 3. Update Current Proforma Status & Reference mapping
       final proformaRef = db
           .collection('companies')
           .doc(widget.companyId)
@@ -247,7 +299,6 @@ class _ProformaListScreenState extends State<ProformaListScreen> {
         'updatedAt': FieldValue.serverTimestamp(),
       });
 
-      // 4. Atomic Commit
       await batch.commit();
 
       _showSnack('Successfully converted to Invoice');
@@ -639,15 +690,22 @@ class _ProformaListScreenState extends State<ProformaListScreen> {
                             'Unknown Customer')
                             .toString();
 
-                        final createdByName = (data['createdByName'] ??
-                            data['createdBy'] ??
-                            'Unknown')
-                            .toString();
-                        final referenceRef = (data['quotationId'] ??
-                            data['referenceNumber'] ??
-                            data['inquiryId'] ??
-                            '')
-                            .toString();
+                        final createdByName = _getCreatorName(data);
+
+                        String referenceRef = '';
+                        final refNumber = (data['referenceNumber'] ?? '').toString().trim();
+                        final qtNumber = (data['quotationNumber'] ?? '').toString().trim();
+                        final inqNumber = (data['inquiryNumber'] ?? '').toString().trim();
+
+                        if (refNumber.isNotEmpty) {
+                          referenceRef = refNumber;
+                        } else if (qtNumber.isNotEmpty) {
+                          referenceRef = qtNumber;
+                        } else if (inqNumber.isNotEmpty) {
+                          referenceRef = inqNumber;
+                        }
+
+                        final displayReference = referenceRef.isNotEmpty ? '# $referenceRef' : '';
 
                         final grandTotal = double.tryParse(
                             (data['grandTotal'] ??
@@ -745,13 +803,39 @@ class _ProformaListScreenState extends State<ProformaListScreen> {
                                             color: Colors.grey.shade600),
                                         onSelected: (value) async {
                                           switch (value) {
-                                            case 'open':
+                                            case 'edit':
                                               Navigator.push(
                                                 context,
                                                 MaterialPageRoute(
                                                   builder: (_) => ProformaScreen(
                                                     companyId: widget.companyId,
                                                     proformaId: doc.id,
+                                                  ),
+                                                ),
+                                              );
+                                              break;
+                                            case 'view_pdf':
+                                              final previewData = Map<String, dynamic>.from(data);
+                                              previewData['id'] = doc.id;
+
+                                              // Safely parse the dynamic items into the strictly typed List<ProformaLocalItem> required by the preview screen
+                                              List<ProformaLocalItem> parsedItems = [];
+                                              if (previewData['items'] != null && previewData['items'] is List) {
+                                                try {
+                                                  parsedItems = (previewData['items'] as List).map((e) {
+                                                    return ProformaLocalItem.fromMap(Map<String, dynamic>.from(e as Map));
+                                                  }).toList();
+                                                } catch (_) {
+                                                  // Silent catch to prevent crash if mapping fails
+                                                }
+                                              }
+
+                                              Navigator.push(
+                                                context,
+                                                MaterialPageRoute(
+                                                  builder: (_) => ProformaPreviewScreen(
+                                                    data: previewData,
+                                                    items: parsedItems,
                                                   ),
                                                 ),
                                               );
@@ -785,8 +869,18 @@ class _ProformaListScreenState extends State<ProformaListScreen> {
                                         itemBuilder: (context) {
                                           final List<PopupMenuEntry<String>> menuItems = [];
 
-                                          menuItems.add(const PopupMenuItem(value: 'open', child: Text('View / Edit')));
+                                          // Dynamic View / Edit Option
+                                          if (statLw == 'draft' || statLw == 'rejected') {
+                                            menuItems.add(const PopupMenuItem(value: 'edit', child: Text('Edit')));
+                                          } else if (statLw == 'sent') {
+                                            menuItems.add(const PopupMenuItem(value: 'edit', child: Text('View / Edit')));
+                                          } else if (statLw == 'approved' || statLw == 'converted' || statLw == 'cancelled') {
+                                            menuItems.add(const PopupMenuItem(value: 'view_pdf', child: Text('View')));
+                                          } else {
+                                            menuItems.add(const PopupMenuItem(value: 'edit', child: Text('View / Edit')));
+                                          }
 
+                                          // Action Options
                                           if (statLw == 'draft' || statLw == 'sent') {
                                             menuItems.add(const PopupMenuItem(value: 'approve', child: Text('Approve')));
                                             menuItems.add(const PopupMenuItem(value: 'reject', child: Text('Reject')));
@@ -802,6 +896,7 @@ class _ProformaListScreenState extends State<ProformaListScreen> {
                                             menuItems.add(const PopupMenuItem(value: 'convert', child: Text('Convert to Invoice')));
                                           }
 
+                                          // Delete Option
                                           menuItems.add(const PopupMenuDivider());
                                           menuItems.add(const PopupMenuItem(
                                               value: 'delete',
@@ -832,10 +927,10 @@ class _ProformaListScreenState extends State<ProformaListScreen> {
                                   crossAxisAlignment:
                                   WrapCrossAlignment.center,
                                   children: [
-                                    if (referenceRef.isNotEmpty)
+                                    if (displayReference.isNotEmpty)
                                       _InlineInfo(
                                         icon: Icons.tag_outlined,
-                                        text: referenceRef,
+                                        text: displayReference,
                                       ),
                                     _InlineInfo(
                                       icon: Icons.person_outline,
