@@ -2,7 +2,6 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
-import 'package:QUIK/core/inventory/providers/inventory_config_provider.dart';
 import 'package:QUIK/core/modules/module_registry.dart';
 import 'package:QUIK/core/modules/providers/module_access_provider.dart';
 import 'package:QUIK/core/theme/app_theme.dart';
@@ -11,11 +10,7 @@ import 'package:QUIK/modules/administration/modules/screen_company_modules.dart'
 import 'package:QUIK/modules/administration/users/screen_user_management.dart';
 import 'package:QUIK/modules/crm/customers/screens_customer_list.dart';
 import 'package:QUIK/modules/dashboard/dashboard_screen.dart';
-import 'package:QUIK/modules/inventory/fabrication/screens/material_inward_screen.dart';
-import 'package:QUIK/modules/inventory/fabrication/screens/material_issue_screen.dart';
-import 'package:QUIK/modules/inventory/fabrication/screens/raw_material_stock_screen.dart';
 import 'package:QUIK/modules/inventory/products/screens_product_list.dart';
-import 'package:QUIK/modules/purchase/fabrication/screens/purchase_bill_screen.dart';
 import 'package:QUIK/modules/sales/inquiries/screens_inquiry_list.dart';
 import 'package:QUIK/modules/sales/quotations/screens_quotation_list.dart';
 import 'package:QUIK/modules/settings/screen_settings_home.dart';
@@ -26,25 +21,17 @@ import 'package:QUIK/modules/service/screens_service_home.dart';
 import 'package:QUIK/modules/finance/invoice/screens/invoice_list_screen.dart';
 import 'package:QUIK/modules/finance/invoice/screens/export_invoice_screen.dart';
 import 'package:QUIK/modules/finance/invoice/screens/tax_invoice_screen.dart';
-import 'package:QUIK/modules/finance/proforma_invoice/proforma_list_screen.dart'; // UPDATED IMPORT
+import 'package:QUIK/modules/finance/proforma_invoice/proforma_list_screen.dart';
 
 // Payments & Outstanding Sub-Modules
 import 'package:QUIK/modules/finance/payments_received/screens/payments_list_screen.dart';
 import 'package:QUIK/modules/finance/outstanding/screens/outstanding_screen.dart';
-import 'package:QUIK/modules/hr/screens/hr_home_screen.dart';
-import 'package:QUIK/modules/platform_admin/screens/platform_tenant_modules_screen.dart';
-import 'package:QUIK/modules/production/bom/screens/bom_list_screen.dart';
-import 'package:QUIK/modules/production/boq/screens/boq_list_screen.dart';
-import 'package:QUIK/modules/production/execution/screens/production_entry_list_screen.dart';
-import 'package:QUIK/modules/production/masters/screens/item_list_screen.dart';
-import 'package:QUIK/modules/production/masters/screens/process_list_screen.dart';
-import 'package:QUIK/modules/production/masters/screens/work_center_list_screen.dart';
+
+// Reports
 import 'package:QUIK/modules/reports/sales_report/sales_report_screen.dart';
 
 enum ShellPage {
   dashboard,
-
-  platformTenantModules,
 
   salesInquiries,
   salesQuotations,
@@ -70,23 +57,11 @@ enum ShellPage {
   inventoryStockOut,
   inventoryWarehouse,
   inventoryLowStock,
-  inventoryRawMaterialStock,
-  inventoryMaterialInward,
-  inventoryMaterialIssue,
 
   dispatchReady,
   dispatchChallans,
   dispatchShipmentTracking,
   dispatchDelivered,
-
-  productionItems,
-  productionProcesses,
-  productionWorkCenters,
-  productionBom,
-  productionBoq,
-  productionEntries,
-
-  hrHome,
 
   financeProforma,
   financeTaxInvoice,
@@ -118,8 +93,6 @@ extension ShellPageX on ShellPage {
     switch (this) {
       case ShellPage.dashboard:
         return 'Dashboard';
-      case ShellPage.platformTenantModules:
-        return 'Tenant Modules';
 
       case ShellPage.salesInquiries:
         return 'Inquiries';
@@ -166,12 +139,6 @@ extension ShellPageX on ShellPage {
         return 'Warehouse';
       case ShellPage.inventoryLowStock:
         return 'Low Stock Alerts';
-      case ShellPage.inventoryRawMaterialStock:
-        return 'Raw Material Stock';
-      case ShellPage.inventoryMaterialInward:
-        return 'Material Inward';
-      case ShellPage.inventoryMaterialIssue:
-        return 'Material Issue';
 
       case ShellPage.dispatchReady:
         return 'Ready for Dispatch';
@@ -181,22 +148,6 @@ extension ShellPageX on ShellPage {
         return 'Shipment Tracking';
       case ShellPage.dispatchDelivered:
         return 'Delivered Orders';
-
-      case ShellPage.productionItems:
-        return 'Items';
-      case ShellPage.productionProcesses:
-        return 'Processes';
-      case ShellPage.productionWorkCenters:
-        return 'Work Centers';
-      case ShellPage.productionBom:
-        return 'BOM';
-      case ShellPage.productionBoq:
-        return 'BOQ';
-      case ShellPage.productionEntries:
-        return 'Production Entries';
-
-      case ShellPage.hrHome:
-        return 'HR';
 
       case ShellPage.financeProforma:
         return 'Proforma Invoice';
@@ -248,8 +199,6 @@ extension ShellPageX on ShellPage {
     switch (this) {
       case ShellPage.dashboard:
         return Icons.home_outlined;
-      case ShellPage.platformTenantModules:
-        return Icons.admin_panel_settings_outlined;
       case ShellPage.salesInquiries:
         return Icons.campaign_outlined;
       case ShellPage.salesQuotations:
@@ -292,12 +241,6 @@ extension ShellPageX on ShellPage {
         return Icons.warehouse_outlined;
       case ShellPage.inventoryLowStock:
         return Icons.warning_amber_outlined;
-      case ShellPage.inventoryRawMaterialStock:
-        return Icons.category_outlined;
-      case ShellPage.inventoryMaterialInward:
-        return Icons.move_to_inbox_outlined;
-      case ShellPage.inventoryMaterialIssue:
-        return Icons.outbox_outlined;
       case ShellPage.dispatchReady:
         return Icons.inventory_2_outlined;
       case ShellPage.dispatchChallans:
@@ -306,20 +249,6 @@ extension ShellPageX on ShellPage {
         return Icons.route_outlined;
       case ShellPage.dispatchDelivered:
         return Icons.done_all_outlined;
-      case ShellPage.productionItems:
-        return Icons.widgets_outlined;
-      case ShellPage.productionProcesses:
-        return Icons.account_tree_outlined;
-      case ShellPage.productionWorkCenters:
-        return Icons.precision_manufacturing_outlined;
-      case ShellPage.productionBom:
-        return Icons.schema_outlined;
-      case ShellPage.productionBoq:
-        return Icons.calculate_outlined;
-      case ShellPage.productionEntries:
-        return Icons.factory_outlined;
-      case ShellPage.hrHome:
-        return Icons.badge_outlined;
       case ShellPage.financeProforma:
         return Icons.request_quote_outlined;
       case ShellPage.financeTaxInvoice:
@@ -387,7 +316,6 @@ class ZohoShell extends StatefulWidget {
   final Map<String, dynamic> permissions;
   final String? userDisplayName;
   final String? industry;
-  final bool isPlatformAdmin;
 
   const ZohoShell({
     super.key,
@@ -399,7 +327,6 @@ class ZohoShell extends StatefulWidget {
     required this.permissions,
     this.userDisplayName,
     this.industry,
-    this.isPlatformAdmin = false,
   });
 
   @override
@@ -409,18 +336,8 @@ class ZohoShell extends StatefulWidget {
 class _ZohoShellState extends State<ZohoShell> {
   ShellPage activePage = ShellPage.dashboard;
 
-  final Set<String> expandedGroups = {
-    'sales',
-    'service',
-    'crm',
-    'inventory',
-    'production',
-    'hr',
-    'finance',
-    'reports',
-    'admin',
-    'platform',
-  };
+  // Initialize strictly empty. ALL groups stay collapsed on load.
+  final Set<String> expandedGroups = {};
 
   String? _resolvedIndustry;
   bool _isLoadingIndustry = true;
@@ -451,8 +368,7 @@ class _ZohoShellState extends State<ZohoShell> {
 
       if (doc.exists && doc.data() != null) {
         final data = doc.data()!;
-        final raw =
-        (data['industryType'] ??
+        final raw = (data['industryType'] ??
             data['businessCategory'] ??
             data['industry'] ??
             '')
@@ -534,28 +450,8 @@ class _ZohoShellState extends State<ZohoShell> {
       }
     }
 
-    if (_isProductionPage(page) && !_isModuleEnabled(ModuleIds.production)) {
-      return false;
-    }
-
-    if (page == ShellPage.hrHome && !_isModuleEnabled(ModuleIds.hr)) {
-      return false;
-    }
-
-    if (page == ShellPage.platformTenantModules) {
-      return widget.isPlatformAdmin;
-    }
-
     if (page == ShellPage.adminModules ||
         page == ShellPage.adminInventoryProfile) {
-      return false;
-    }
-
-    if (_isGeneralInventoryPage(page) && _isFabricationInventory) {
-      return false;
-    }
-
-    if (_isFabricationInventoryPage(page) && !_isFabricationInventory) {
       return false;
     }
 
@@ -564,8 +460,6 @@ class _ZohoShellState extends State<ZohoShell> {
     switch (page) {
       case ShellPage.dashboard:
         return true;
-      case ShellPage.platformTenantModules:
-        return widget.isPlatformAdmin;
       case ShellPage.settingsGeneral:
         return true;
     // Sales
@@ -615,10 +509,6 @@ class _ZohoShellState extends State<ZohoShell> {
         return _hasPermission('inventory', 'warehouse');
       case ShellPage.inventoryLowStock:
         return _hasPermission('inventory', 'lowStockAlerts');
-      case ShellPage.inventoryRawMaterialStock:
-      case ShellPage.inventoryMaterialInward:
-      case ShellPage.inventoryMaterialIssue:
-        return _hasPermission('inventory', 'products');
     // Dispatch
       case ShellPage.dispatchReady:
         return _hasPermission('dispatch', 'readyForDispatch');
@@ -628,18 +518,6 @@ class _ZohoShellState extends State<ZohoShell> {
         return _hasPermission('dispatch', 'shipmentTracking');
       case ShellPage.dispatchDelivered:
         return _hasPermission('dispatch', 'deliveredOrders');
-    // Production
-      case ShellPage.productionItems:
-      case ShellPage.productionProcesses:
-      case ShellPage.productionWorkCenters:
-      case ShellPage.productionBom:
-      case ShellPage.productionBoq:
-      case ShellPage.productionEntries:
-        return _isModuleEnabled(ModuleIds.production);
-      case ShellPage.hrHome:
-        return _hasPermission('hr', 'employees') ||
-            _hasPermission('hr', 'attendance') ||
-            _hasPermission('hr', 'wages');
     // Finance
       case ShellPage.financeProforma:
         return _hasPermission('finance', 'proformaInvoice');
@@ -682,74 +560,14 @@ class _ZohoShellState extends State<ZohoShell> {
     }
   }
 
-  bool _isProductionPage(ShellPage page) {
-    return page == ShellPage.productionItems ||
-        page == ShellPage.productionProcesses ||
-        page == ShellPage.productionWorkCenters ||
-        page == ShellPage.productionBom ||
-        page == ShellPage.productionBoq ||
-        page == ShellPage.productionEntries;
-  }
-
-  bool get _isFabricationInventory {
-    return InventoryConfigProvider.of(context).isFabricationInventory;
-  }
-
-  bool _isGeneralInventoryPage(ShellPage page) {
-    return page == ShellPage.inventoryProducts ||
-        page == ShellPage.inventoryStockSummary ||
-        page == ShellPage.inventoryStockIn ||
-        page == ShellPage.inventoryStockOut ||
-        page == ShellPage.inventoryWarehouse ||
-        page == ShellPage.inventoryLowStock;
-  }
-
-  bool _isFabricationInventoryPage(ShellPage page) {
-    return page == ShellPage.inventoryRawMaterialStock ||
-        page == ShellPage.inventoryMaterialInward ||
-        page == ShellPage.inventoryMaterialIssue;
-  }
-
-  List<ShellPage> get _inventorySidebarPages {
-    if (_isFabricationInventory) {
-      return const [
-        ShellPage.inventoryRawMaterialStock,
-        ShellPage.inventoryMaterialInward,
-        ShellPage.inventoryMaterialIssue,
-      ];
-    }
-
-    return const [
-      ShellPage.inventoryProducts,
-      ShellPage.inventoryStockSummary,
-      ShellPage.inventoryStockIn,
-      ShellPage.inventoryStockOut,
-      ShellPage.inventoryWarehouse,
-      ShellPage.inventoryLowStock,
-    ];
-  }
-
   List<SidebarGroup> get _allSidebarGroups {
     if (_resolvedIndustry == 'export_import') {
-      return [
-        if (widget.isPlatformAdmin)
-          const SidebarGroup(
-            key: 'platform',
-            title: 'Platform Admin',
-            icon: Icons.admin_panel_settings_outlined,
-            children: [ShellPage.platformTenantModules],
-          ),
+      return const [
         SidebarGroup(
           key: 'crm',
           title: 'CRM',
           icon: Icons.people_alt_outlined,
           children: [ShellPage.crmCustomers],
-        ),
-        SidebarGroup(
-          key: 'hr',
-          title: 'HR',
-          icon: Icons.badge_outlined,
-          children: [ShellPage.hrHome],
         ),
         SidebarGroup(
           key: 'finance',
@@ -786,15 +604,8 @@ class _ZohoShellState extends State<ZohoShell> {
       ];
     }
 
-    return [
-      if (widget.isPlatformAdmin)
-        const SidebarGroup(
-          key: 'platform',
-          title: 'Platform Admin',
-          icon: Icons.admin_panel_settings_outlined,
-          children: [ShellPage.platformTenantModules],
-        ),
-      const SidebarGroup(
+    return const [
+      SidebarGroup(
         key: 'sales',
         title: 'Sales',
         icon: Icons.trending_up_outlined,
@@ -807,13 +618,13 @@ class _ZohoShellState extends State<ZohoShell> {
           ShellPage.salesMeetings,
         ],
       ),
-      const SidebarGroup(
+      SidebarGroup(
         key: 'service',
         title: 'Service',
         icon: Icons.build_outlined,
         children: [ShellPage.service],
       ),
-      const SidebarGroup(
+      SidebarGroup(
         key: 'crm',
         title: 'CRM',
         icon: Icons.people_alt_outlined,
@@ -824,7 +635,7 @@ class _ZohoShellState extends State<ZohoShell> {
           ShellPage.crmCommunication,
         ],
       ),
-      const SidebarGroup(
+      SidebarGroup(
         key: 'purchase',
         title: 'Purchase',
         icon: Icons.shopping_cart_outlined,
@@ -839,9 +650,16 @@ class _ZohoShellState extends State<ZohoShell> {
         key: 'inventory',
         title: 'Inventory',
         icon: Icons.inventory_2_outlined,
-        children: _inventorySidebarPages,
+        children: [
+          ShellPage.inventoryProducts,
+          ShellPage.inventoryStockSummary,
+          ShellPage.inventoryStockIn,
+          ShellPage.inventoryStockOut,
+          ShellPage.inventoryWarehouse,
+          ShellPage.inventoryLowStock,
+        ],
       ),
-      const SidebarGroup(
+      SidebarGroup(
         key: 'dispatch',
         title: 'Dispatch',
         icon: Icons.local_shipping_outlined,
@@ -852,26 +670,7 @@ class _ZohoShellState extends State<ZohoShell> {
           ShellPage.dispatchDelivered,
         ],
       ),
-      const SidebarGroup(
-        key: 'production',
-        title: 'Production',
-        icon: Icons.precision_manufacturing_outlined,
-        children: [
-          ShellPage.productionItems,
-          ShellPage.productionProcesses,
-          ShellPage.productionWorkCenters,
-          ShellPage.productionBom,
-          ShellPage.productionBoq,
-          ShellPage.productionEntries,
-        ],
-      ),
-      const SidebarGroup(
-        key: 'hr',
-        title: 'HR',
-        icon: Icons.badge_outlined,
-        children: [ShellPage.hrHome],
-      ),
-      const SidebarGroup(
+      SidebarGroup(
         key: 'finance',
         title: 'Finance',
         icon: Icons.account_balance_wallet_outlined,
@@ -883,7 +682,7 @@ class _ZohoShellState extends State<ZohoShell> {
           ShellPage.financeExpenses,
         ],
       ),
-      const SidebarGroup(
+      SidebarGroup(
         key: 'reports',
         title: 'Reports',
         icon: Icons.assessment_outlined,
@@ -895,7 +694,7 @@ class _ZohoShellState extends State<ZohoShell> {
           ShellPage.reportsPayment,
         ],
       ),
-      const SidebarGroup(
+      SidebarGroup(
         key: 'admin',
         title: 'Administration',
         icon: Icons.admin_panel_settings_outlined,
@@ -921,9 +720,8 @@ class _ZohoShellState extends State<ZohoShell> {
         continue;
       }
 
-      final allowedChildren = group.children
-          .where((page) => _canViewPage(page))
-          .toList();
+      final allowedChildren =
+      group.children.where((page) => _canViewPage(page)).toList();
 
       if (allowedChildren.isNotEmpty) {
         filtered.add(
@@ -954,10 +752,6 @@ class _ZohoShellState extends State<ZohoShell> {
         return ModuleIds.inventory;
       case ModuleIds.finance:
         return ModuleIds.finance;
-      case ModuleIds.production:
-        return ModuleIds.production;
-      case ModuleIds.hr:
-        return ModuleIds.hr;
       case ModuleIds.reports:
         return ModuleIds.reports;
       case ModuleIds.iot:
@@ -1000,15 +794,9 @@ class _ZohoShellState extends State<ZohoShell> {
   bool _isImplementedPage(ShellPage page) {
     switch (page) {
       case ShellPage.dashboard:
-      case ShellPage.platformTenantModules:
       case ShellPage.salesInquiries:
       case ShellPage.crmCustomers:
-      case ShellPage.purchaseOrders:
-      case ShellPage.purchaseGrn:
       case ShellPage.inventoryProducts:
-      case ShellPage.inventoryRawMaterialStock:
-      case ShellPage.inventoryMaterialInward:
-      case ShellPage.inventoryMaterialIssue:
       case ShellPage.salesQuotations:
       case ShellPage.adminUsers:
       case ShellPage.adminModules:
@@ -1020,13 +808,6 @@ class _ZohoShellState extends State<ZohoShell> {
       case ShellPage.financeExportInvoiceCreate:
       case ShellPage.financePaymentsReceived:
       case ShellPage.financeOutstanding:
-      case ShellPage.productionItems:
-      case ShellPage.productionProcesses:
-      case ShellPage.productionWorkCenters:
-      case ShellPage.productionBom:
-      case ShellPage.productionBoq:
-      case ShellPage.productionEntries:
-      case ShellPage.hrHome:
       case ShellPage.reportsSales:
         return true;
       default:
@@ -1456,6 +1237,9 @@ class _ZohoShellState extends State<ZohoShell> {
                   if (expanded) {
                     expandedGroups.remove(group.key);
                   } else {
+                    // Professional Accordion behavior:
+                    // Collapse all other groups and expand the clicked one.
+                    expandedGroups.clear();
                     expandedGroups.add(group.key);
                   }
                 });
@@ -1504,9 +1288,8 @@ class _ZohoShellState extends State<ZohoShell> {
               firstChild: Padding(
                 padding: const EdgeInsets.fromLTRB(6, 0, 6, 6),
                 child: Column(
-                  children: group.children
-                      .map((page) => _subNavItem(page))
-                      .toList(),
+                  children:
+                  group.children.map((page) => _subNavItem(page)).toList(),
                 ),
               ),
               secondChild: const SizedBox.shrink(),
@@ -1518,11 +1301,10 @@ class _ZohoShellState extends State<ZohoShell> {
   }
 
   Widget _subNavItem(ShellPage page) {
-    final bool selected =
-        activePage == page ||
-            (page == ShellPage.financeTaxInvoice &&
-                (activePage == ShellPage.financeExportInvoiceCreate ||
-                    activePage == ShellPage.financeTaxInvoiceCreate));
+    final bool selected = activePage == page ||
+        (page == ShellPage.financeTaxInvoice &&
+            (activePage == ShellPage.financeExportInvoiceCreate ||
+                activePage == ShellPage.financeTaxInvoiceCreate));
 
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 1),
@@ -1627,12 +1409,6 @@ class _ZohoShellState extends State<ZohoShell> {
           role: _currentRole,
         );
 
-      case ShellPage.platformTenantModules:
-        return Padding(
-          padding: const EdgeInsets.all(10),
-          child: PlatformTenantModulesScreen(platformAdminUid: widget.userUid),
-        );
-
       case ShellPage.salesInquiries:
         return const Padding(
           padding: EdgeInsets.all(10),
@@ -1655,39 +1431,6 @@ class _ZohoShellState extends State<ZohoShell> {
         return const Padding(
           padding: EdgeInsets.all(10),
           child: ScreensProductList(),
-        );
-
-      case ShellPage.purchaseOrders:
-        return Padding(
-          padding: const EdgeInsets.all(10),
-          child: FabricationPurchaseBillScreen(tenantId: widget.companyId),
-        );
-
-      case ShellPage.purchaseGrn:
-        return Padding(
-          padding: const EdgeInsets.all(10),
-          child: FabricationMaterialInwardScreen(
-            tenantId: widget.companyId,
-            purchaseView: true,
-          ),
-        );
-
-      case ShellPage.inventoryRawMaterialStock:
-        return Padding(
-          padding: const EdgeInsets.all(10),
-          child: FabricationRawMaterialStockScreen(tenantId: widget.companyId),
-        );
-
-      case ShellPage.inventoryMaterialInward:
-        return Padding(
-          padding: const EdgeInsets.all(10),
-          child: FabricationMaterialInwardScreen(tenantId: widget.companyId),
-        );
-
-      case ShellPage.inventoryMaterialIssue:
-        return Padding(
-          padding: const EdgeInsets.all(10),
-          child: FabricationMaterialIssueScreen(tenantId: widget.companyId),
         );
 
       case ShellPage.salesQuotations:
@@ -1788,48 +1531,6 @@ class _ZohoShellState extends State<ZohoShell> {
             companyId: widget.companyId,
             userUid: widget.userUid,
           ),
-        );
-
-      case ShellPage.productionItems:
-        return Padding(
-          padding: const EdgeInsets.all(10),
-          child: ProductionItemListScreen(tenantId: widget.companyId),
-        );
-
-      case ShellPage.productionProcesses:
-        return Padding(
-          padding: const EdgeInsets.all(10),
-          child: ProcessListScreen(tenantId: widget.companyId),
-        );
-
-      case ShellPage.productionWorkCenters:
-        return Padding(
-          padding: const EdgeInsets.all(10),
-          child: WorkCenterListScreen(tenantId: widget.companyId),
-        );
-
-      case ShellPage.productionBom:
-        return Padding(
-          padding: const EdgeInsets.all(10),
-          child: BomListScreen(tenantId: widget.companyId),
-        );
-
-      case ShellPage.productionBoq:
-        return Padding(
-          padding: const EdgeInsets.all(10),
-          child: BoqListScreen(tenantId: widget.companyId),
-        );
-
-      case ShellPage.productionEntries:
-        return Padding(
-          padding: const EdgeInsets.all(10),
-          child: ProductionEntryListScreen(tenantId: widget.companyId),
-        );
-
-      case ShellPage.hrHome:
-        return Padding(
-          padding: const EdgeInsets.all(10),
-          child: HrHomeScreen(tenantId: widget.companyId),
         );
 
       case ShellPage.reportsSales:
@@ -2039,7 +1740,7 @@ class _ZohoShellState extends State<ZohoShell> {
       case ShellPage.settingsGeneral:
         return ['Company', 'Security', 'Users', 'Audit'];
       default:
-        return ['Professional', 'Scalable', 'Modular', 'SaaS'];
+        return ['Professional', 'Scalable', 'Modular', 'ERP'];
     }
   }
 
@@ -2048,7 +1749,7 @@ class _ZohoShellState extends State<ZohoShell> {
       case ShellPage.salesInquiries:
         return 'Track leads and incoming inquiries, assign them to team members, monitor status, and prepare them for quotation and order conversion.';
       case ShellPage.salesQuotations:
-        return 'Generate and manage quotations for your sales team. This connects your existing quotation workflow into a cleaner SaaS module structure.';
+        return 'Generate and manage quotations for your sales team. This connects your existing quotation workflow into a cleaner ERP module structure.';
       case ShellPage.crmCustomers:
         return 'Manage customer master records, view customer relationship data, and keep your CRM organized around actual business accounts.';
       case ShellPage.inventoryProducts:
@@ -2058,7 +1759,7 @@ class _ZohoShellState extends State<ZohoShell> {
       case ShellPage.settingsGeneral:
         return 'Manage workspace preferences, company controls, users, security, notifications, integrations, and audit-related options from one professional ERP settings hub.';
       default:
-        return 'This module is part of the new professional QUIK SaaS structure. You can keep your current app working while gradually connecting this module to its own database, screens, and workflows.';
+        return 'This module is part of the professional ERP architecture. You can keep your current app working while gradually connecting this module to its own database, screens, and workflows.';
     }
   }
 
@@ -2333,7 +2034,7 @@ class _ZohoShellState extends State<ZohoShell> {
                 Expanded(
                   child: _Panel(
                     title: 'Workspace Structure',
-                    emptyText: 'Professional SaaS modules are ready in sidebar',
+                    emptyText: 'Professional ERP modules are ready in sidebar',
                     emptyIcon: Icons.dashboard_customize_outlined,
                   ),
                 ),

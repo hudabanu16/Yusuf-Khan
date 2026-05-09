@@ -2,7 +2,10 @@
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_storage/firebase_storage.dart';
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 
 import 'package:QUIK/auth/register/register_screen_local.dart';
 import 'package:QUIK/core/theme/app_theme.dart';
@@ -45,10 +48,24 @@ class ScreenSettingsHome extends StatefulWidget {
 
 class _ScreenSettingsHomeState extends State<ScreenSettingsHome> {
   _SettingsSection _activeSection = _SettingsSection.personal;
+  bool _isUploadingLogo = false;
 
   bool get isAdmin => widget.role.toLowerCase() == 'admin';
   bool get isManager => widget.role.toLowerCase() == 'manager';
-  bool get isAdminOrManager => isAdmin || isManager;
+
+  // Check for broader admin-level roles typically used in ERPs
+  bool get isAdminOrManager {
+    final r = widget.role.toLowerCase().trim();
+    return r == 'admin' ||
+        r == 'manager' ||
+        r == 'owner' ||
+        r == 'founder' ||
+        r == 'ceo' ||
+        r == 'superadmin' ||
+        r == 'software_super_admin' ||
+        r == 'company_super_admin';
+  }
+
   bool get isExportImport => widget.industry == 'export_import';
 
   bool _hasPermission(String key) {
@@ -60,9 +77,12 @@ class _ScreenSettingsHomeState extends State<ScreenSettingsHome> {
   bool get canOpenUsers => isAdminOrManager || _hasPermission('userManagement');
 
   // Hide these explicitly for Export-Import
-  bool get canOpenCompanyProfile => !isExportImport && (isAdminOrManager || _hasPermission('companyProfile'));
-  bool get canOpenAuditLogs => !isExportImport && (isAdminOrManager || _hasPermission('auditLogs'));
-  bool get canOpenRoles => !isExportImport && (isAdminOrManager || _hasPermission('roles'));
+  bool get canOpenCompanyProfile =>
+      !isExportImport && (isAdminOrManager || _hasPermission('companyProfile'));
+  bool get canOpenAuditLogs =>
+      !isExportImport && (isAdminOrManager || _hasPermission('auditLogs'));
+  bool get canOpenRoles =>
+      !isExportImport && (isAdminOrManager || _hasPermission('roles'));
 
   List<_NavItemData> get _navItems {
     return [
@@ -97,6 +117,138 @@ class _ScreenSettingsHomeState extends State<ScreenSettingsHome> {
     ];
   }
 
+  void _showSnack(String message, {bool isError = false}) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message, style: const TextStyle(fontWeight: FontWeight.w600)),
+        backgroundColor: isError ? Colors.red.shade700 : zSuccess,
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
+  }
+
+  Future<void> _pickAndUploadLogo(String? currentLogoUrl) async {
+    try {
+      if (!isAdminOrManager) {
+        _showSnack('Only Admins or Managers can update the logo', isError: true);
+        return;
+      }
+
+      final result = await FilePicker.platform.pickFiles(
+        type: FileType.image,
+        allowMultiple: false,
+        withData: true,
+      );
+
+      if (result == null || result.files.isEmpty) return;
+
+      final file = result.files.first;
+
+      if (file.size > 2 * 1024 * 1024) {
+        _showSnack('Image size must be less than 2MB', isError: true);
+        return;
+      }
+
+      if (file.bytes == null) {
+        _showSnack('Failed to read image data', isError: true);
+        return;
+      }
+
+      setState(() => _isUploadingLogo = true);
+
+      // 1. Delete old logo if it exists
+      if (currentLogoUrl != null && currentLogoUrl.isNotEmpty) {
+        try {
+          await FirebaseStorage.instance.refFromURL(currentLogoUrl).delete();
+        } catch (_) {}
+      }
+
+      // 2. Upload new logo safely handling Web bytes
+      final fileExt = file.extension?.toLowerCase() ?? 'png';
+      final fileName = 'logo_${DateTime.now().millisecondsSinceEpoch}.$fileExt';
+      final storageRef = FirebaseStorage.instance
+          .ref()
+          .child('companies/${widget.companyId}/branding/$fileName');
+
+      // Explicitly awaiting the UploadTask creates a TaskSnapshot safely
+      final uploadTask = storageRef.putData(
+        file.bytes!,
+        SettableMetadata(contentType: 'image/$fileExt'),
+      );
+
+      final snapshot = await uploadTask;
+      final downloadUrl = await snapshot.ref.getDownloadURL();
+
+      // 3. Save new URL to Firestore
+      await FirebaseFirestore.instance
+          .collection('companies')
+          .doc(widget.companyId)
+          .update({
+        'companyLogoUrl': downloadUrl,
+        'updatedAt': FieldValue.serverTimestamp(),
+      });
+
+      setState(() => _isUploadingLogo = false);
+      _showSnack('Company logo updated successfully');
+
+    } on FirebaseException catch (e) {
+      setState(() => _isUploadingLogo = false);
+      _showSnack('Storage Error: ${e.message}', isError: true);
+    } catch (e) {
+      setState(() => _isUploadingLogo = false);
+      _showSnack('Failed to upload logo: $e', isError: true);
+    }
+  }
+
+  Future<void> _removeLogo(String currentLogoUrl) async {
+    try {
+      if (!isAdminOrManager) {
+        _showSnack('Only Admins or Managers can remove the logo', isError: true);
+        return;
+      }
+
+      setState(() => _isUploadingLogo = true);
+
+      try {
+        await FirebaseStorage.instance.refFromURL(currentLogoUrl).delete();
+      } catch (_) {}
+
+      await FirebaseFirestore.instance
+          .collection('companies')
+          .doc(widget.companyId)
+          .update({
+        'companyLogoUrl': FieldValue.delete(),
+        'updatedAt': FieldValue.serverTimestamp(),
+      });
+
+      setState(() => _isUploadingLogo = false);
+      _showSnack('Company logo removed');
+    } catch (e) {
+      setState(() => _isUploadingLogo = false);
+      _showSnack('Failed to remove logo: $e', isError: true);
+    }
+  }
+
+  String _formatDate(Timestamp? ts) {
+    if (ts == null) return 'N/A';
+    return DateFormat('dd MMM yyyy, hh:mm a').format(ts.toDate());
+  }
+
+  int _calculateProfileHealth(Map<String, dynamic> data) {
+    int score = 0;
+    int totalFields = 6;
+
+    if ((data['companyName'] ?? '').toString().isNotEmpty) score++;
+    if ((data['companyLogoUrl'] ?? '').toString().isNotEmpty) score++;
+    if ((data['gstNo'] ?? '').toString().isNotEmpty) score++;
+    if ((data['panNo'] ?? '').toString().isNotEmpty) score++;
+    if ((data['industry'] ?? '').toString().isNotEmpty) score++;
+    if ((data['address'] ?? '').toString().isNotEmpty) score++;
+
+    return ((score / totalFields) * 100).toInt();
+  }
+
   @override
   Widget build(BuildContext context) {
     return Column(
@@ -105,6 +257,7 @@ class _ScreenSettingsHomeState extends State<ScreenSettingsHome> {
         const SizedBox(height: 10),
         Expanded(
           child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               SizedBox(
                 width: 250,
@@ -168,6 +321,7 @@ class _ScreenSettingsHomeState extends State<ScreenSettingsHome> {
         borderRadius: BorderRadius.circular(14),
       ),
       child: Column(
+        mainAxisSize: MainAxisSize.min,
         children: _navItems.map((item) {
           final selected = _activeSection == item.section;
 
@@ -185,7 +339,7 @@ class _ScreenSettingsHomeState extends State<ScreenSettingsHome> {
                   color: selected ? zBlueSoft : Colors.transparent,
                   borderRadius: BorderRadius.circular(12),
                   border: Border.all(
-                    color: selected ? zBlue.withValues(alpha: 0.15) : zBorder,
+                    color: selected ? zBlue.withValues(alpha: 0.15) : Colors.transparent,
                   ),
                 ),
                 child: Row(
@@ -250,11 +404,7 @@ class _ScreenSettingsHomeState extends State<ScreenSettingsHome> {
             );
 
             if (!mounted) return;
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
-                content: Text('Profile screen closed. Any saved changes are now updated.'),
-              ),
-            );
+            _showSnack('Profile screen closed. Any saved changes are now updated.', isError: false);
           },
         ),
         _ActionTile(
@@ -274,35 +424,248 @@ class _ScreenSettingsHomeState extends State<ScreenSettingsHome> {
   }
 
   Widget _buildWorkspaceSection() {
-    return _SectionPanel(
-      title: 'Workspace',
-      subtitle: 'Company-level settings and workspace information.',
-      children: [
-        if (canOpenCompanyProfile)
-          _ActionTile(
-            title: 'Company Profile',
-            subtitle: 'Manage company identity, GST, PAN, address, and branding.',
-            icon: Icons.apartment_outlined,
-            enabled: canOpenCompanyProfile,
-            onTap: widget.onOpenCompanyProfile,
-          ),
-        if (!isExportImport) ...[
-          _ActionTile(
-            title: 'Branches',
-            subtitle: 'Manage branch structure and branch-level setup.',
-            icon: Icons.account_tree_outlined,
-            enabled: isAdminOrManager,
-            onTap: () => _showComingSoon('Branches'),
-          ),
-          _ActionTile(
-            title: 'Document Numbering',
-            subtitle: 'Control quotation, invoice, and order numbering formats.',
-            icon: Icons.numbers_outlined,
-            enabled: isAdminOrManager,
-            onTap: () => _showComingSoon('Document Numbering'),
-          ),
-        ]
-      ],
+    return StreamBuilder<DocumentSnapshot>(
+      stream: FirebaseFirestore.instance
+          .collection('companies')
+          .doc(widget.companyId)
+          .snapshots(),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Center(child: CircularProgressIndicator(color: zBlue));
+        }
+
+        final data = snapshot.data?.data() as Map<String, dynamic>? ?? {};
+        final logoUrl = data['companyLogoUrl'] as String?;
+        final createdAt = data['createdAt'] as Timestamp?;
+        final updatedAt = data['updatedAt'] as Timestamp?;
+        final health = _calculateProfileHealth(data);
+
+        return _SectionPanel(
+          title: 'Workspace Overview',
+          subtitle: 'Company-level settings, identity, and workspace information.',
+          children: [
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: zBorder),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.02),
+                    blurRadius: 10,
+                    offset: const Offset(0, 4),
+                  )
+                ],
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // Logo Preview Section
+                      Stack(
+                        alignment: Alignment.center,
+                        children: [
+                          Container(
+                            width: 100,
+                            height: 100,
+                            decoration: BoxDecoration(
+                              color: zCanvasBg,
+                              borderRadius: BorderRadius.circular(16),
+                              border: Border.all(color: zBorder, width: 2),
+                              image: logoUrl != null && logoUrl.isNotEmpty
+                                  ? DecorationImage(
+                                image: NetworkImage(logoUrl),
+                                fit: BoxFit.contain,
+                              )
+                                  : null,
+                            ),
+                            child: logoUrl == null || logoUrl.isEmpty
+                                ? const Icon(
+                              Icons.business_outlined,
+                              size: 40,
+                              color: zMuted,
+                            )
+                                : null,
+                          ),
+                          if (_isUploadingLogo)
+                            Container(
+                              width: 100,
+                              height: 100,
+                              decoration: BoxDecoration(
+                                color: Colors.black.withValues(alpha: 0.4),
+                                borderRadius: BorderRadius.circular(16),
+                              ),
+                              child: const Center(
+                                child: CircularProgressIndicator(
+                                  color: Colors.white,
+                                  strokeWidth: 2,
+                                ),
+                              ),
+                            ),
+                        ],
+                      ),
+                      const SizedBox(width: 20),
+
+                      // Company Info & Actions
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              data['companyName'] ?? widget.companyName,
+                              style: const TextStyle(
+                                fontSize: 20,
+                                fontWeight: FontWeight.w900,
+                                color: zText,
+                              ),
+                            ),
+                            const SizedBox(height: 4),
+                            Row(
+                              children: [
+                                _StatusBadge(
+                                  text: data['industry']?.toString().toUpperCase() ?? 'INDUSTRY NOT SET',
+                                  color: zPurple,
+                                  bgColor: zPurpleSoft,
+                                ),
+                                const SizedBox(width: 8),
+                                _StatusBadge(
+                                  text: 'ID: ${widget.companyId}',
+                                  color: zMuted,
+                                  bgColor: zCanvasBg,
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 16),
+                            Row(
+                              children: [
+                                if (canOpenCompanyProfile) ...[
+                                  ElevatedButton.icon(
+                                    onPressed: _isUploadingLogo ? null : () => _pickAndUploadLogo(logoUrl),
+                                    icon: const Icon(Icons.upload_file, size: 16),
+                                    label: Text(logoUrl != null ? 'Change Logo' : 'Upload Logo'),
+                                    style: ElevatedButton.styleFrom(
+                                      backgroundColor: zBlue,
+                                      foregroundColor: Colors.white,
+                                      elevation: 0,
+                                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                                      shape: RoundedRectangleBorder(
+                                        borderRadius: BorderRadius.circular(8),
+                                      ),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 10),
+                                  if (logoUrl != null && logoUrl.isNotEmpty)
+                                    OutlinedButton.icon(
+                                      onPressed: _isUploadingLogo ? null : () => _removeLogo(logoUrl),
+                                      icon: const Icon(Icons.delete_outline, size: 16),
+                                      label: const Text('Remove'),
+                                      style: OutlinedButton.styleFrom(
+                                        foregroundColor: Colors.red,
+                                        side: BorderSide(color: Colors.red.shade200),
+                                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                                        shape: RoundedRectangleBorder(
+                                          borderRadius: BorderRadius.circular(8),
+                                        ),
+                                      ),
+                                    ),
+                                ]
+                              ],
+                            )
+                          ],
+                        ),
+                      ),
+
+                      // Timestamps
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.end,
+                        children: [
+                          Text(
+                            'Created: ${_formatDate(createdAt)}',
+                            style: const TextStyle(fontSize: 11, color: zMuted, fontWeight: FontWeight.w600),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            'Last Updated: ${_formatDate(updatedAt)}',
+                            style: const TextStyle(fontSize: 11, color: zMuted, fontWeight: FontWeight.w600),
+                          ),
+                        ],
+                      )
+                    ],
+                  ),
+
+                  const Padding(
+                    padding: EdgeInsets.symmetric(vertical: 16),
+                    child: Divider(color: zBorder, height: 1),
+                  ),
+
+                  // Profile Completion Health Bar
+                  Row(
+                    children: [
+                      const Icon(Icons.health_and_safety_outlined, size: 18, color: zSuccess),
+                      const SizedBox(width: 8),
+                      const Text(
+                        'Profile Completion',
+                        style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: zText),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.circular(999),
+                          child: LinearProgressIndicator(
+                            value: health / 100,
+                            minHeight: 8,
+                            backgroundColor: zCanvasBg,
+                            color: health == 100 ? zSuccess : zOrange,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Text(
+                        '$health%',
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w900,
+                          color: health == 100 ? zSuccess : zOrange,
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 16),
+
+            // Standard Action Tiles
+            if (canOpenCompanyProfile)
+              _ActionTile(
+                title: 'Company Profile & Settings',
+                subtitle: 'Manage company identity, GST, PAN, address, and billing information.',
+                icon: Icons.apartment_outlined,
+                enabled: canOpenCompanyProfile,
+                onTap: widget.onOpenCompanyProfile,
+              ),
+            if (!isExportImport) ...[
+              _ActionTile(
+                title: 'Branches & Locations',
+                subtitle: 'Manage branch structure, warehouses, and branch-level setup.',
+                icon: Icons.account_tree_outlined,
+                enabled: isAdminOrManager,
+                onTap: () => _showComingSoon('Branches'),
+              ),
+              _ActionTile(
+                title: 'Document Numbering',
+                subtitle: 'Control quotation, invoice, and sales order numbering formats.',
+                icon: Icons.numbers_outlined,
+                enabled: isAdminOrManager,
+                onTap: () => _showComingSoon('Document Numbering'),
+              ),
+            ]
+          ],
+        );
+      },
     );
   }
 
@@ -388,11 +751,7 @@ class _ScreenSettingsHomeState extends State<ScreenSettingsHome> {
   }
 
   void _showComingSoon(String title) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('$title will be added next'),
-      ),
-    );
+    _showSnack('$title will be added next', isError: false);
   }
 
   Future<void> _showChangePasswordDialog(BuildContext context) async {
@@ -462,11 +821,7 @@ class _ScreenSettingsHomeState extends State<ScreenSettingsHome> {
                 if (!mounted) return;
                 Navigator.of(dialogContext).pop();
 
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text('Password updated successfully.'),
-                  ),
-                );
+                _showSnack('Password updated successfully.');
               } on FirebaseAuthException catch (e) {
                 setLocalState(() {
                   saving = false;
@@ -546,7 +901,7 @@ class _ScreenSettingsHomeState extends State<ScreenSettingsHome> {
                       ? const SizedBox(
                     width: 18,
                     height: 18,
-                    child: CircularProgressIndicator(strokeWidth: 2),
+                    child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
                   )
                       : const Text('Update Password'),
                 ),
@@ -614,11 +969,7 @@ class _ScreenSettingsHomeState extends State<ScreenSettingsHome> {
                 if (!mounted) return;
                 Navigator.of(dialogContext).pop();
 
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text('Account deleted successfully.'),
-                  ),
-                );
+                _showSnack('Account deleted successfully.');
               } on FirebaseAuthException catch (e) {
                 setLocalState(() {
                   deleting = false;
@@ -700,7 +1051,7 @@ class _ScreenSettingsHomeState extends State<ScreenSettingsHome> {
                       ? const SizedBox(
                     width: 18,
                     height: 18,
-                    child: CircularProgressIndicator(strokeWidth: 2),
+                    child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
                   )
                       : const Text('Delete Permanently'),
                 ),
@@ -726,6 +1077,38 @@ class _ScreenSettingsHomeState extends State<ScreenSettingsHome> {
       default:
         return e.message ?? 'Something went wrong.';
     }
+  }
+}
+
+class _StatusBadge extends StatelessWidget {
+  final String text;
+  final Color color;
+  final Color bgColor;
+
+  const _StatusBadge({
+    required this.text,
+    required this.color,
+    required this.bgColor,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: bgColor,
+        borderRadius: BorderRadius.circular(6),
+        border: Border.all(color: color.withValues(alpha: 0.2)),
+      ),
+      child: Text(
+        text,
+        style: TextStyle(
+          fontSize: 10,
+          fontWeight: FontWeight.w800,
+          color: color,
+        ),
+      ),
+    );
   }
 }
 
@@ -755,7 +1138,7 @@ class _SectionPanel extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.all(14),
+      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: Colors.white,
         border: Border.all(color: zBorder),
@@ -781,11 +1164,11 @@ class _SectionPanel extends StatelessWidget {
               fontWeight: FontWeight.w600,
             ),
           ),
-          const SizedBox(height: 14),
+          const SizedBox(height: 18),
           Expanded(
             child: ListView.separated(
               itemCount: children.length,
-              separatorBuilder: (_, __) => const SizedBox(height: 8),
+              separatorBuilder: (_, __) => const SizedBox(height: 10),
               itemBuilder: (_, index) => children[index],
             ),
           ),
@@ -831,19 +1214,19 @@ class _ActionTile extends StatelessWidget {
         child: Row(
           children: [
             Container(
-              width: 38,
-              height: 38,
+              width: 42,
+              height: 42,
               decoration: BoxDecoration(
                 color: isDanger ? const Color(0xFFFFF1F2) : zBlueSoft,
                 borderRadius: BorderRadius.circular(10),
               ),
               child: Icon(
                 icon,
-                size: 19,
+                size: 20,
                 color: accent,
               ),
             ),
-            const SizedBox(width: 12),
+            const SizedBox(width: 14),
             Expanded(
               child: Opacity(
                 opacity: enabled ? 1 : 0.55,
@@ -855,16 +1238,16 @@ class _ActionTile extends StatelessWidget {
                       style: TextStyle(
                         color: isDanger ? Colors.red : zText,
                         fontWeight: FontWeight.w800,
-                        fontSize: 14,
+                        fontSize: 14.5,
                       ),
                     ),
-                    const SizedBox(height: 3),
+                    const SizedBox(height: 4),
                     Text(
                       subtitle,
                       style: const TextStyle(
                         color: zMuted,
-                        fontSize: 12.6,
-                        fontWeight: FontWeight.w600,
+                        fontSize: 12.5,
+                        fontWeight: FontWeight.w500,
                         height: 1.4,
                       ),
                     ),
@@ -900,7 +1283,7 @@ class _SummaryCard extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       height: 76,
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       decoration: BoxDecoration(
         color: Colors.white,
         border: Border.all(color: zBorder),
@@ -911,7 +1294,7 @@ class _SummaryCard extends StatelessWidget {
         children: [
           Row(
             children: [
-              Icon(icon, size: 15, color: zMuted),
+              Icon(icon, size: 16, color: zMuted),
               const SizedBox(width: 6),
               Expanded(
                 child: Text(
@@ -920,7 +1303,7 @@ class _SummaryCard extends StatelessWidget {
                   overflow: TextOverflow.ellipsis,
                   style: const TextStyle(
                     color: zMuted,
-                    fontSize: 11,
+                    fontSize: 11.5,
                     fontWeight: FontWeight.w700,
                   ),
                 ),
@@ -935,7 +1318,7 @@ class _SummaryCard extends StatelessWidget {
             style: const TextStyle(
               color: zText,
               fontWeight: FontWeight.w900,
-              fontSize: 13.2,
+              fontSize: 13.5,
             ),
           ),
         ],

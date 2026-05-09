@@ -26,9 +26,6 @@ class AuthWrapper extends StatelessWidget {
         }
 
         if (authSnap.data == null) {
-          // 🔴 FIX: Removed the 'const' keyword here.
-          // Note: Standard Dart convention uses PascalCase for classes (LoginScreen).
-          // If your class is strictly named login_Screen, change this to: return login_Screen();
           return LoginScreen();
         }
 
@@ -51,7 +48,6 @@ class _UserProfileGateState extends State<_UserProfileGate> {
   bool _loading = true;
   String? _error;
   Map<String, dynamic>? _data;
-  bool _isPlatformAdmin = false;
 
   @override
   void initState() {
@@ -69,16 +65,10 @@ class _UserProfileGateState extends State<_UserProfileGate> {
 
         if (doc.exists && doc.data() != null) {
           final userData = doc.data()!;
-          final isPlatformAdmin = await _resolvePlatformAdminStatus(
-            firestore: firestore,
-            uid: uid,
-            userData: userData,
-          );
 
           if (!mounted) return;
           setState(() {
             _data = userData;
-            _isPlatformAdmin = isPlatformAdmin;
             _loading = false;
             _error = null;
           });
@@ -100,39 +90,6 @@ class _UserProfileGateState extends State<_UserProfileGate> {
         _error = 'Failed to load user profile: $e';
       });
     }
-  }
-
-  Future<bool> _resolvePlatformAdminStatus({
-    required FirebaseFirestore firestore,
-    required String uid,
-    required Map<String, dynamic> userData,
-  }) async {
-    final userFlag =
-        userData['isPlatformAdmin'] == true ||
-        userData['platformAdmin'] == true ||
-        userData['isSuperAdmin'] == true;
-
-    var platformAdminDocAllowed = false;
-    try {
-      final platformAdminDoc = await firestore
-          .collection('platform_admins')
-          .doc(uid)
-          .get();
-      final platformAdminData = platformAdminDoc.data();
-      platformAdminDocAllowed =
-          platformAdminDoc.exists &&
-          platformAdminData?['isActive'] != false &&
-          platformAdminData?['active'] != false;
-    } catch (e) {
-      debugPrint('Platform admin lookup failed for $uid: $e');
-    }
-
-    final isPlatformAdmin = userFlag || platformAdminDocAllowed;
-    debugPrint(
-      'Platform admin resolved for $uid: $isPlatformAdmin '
-      '(userFlag=$userFlag, platformDoc=$platformAdminDocAllowed)',
-    );
-    return isPlatformAdmin;
   }
 
   Future<void> _logout() async {
@@ -203,18 +160,18 @@ class _UserProfileGateState extends State<_UserProfileGate> {
 
     final role = (data['role'] ?? 'sales').toString();
     final companyName =
-        (data['companyName'] ?? widget.firebaseUser.email ?? 'Workspace')
-            .toString();
+    (data['companyName'] ?? widget.firebaseUser.email ?? 'Workspace')
+        .toString();
 
     final permissions = Map<String, dynamic>.from(data['permissions'] ?? {});
 
     final userDisplayName =
-        (data['fullName'] ??
-                data['name'] ??
-                data['employeeName'] ??
-                data['displayName'] ??
-                '')
-            .toString();
+    (data['fullName'] ??
+        data['name'] ??
+        data['employeeName'] ??
+        data['displayName'] ??
+        '')
+        .toString();
 
     if (companyId.isEmpty) {
       return Scaffold(
@@ -321,7 +278,6 @@ class _UserProfileGateState extends State<_UserProfileGate> {
             role: role,
             permissions: permissions,
             userDisplayName: userDisplayName,
-            isPlatformAdmin: _isPlatformAdmin,
           ),
         ),
       ),
@@ -346,7 +302,7 @@ class _TenantModuleBackfillGate extends StatefulWidget {
 class _TenantModuleBackfillGateState extends State<_TenantModuleBackfillGate> {
   final TenantModuleService _tenantModuleService = TenantModuleService();
   final InventoryConfigService _inventoryConfigService =
-      InventoryConfigService();
+  InventoryConfigService();
 
   bool _ready = false;
   String? _initializedCompanyId;
