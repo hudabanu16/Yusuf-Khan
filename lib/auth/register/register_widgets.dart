@@ -25,13 +25,17 @@ class RegisterWidgets {
       );
     }
 
-    if (c.logoUrl != null && c.logoUrl!.isNotEmpty) {
+    if (c.logoUrl != null && c.logoUrl!.trim().isNotEmpty) {
       return ClipRRect(
         borderRadius: BorderRadius.circular(999),
+        // 🔥 CRITICAL FIX: Safe Native Network Image. Bypasses the Web canvas crash.
         child: Image.network(
-          c.logoUrl!,
+          c.logoUrl!.trim(),
           fit: BoxFit.cover,
-          errorBuilder: (_, __, ___) => buildLogoFallback(),
+          errorBuilder: (context, error, stackTrace) {
+            debugPrint('🔥 UI Error rendering network image: $error');
+            return buildLogoFallback();
+          },
         ),
       );
     }
@@ -69,13 +73,13 @@ class RegisterWidgets {
                   child: isDone
                       ? const Icon(Icons.check, size: 16, color: Colors.white)
                       : Text(
-                          '${index + 1}',
-                          style: TextStyle(
-                            fontSize: 12,
-                            fontWeight: FontWeight.w800,
-                            color: isActive ? Colors.white : regMuted,
-                          ),
-                        ),
+                    '${index + 1}',
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w800,
+                      color: isActive ? Colors.white : regMuted,
+                    ),
+                  ),
                 ),
               ),
               const SizedBox(width: 10),
@@ -333,17 +337,17 @@ class RegisterWidgets {
     required TextEditingController gstinController,
     required TextEditingController panController,
     required Widget Function({
-      required TextEditingController controller,
-      required String label,
-      required IconData icon,
-      String? hint,
-      bool required,
-      bool obscureText,
-      bool enabled,
-      int maxLines,
-      TextInputType keyboardType,
-      Widget? suffixIcon,
-      String? Function(String?)? validator,
+    required TextEditingController controller,
+    required String label,
+    required IconData icon,
+    String? hint,
+    bool required,
+    bool obscureText,
+    bool enabled,
+    int maxLines,
+    TextInputType keyboardType,
+    Widget? suffixIcon,
+    String? Function(String?)? validator,
     })
     buildTextField,
   }) {
@@ -535,18 +539,18 @@ class RegisterWidgets {
       items: items
           .map(
             (e) => DropdownMenuItem<T>(
-              value: e,
-              child: Text(
-                e.toString(),
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
-                  fontSize: 13.6,
-                  color: regText,
-                  fontWeight: FontWeight.w500,
-                ),
-              ),
+          value: e,
+          child: Text(
+            e.toString(),
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(
+              fontSize: 13.6,
+              color: regText,
+              fontWeight: FontWeight.w500,
             ),
-          )
+          ),
+        ),
+      )
           .toList(),
       onChanged: onChanged,
       validator: (val) {
@@ -621,8 +625,8 @@ class RegisterWidgets {
         ),
       ),
       validator:
-          validator ??
-          (val) {
+      validator ??
+              (val) {
             if (required && (val == null || val.trim().isEmpty)) {
               return '$label is required';
             }

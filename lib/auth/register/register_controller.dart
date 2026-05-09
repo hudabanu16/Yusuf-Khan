@@ -1,5 +1,3 @@
-// FILE PATH: lib/auth/register/register_controller.dart
-
 import 'dart:typed_data';
 
 import 'package:file_picker/file_picker.dart';
@@ -15,7 +13,7 @@ import 'verify_workspace_otp_screen.dart';
 
 class RegisterController extends ChangeNotifier {
   RegisterController({RegisterWorkspaceService? service})
-    : _service = service ?? RegisterWorkspaceService();
+      : _service = service ?? RegisterWorkspaceService();
 
   final RegisterWorkspaceService _service;
   final formKey = GlobalKey<FormState>();
@@ -101,21 +99,21 @@ class RegisterController extends ChangeNotifier {
 
   bool get needsManagingPartner =>
       selectedEntityType == 'Partnership Firm' ||
-      selectedEntityType == 'Limited Liability Partnership (LLP)';
+          selectedEntityType == 'Limited Liability Partnership (LLP)';
 
   bool get needsAuthorizedPerson =>
       selectedEntityType == 'Public Limited Company' ||
-      selectedEntityType == 'Private Limited Company' ||
-      selectedEntityType == 'One Person Company (OPC)' ||
-      selectedEntityType == 'Section 8 Company' ||
-      selectedEntityType == 'Trust' ||
-      selectedEntityType == 'Society' ||
-      selectedEntityType == 'Branch Office' ||
-      selectedEntityType == 'Liaison Office' ||
-      selectedEntityType == 'Subsidiary Company' ||
-      selectedEntityType == 'Foreign Company' ||
-      selectedEntityType == 'Government Company' ||
-      selectedEntityType == 'Statutory Corporation';
+          selectedEntityType == 'Private Limited Company' ||
+          selectedEntityType == 'One Person Company (OPC)' ||
+          selectedEntityType == 'Section 8 Company' ||
+          selectedEntityType == 'Trust' ||
+          selectedEntityType == 'Society' ||
+          selectedEntityType == 'Branch Office' ||
+          selectedEntityType == 'Liaison Office' ||
+          selectedEntityType == 'Subsidiary Company' ||
+          selectedEntityType == 'Foreign Company' ||
+          selectedEntityType == 'Government Company' ||
+          selectedEntityType == 'Statutory Corporation';
 
   static const Set<String> requiredWorkspaceModuleIds = {
     ModuleIds.administration,
@@ -216,7 +214,8 @@ class RegisterController extends ChangeNotifier {
       }
 
       logoBytes = file.bytes;
-      logoUrl = null;
+      // 🔥 CRITICAL FIX: Do NOT set logoUrl = null here!
+      // If we erase the old URL now, the Service cannot delete the old file from Storage.
       notifyListeners();
     } catch (e) {
       onError('Failed to pick logo: $e');
@@ -271,9 +270,9 @@ class RegisterController extends ChangeNotifier {
         : user['employeeRange'].toString();
 
     selectedIndustryType =
-        (user['industryType'] ?? user['businessCategory'] ?? '')
-            .toString()
-            .isEmpty
+    (user['industryType'] ?? user['businessCategory'] ?? '')
+        .toString()
+        .isEmpty
         ? null
         : (user['industryType'] ?? user['businessCategory']).toString();
 
@@ -286,7 +285,7 @@ class RegisterController extends ChangeNotifier {
         : user['listingStatus'].toString();
 
     selectedRegistrationStatus =
-        (user['registrationStatus'] ?? '').toString().isEmpty
+    (user['registrationStatus'] ?? '').toString().isEmpty
         ? null
         : user['registrationStatus'].toString();
 
@@ -295,10 +294,21 @@ class RegisterController extends ChangeNotifier {
         ? savedState
         : null;
 
-    final dynamic logo = user['logoUrl'] ?? user['logoPath'];
-    if (logo != null && logo.toString().isNotEmpty) {
-      logoUrl = logo.toString();
+    String? validLogoUrl;
+    final possibleLogos = [
+      user['companyLogoUrl'],
+      user['logoUrl'],
+      user['logoPath']
+    ];
+
+    for (final l in possibleLogos) {
+      if (l != null && l.toString().trim().isNotEmpty) {
+        validLogoUrl = l.toString().trim();
+        break;
+      }
     }
+
+    logoUrl = validLogoUrl;
 
     if (gstinController.text.trim().isNotEmpty ||
         panController.text.trim().isNotEmpty ||
@@ -356,7 +366,9 @@ class RegisterController extends ChangeNotifier {
       'kartaName': kartaNameController.text.trim(),
       'managingPartnerName': managingPartnerController.text.trim(),
       'authorizedPersonName': authorizedPersonController.text.trim(),
+
       'logoUrl': logoUrlValue ?? '',
+      'companyLogoUrl': logoUrlValue ?? '',
     };
   }
 

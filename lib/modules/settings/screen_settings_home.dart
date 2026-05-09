@@ -1,5 +1,3 @@
-// FILE PATH: lib/modules/settings/screen_settings_home.dart
-
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_storage/firebase_storage.dart';
@@ -48,12 +46,13 @@ class ScreenSettingsHome extends StatefulWidget {
 
 class _ScreenSettingsHomeState extends State<ScreenSettingsHome> {
   _SettingsSection _activeSection = _SettingsSection.personal;
+
   bool _isUploadingLogo = false;
+  double? _uploadProgress;
 
   bool get isAdmin => widget.role.toLowerCase() == 'admin';
   bool get isManager => widget.role.toLowerCase() == 'manager';
 
-  // Check for broader admin-level roles typically used in ERPs
   bool get isAdminOrManager {
     final r = widget.role.toLowerCase().trim();
     return r == 'admin' ||
@@ -73,10 +72,7 @@ class _ScreenSettingsHomeState extends State<ScreenSettingsHome> {
     return widget.permissions[key] == true;
   }
 
-  // Users module should ALWAYS be visible based on permissions
   bool get canOpenUsers => isAdminOrManager || _hasPermission('userManagement');
-
-  // Hide these explicitly for Export-Import
   bool get canOpenCompanyProfile =>
       !isExportImport && (isAdminOrManager || _hasPermission('companyProfile'));
   bool get canOpenAuditLogs =>
@@ -130,13 +126,27 @@ class _ScreenSettingsHomeState extends State<ScreenSettingsHome> {
 
   Future<void> _pickAndUploadLogo(String? currentLogoUrl) async {
     try {
+      final user = FirebaseAuth.instance.currentUser;
+      if (user == null) {
+        _showSnack('Authentication error. Please log in again.', isError: true);
+        return;
+      }
+
+      await user.getIdToken(true);
+
+      if (widget.companyId.isEmpty) {
+        _showSnack('Invalid Workspace. Missing Company ID.', isError: true);
+        return;
+      }
+
       if (!isAdminOrManager) {
-        _showSnack('Only Admins or Managers can update the logo', isError: true);
+        _showSnack('Only Admins or Managers can update the logo.', isError: true);
         return;
       }
 
       final result = await FilePicker.platform.pickFiles(
-        type: FileType.image,
+        type: FileType.custom,
+        allowedExtensions: ['jpg', 'jpeg', 'png', 'webp'],
         allowMultiple: false,
         withData: true,
       );
@@ -146,86 +156,146 @@ class _ScreenSettingsHomeState extends State<ScreenSettingsHome> {
       final file = result.files.first;
 
       if (file.size > 2 * 1024 * 1024) {
-        _showSnack('Image size must be less than 2MB', isError: true);
+        _showSnack('Image size exceeds 2MB limit. Please compress it.', isError: true);
         return;
       }
 
-      if (file.bytes == null) {
-        _showSnack('Failed to read image data', isError: true);
+      if (file.bytes == null || file.bytes!.isEmpty) {
+        _showSnack('Failed to read image data. Please try another file.', isError: true);
         return;
       }
 
-      setState(() => _isUploadingLogo = true);
+      setState(() {
+        _isUploadingLogo = true;
+        _uploadProgress = 0.0;
+      });
 
-      // 1. Delete old logo if it exists
-      if (currentLogoUrl != null && currentLogoUrl.isNotEmpty) {
+      if (currentLogoUrl != null && currentLogoUrl.trim().startsWith('http')) {
         try {
-          await FirebaseStorage.instance.refFromURL(currentLogoUrl).delete();
-        } catch (_) {}
+          await FirebaseStorage.instance.refFromURL(currentLogoUrl.trim()).delete();
+        } catch (e) {
+          debugPrint('Notice: Failed to delete old logo (might not exist): $e');
+        }
       }
 
-      // 2. Upload new logo safely handling Web bytes
+      final cleanCompanyId = widget.companyId.trim().replaceAll(RegExp(r'[^a-zA-Z0-9_-]'), '');
       final fileExt = file.extension?.toLowerCase() ?? 'png';
-      final fileName = 'logo_${DateTime.now().millisecondsSinceEpoch}.$fileExt';
-      final storageRef = FirebaseStorage.instance
-          .ref()
-          .child('companies/${widget.companyId}/branding/$fileName');
 
-      // Explicitly awaiting the UploadTask creates a TaskSnapshot safely
-      final uploadTask = storageRef.putData(
-        file.bytes!,
-        SettableMetadata(contentType: 'image/$fileExt'),
-      );
+      final uniqueId = DateTime.now().millisecondsSinceEpoch;
+      final fileName = 'logo_$uniqueId.$fileExt';
+      final storagePath = 'companies/$cleanCompanyId/branding/$fileName';
+
+      final storageRef = FirebaseStorage.instance.ref().child(storagePath);
+      final metadata = SettableMetadata(contentType: 'image/$fileExt');
+
+      final uploadTask = storageRef.putData(file.bytes!, metadata);
+
+      uploadTask.snapshotEvents.listen((TaskSnapshot snapshot) {
+        if (mounted) {
+          setState(() {
+            _uploadProgress = snapshot.bytesTransferred / snapshot.totalBytes;
+          });
+        }
+      });
 
       final snapshot = await uploadTask;
       final downloadUrl = await snapshot.ref.getDownloadURL();
 
-      // 3. Save new URL to Firestore
       await FirebaseFirestore.instance
           .collection('companies')
           .doc(widget.companyId)
           .update({
         'companyLogoUrl': downloadUrl,
+        'logoUrl': downloadUrl,
         'updatedAt': FieldValue.serverTimestamp(),
+        'updatedBy': user.uid,
       });
 
-      setState(() => _isUploadingLogo = false);
-      _showSnack('Company logo updated successfully');
+      if (mounted) {
+        setState(() {
+          _isUploadingLogo = false;
+          _uploadProgress = null;
+        });
+        _showSnack('Company logo updated successfully.');
+      }
 
     } on FirebaseException catch (e) {
-      setState(() => _isUploadingLogo = false);
-      _showSnack('Storage Error: ${e.message}', isError: true);
+      if (mounted) setState(() { _isUploadingLogo = false; _uploadProgress = null; });
+      debugPrint('Firebase Storage Exception: ${e.code} - ${e.message}');
+      _showSnack(
+          e.code == 'unauthorized'
+              ? 'Access Denied: Check Firebase Storage Rules or user permissions.'
+              : 'Storage Error: ${e.message}',
+          isError: true
+      );
     } catch (e) {
-      setState(() => _isUploadingLogo = false);
+      if (mounted) setState(() { _isUploadingLogo = false; _uploadProgress = null; });
+      debugPrint('Unknown Upload Error: $e');
       _showSnack('Failed to upload logo: $e', isError: true);
     }
   }
 
   Future<void> _removeLogo(String currentLogoUrl) async {
+    if (!isAdminOrManager) {
+      _showSnack('Only Admins or Managers can remove the logo.', isError: true);
+      return;
+    }
+
+    final bool? confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Remove Logo?', style: TextStyle(fontWeight: FontWeight.bold)),
+        content: const Text('Are you sure you want to delete the company logo? This action cannot be undone.'),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: Colors.red),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Remove'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm != true) return;
+
     try {
-      if (!isAdminOrManager) {
-        _showSnack('Only Admins or Managers can remove the logo', isError: true);
-        return;
+      final user = FirebaseAuth.instance.currentUser;
+      if (user != null) await user.getIdToken(true);
+
+      setState(() {
+        _isUploadingLogo = true;
+        _uploadProgress = null;
+      });
+
+      if (currentLogoUrl.trim().startsWith('http')) {
+        try {
+          await FirebaseStorage.instance.refFromURL(currentLogoUrl.trim()).delete();
+        } catch (e) {
+          debugPrint('Notice: Storage delete failed (URL might be invalid): $e');
+        }
       }
-
-      setState(() => _isUploadingLogo = true);
-
-      try {
-        await FirebaseStorage.instance.refFromURL(currentLogoUrl).delete();
-      } catch (_) {}
 
       await FirebaseFirestore.instance
           .collection('companies')
           .doc(widget.companyId)
           .update({
         'companyLogoUrl': FieldValue.delete(),
+        'logoUrl': FieldValue.delete(),
         'updatedAt': FieldValue.serverTimestamp(),
+        'updatedBy': user?.uid,
       });
 
-      setState(() => _isUploadingLogo = false);
-      _showSnack('Company logo removed');
+      if (mounted) {
+        setState(() => _isUploadingLogo = false);
+        _showSnack('Company logo removed successfully.');
+      }
     } catch (e) {
-      setState(() => _isUploadingLogo = false);
+      if (mounted) setState(() => _isUploadingLogo = false);
       _showSnack('Failed to remove logo: $e', isError: true);
     }
   }
@@ -240,7 +310,7 @@ class _ScreenSettingsHomeState extends State<ScreenSettingsHome> {
     int totalFields = 6;
 
     if ((data['companyName'] ?? '').toString().isNotEmpty) score++;
-    if ((data['companyLogoUrl'] ?? '').toString().isNotEmpty) score++;
+    if ((data['companyLogoUrl'] ?? data['logoUrl'] ?? '').toString().isNotEmpty) score++;
     if ((data['gstNo'] ?? '').toString().isNotEmpty) score++;
     if ((data['panNo'] ?? '').toString().isNotEmpty) score++;
     if ((data['industry'] ?? '').toString().isNotEmpty) score++;
@@ -435,7 +505,10 @@ class _ScreenSettingsHomeState extends State<ScreenSettingsHome> {
         }
 
         final data = snapshot.data?.data() as Map<String, dynamic>? ?? {};
-        final logoUrl = data['companyLogoUrl'] as String?;
+
+        final String? rawLogoUrl = data['companyLogoUrl'] as String? ?? data['logoUrl'] as String?;
+        final String? logoUrl = (rawLogoUrl != null && rawLogoUrl.trim().isNotEmpty) ? rawLogoUrl.trim() : null;
+
         final createdAt = data['createdAt'] as Timestamp?;
         final updatedAt = data['updatedAt'] as Timestamp?;
         final health = _calculateProfileHealth(data);
@@ -464,44 +537,50 @@ class _ScreenSettingsHomeState extends State<ScreenSettingsHome> {
                   Row(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      // Logo Preview Section
+                      // 🔥 FIX: Clean URL Network Image
                       Stack(
                         alignment: Alignment.center,
                         children: [
                           Container(
                             width: 100,
                             height: 100,
+                            clipBehavior: Clip.hardEdge,
                             decoration: BoxDecoration(
                               color: zCanvasBg,
                               borderRadius: BorderRadius.circular(16),
                               border: Border.all(color: zBorder, width: 2),
-                              image: logoUrl != null && logoUrl.isNotEmpty
-                                  ? DecorationImage(
-                                image: NetworkImage(logoUrl),
-                                fit: BoxFit.contain,
-                              )
-                                  : null,
                             ),
-                            child: logoUrl == null || logoUrl.isEmpty
-                                ? const Icon(
+                            child: logoUrl != null
+                                ? Image.network(
+                              logoUrl, // ❌ NO Cache Buster Strings
+                              fit: BoxFit.contain,
+                              errorBuilder: (context, error, stackTrace) {
+                                return const Icon(
+                                  Icons.business_outlined,
+                                  size: 40,
+                                  color: zMuted,
+                                );
+                              },
+                            )
+                                : const Icon(
                               Icons.business_outlined,
                               size: 40,
                               color: zMuted,
-                            )
-                                : null,
+                            ),
                           ),
                           if (_isUploadingLogo)
                             Container(
                               width: 100,
                               height: 100,
                               decoration: BoxDecoration(
-                                color: Colors.black.withValues(alpha: 0.4),
+                                color: Colors.black.withValues(alpha: 0.6),
                                 borderRadius: BorderRadius.circular(16),
                               ),
-                              child: const Center(
+                              child: Center(
                                 child: CircularProgressIndicator(
+                                  value: _uploadProgress,
                                   color: Colors.white,
-                                  strokeWidth: 2,
+                                  strokeWidth: 3,
                                 ),
                               ),
                             ),
@@ -557,7 +636,7 @@ class _ScreenSettingsHomeState extends State<ScreenSettingsHome> {
                                     ),
                                   ),
                                   const SizedBox(width: 10),
-                                  if (logoUrl != null && logoUrl.isNotEmpty)
+                                  if (logoUrl != null)
                                     OutlinedButton.icon(
                                       onPressed: _isUploadingLogo ? null : () => _removeLogo(logoUrl),
                                       icon: const Icon(Icons.delete_outline, size: 16),

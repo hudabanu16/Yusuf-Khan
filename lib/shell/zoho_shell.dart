@@ -2,11 +2,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
-import 'package:QUIK/core/modules/module_registry.dart';
-import 'package:QUIK/core/modules/providers/module_access_provider.dart';
 import 'package:QUIK/core/theme/app_theme.dart';
-import 'package:QUIK/modules/administration/inventory/screen_inventory_profile_settings.dart';
-import 'package:QUIK/modules/administration/modules/screen_company_modules.dart';
 import 'package:QUIK/modules/administration/users/screen_user_management.dart';
 import 'package:QUIK/modules/crm/customers/screens_customer_list.dart';
 import 'package:QUIK/modules/dashboard/dashboard_screen.dart';
@@ -79,8 +75,6 @@ enum ShellPage {
 
   adminUsers,
   adminRoles,
-  adminModules,
-  adminInventoryProfile,
   adminCompanyProfile,
   adminBranches,
   adminAuditLogs,
@@ -179,10 +173,6 @@ extension ShellPageX on ShellPage {
         return 'Users';
       case ShellPage.adminRoles:
         return 'Roles & Permissions';
-      case ShellPage.adminModules:
-        return 'Company Modules';
-      case ShellPage.adminInventoryProfile:
-        return 'Inventory Profile';
       case ShellPage.adminCompanyProfile:
         return 'Company Profile';
       case ShellPage.adminBranches:
@@ -277,10 +267,6 @@ extension ShellPageX on ShellPage {
         return Icons.manage_accounts_outlined;
       case ShellPage.adminRoles:
         return Icons.admin_panel_settings_outlined;
-      case ShellPage.adminModules:
-        return Icons.widgets_outlined;
-      case ShellPage.adminInventoryProfile:
-        return Icons.tune_outlined;
       case ShellPage.adminCompanyProfile:
         return Icons.apartment_outlined;
       case ShellPage.adminBranches:
@@ -450,11 +436,6 @@ class _ZohoShellState extends State<ZohoShell> {
       }
     }
 
-    if (page == ShellPage.adminModules ||
-        page == ShellPage.adminInventoryProfile) {
-      return false;
-    }
-
     if (isAdminOrManager) return true;
 
     switch (page) {
@@ -547,10 +528,6 @@ class _ZohoShellState extends State<ZohoShell> {
         return _hasPermission('administration', 'users');
       case ShellPage.adminRoles:
         return _hasPermission('administration', 'rolesPermissions');
-      case ShellPage.adminModules:
-        return false;
-      case ShellPage.adminInventoryProfile:
-        return false;
       case ShellPage.adminCompanyProfile:
         return _hasPermission('administration', 'companyProfile');
       case ShellPage.adminBranches:
@@ -597,8 +574,6 @@ class _ZohoShellState extends State<ZohoShell> {
           icon: Icons.admin_panel_settings_outlined,
           children: [
             ShellPage.adminUsers,
-            ShellPage.adminModules,
-            ShellPage.adminInventoryProfile,
           ],
         ),
       ];
@@ -701,8 +676,6 @@ class _ZohoShellState extends State<ZohoShell> {
         children: [
           ShellPage.adminUsers,
           ShellPage.adminRoles,
-          ShellPage.adminModules,
-          ShellPage.adminInventoryProfile,
           ShellPage.adminCompanyProfile,
           ShellPage.adminBranches,
           ShellPage.adminAuditLogs,
@@ -716,10 +689,6 @@ class _ZohoShellState extends State<ZohoShell> {
     final filtered = <SidebarGroup>[];
 
     for (var group in allGroups) {
-      if (!_isSidebarGroupModuleEnabled(group.key)) {
-        continue;
-      }
-
       final allowedChildren =
       group.children.where((page) => _canViewPage(page)).toList();
 
@@ -736,42 +705,6 @@ class _ZohoShellState extends State<ZohoShell> {
     }
 
     return filtered;
-  }
-
-  String? _moduleIdForSidebarGroup(String groupKey) {
-    switch (groupKey) {
-      case 'admin':
-        return ModuleIds.administration;
-      case ModuleIds.crm:
-        return ModuleIds.crm;
-      case ModuleIds.sales:
-        return ModuleIds.sales;
-      case ModuleIds.service:
-        return ModuleIds.service;
-      case ModuleIds.inventory:
-        return ModuleIds.inventory;
-      case ModuleIds.finance:
-        return ModuleIds.finance;
-      case ModuleIds.reports:
-        return ModuleIds.reports;
-      case ModuleIds.iot:
-        return ModuleIds.iot;
-      case ModuleIds.settings:
-        return ModuleIds.settings;
-      default:
-        return null;
-    }
-  }
-
-  bool _isModuleEnabled(String moduleId) {
-    return ModuleAccessProvider.of(context).isModuleEnabled(moduleId);
-  }
-
-  bool _isSidebarGroupModuleEnabled(String groupKey) {
-    final moduleId = _moduleIdForSidebarGroup(groupKey);
-    if (moduleId == null) return true;
-
-    return _isModuleEnabled(moduleId);
   }
 
   void _noAccess() {
@@ -799,8 +732,6 @@ class _ZohoShellState extends State<ZohoShell> {
       case ShellPage.inventoryProducts:
       case ShellPage.salesQuotations:
       case ShellPage.adminUsers:
-      case ShellPage.adminModules:
-      case ShellPage.adminInventoryProfile:
       case ShellPage.settingsGeneral:
       case ShellPage.financeProforma:
       case ShellPage.financeTaxInvoice:
@@ -1043,11 +974,9 @@ class _ZohoShellState extends State<ZohoShell> {
                             _dashboardNavItem(),
                             const SizedBox(height: 6),
                             ..._currentSidebarGroups.map(_groupWidget),
-                            if (_isModuleEnabled(ModuleIds.settings)) ...[
-                              const SizedBox(height: 6),
-                              const Divider(color: Color(0xFF243041)),
-                              _settingsNavItem(),
-                            ],
+                            const SizedBox(height: 6),
+                            const Divider(color: Color(0xFF243041)),
+                            _settingsNavItem(),
                           ],
                         ),
                       ),
@@ -1453,24 +1382,6 @@ class _ZohoShellState extends State<ZohoShell> {
           child: ScreenUserManagement(
             companyId: widget.companyId,
             currentUid: widget.userUid,
-          ),
-        );
-
-      case ShellPage.adminModules:
-        return Padding(
-          padding: const EdgeInsets.all(10),
-          child: ScreenCompanyModules(
-            companyId: widget.companyId,
-            companyName: widget.companyName,
-          ),
-        );
-
-      case ShellPage.adminInventoryProfile:
-        return Padding(
-          padding: const EdgeInsets.all(10),
-          child: ScreenInventoryProfileSettings(
-            companyId: widget.companyId,
-            companyName: widget.companyName,
           ),
         );
 

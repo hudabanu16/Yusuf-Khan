@@ -1,13 +1,9 @@
-// FILE PATH: lib/auth/register/register_workspace_service.dart
-
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/foundation.dart';
 
-import 'package:QUIK/core/inventory/services/inventory_config_service.dart';
-import 'package:QUIK/core/modules/services/tenant_module_service.dart';
 import 'package:QUIK/data/local_database.dart';
 
 class RegisterWorkspaceService {
@@ -16,29 +12,15 @@ class RegisterWorkspaceService {
     FirebaseAuth? auth,
     FirebaseStorage? storage,
     FirebaseFunctions? functions,
-    TenantModuleService? tenantModuleService,
-    InventoryConfigService? inventoryConfigService,
-  }) : _firestore = firestore ?? FirebaseFirestore.instance,
-       _auth = auth ?? FirebaseAuth.instance,
-       _storage = storage ?? FirebaseStorage.instance,
-       _functions = functions ?? FirebaseFunctions.instance,
-       _tenantModuleService =
-           tenantModuleService ??
-           TenantModuleService(
-             firestore: firestore ?? FirebaseFirestore.instance,
-           ),
-       _inventoryConfigService =
-           inventoryConfigService ??
-           InventoryConfigService(
-             firestore: firestore ?? FirebaseFirestore.instance,
-           );
+  })  : _firestore = firestore ?? FirebaseFirestore.instance,
+        _auth = auth ?? FirebaseAuth.instance,
+        _storage = storage ?? FirebaseStorage.instance,
+        _functions = functions ?? FirebaseFunctions.instance;
 
   final FirebaseFirestore _firestore;
   final FirebaseAuth _auth;
   final FirebaseStorage _storage;
   final FirebaseFunctions _functions;
-  final TenantModuleService _tenantModuleService;
-  final InventoryConfigService _inventoryConfigService;
 
   Future<Map<String, dynamic>?> getLocalCurrentUser() async {
     final localUser = await LocalDatabase.instance.getCurrentUser();
@@ -51,36 +33,34 @@ class RegisterWorkspaceService {
       }
 
       try {
-        final rootSnap = await _firestore.collection('users').doc(uid).get();
+        // 🔥 FIX: Force Server Fetch to bypass stale Web Cache
+        final rootSnap = await _firestore.collection('users').doc(uid).get(const GetOptions(source: Source.server));
         final rootData = rootSnap.data() ?? {};
 
-        final companyId =
-            (rootData['companyId'] ?? localUser['companyId'] ?? '')
-                .toString()
-                .trim();
+        final companyId = (rootData['companyId'] ?? localUser['companyId'] ?? '').toString().trim();
 
         Map<String, dynamic> companyData = {};
         if (companyId.isNotEmpty) {
-          final companySnap = await _firestore
-              .collection('companies')
-              .doc(companyId)
-              .get();
+          final companySnap = await _firestore.collection('companies').doc(companyId).get(const GetOptions(source: Source.server));
           companyData = companySnap.data() ?? {};
         }
 
+        final merged = <String, dynamic>{...localUser};
+
+        companyData.forEach((k, v) {
+          if (v != null && v.toString().trim().isNotEmpty) merged[k] = v;
+        });
+
+        rootData.forEach((k, v) {
+          if (v != null && v.toString().trim().isNotEmpty) merged[k] = v;
+        });
+
         return {
-          ...localUser,
-          ...companyData,
-          ...rootData,
+          ...merged,
           'id': localUser['id'] ?? -1,
           'uid': uid,
           'companyId': companyId,
-          'email':
-              (rootData['email'] ??
-                      localUser['email'] ??
-                      _auth.currentUser?.email ??
-                      '')
-                  .toString(),
+          'email': (rootData['email'] ?? localUser['email'] ?? _auth.currentUser?.email ?? '').toString(),
         };
       } catch (_) {
         return localUser;
@@ -92,23 +72,29 @@ class RegisterWorkspaceService {
 
     try {
       final uid = firebaseUser.uid;
-      final rootSnap = await _firestore.collection('users').doc(uid).get();
+      final rootSnap = await _firestore.collection('users').doc(uid).get(const GetOptions(source: Source.server));
       final rootData = rootSnap.data() ?? {};
 
       final companyId = (rootData['companyId'] ?? '').toString().trim();
 
       Map<String, dynamic> companyData = {};
       if (companyId.isNotEmpty) {
-        final companySnap = await _firestore
-            .collection('companies')
-            .doc(companyId)
-            .get();
+        final companySnap = await _firestore.collection('companies').doc(companyId).get(const GetOptions(source: Source.server));
         companyData = companySnap.data() ?? {};
       }
 
+      final merged = <String, dynamic>{};
+
+      companyData.forEach((k, v) {
+        if (v != null && v.toString().trim().isNotEmpty) merged[k] = v;
+      });
+
+      rootData.forEach((k, v) {
+        if (v != null && v.toString().trim().isNotEmpty) merged[k] = v;
+      });
+
       return {
-        ...companyData,
-        ...rootData,
+        ...merged,
         'id': -1,
         'uid': uid,
         'companyId': companyId,
@@ -125,6 +111,9 @@ class RegisterWorkspaceService {
     }
   }
 
+  // ==========================================
+  // PRODUCTION-GRADE LOGO UPLOAD (WITH WEB FIXES & CLEANUP)
+  // ==========================================
   Future<String?> uploadLogoIfNeeded({
     required String uid,
     required Uint8List? logoBytes,
@@ -133,13 +122,49 @@ class RegisterWorkspaceService {
     String? nextLogoUrl = existingLogoUrl;
 
     if (logoBytes != null) {
-      final path =
-          'entity_logos/$uid/${DateTime.now().millisecondsSinceEpoch}.png';
-      final ref = _storage.ref().child(path);
+      try {
+        final user = _auth.currentUser;
+        if (user != null) {
+          await user.getIdToken(true);
+        }
 
-      await ref.putData(logoBytes, SettableMetadata(contentType: 'image/png'));
+        // 🔥 EXPLICIT FIX: Actually delete the old logo from storage so it doesn't pile up!
+        if (existingLogoUrl != null && existingLogoUrl.trim().startsWith('http')) {
+          try {
+            await _storage.refFromURL(existingLogoUrl.trim()).delete();
+            debugPrint('🔥 RegisterWorkspaceService: Deleted old logo successfully.');
+          } catch (e) {
+            debugPrint('🔥 RegisterWorkspaceService: Old logo deletion skipped: $e');
+          }
+        }
 
-      nextLogoUrl = await ref.getDownloadURL();
+        final cleanUid = uid.trim().replaceAll(RegExp(r'[^a-zA-Z0-9_-]'), '');
+        final uniqueId = DateTime.now().millisecondsSinceEpoch;
+        final path = 'entity_logos/$cleanUid/logo_$uniqueId.png';
+        final ref = _storage.ref().child(path);
+
+        final metadata = SettableMetadata(
+          contentType: 'image/png',
+          customMetadata: {
+            'uploadedBy': cleanUid,
+            'module': 'registration',
+          },
+        );
+
+        final task = await ref.putData(logoBytes, metadata).timeout(
+          const Duration(seconds: 30),
+          onTimeout: () => throw Exception('Upload timed out after 30 seconds'),
+        );
+
+        if (task.state != TaskState.success) {
+          throw Exception('Logo upload failed to complete.');
+        }
+
+        nextLogoUrl = await ref.getDownloadURL();
+      } catch (e) {
+        debugPrint('RegisterWorkspaceService: Logo Upload Error -> $e');
+        rethrow;
+      }
     }
 
     return nextLogoUrl;
@@ -176,16 +201,6 @@ class RegisterWorkspaceService {
       'isActive': true,
       'emailVerified': true,
     });
-
-    await _tenantModuleService.ensureTenantModulesInitialized(
-      tenantId: companyRef.id,
-      source: 'new_workspace_existing_user',
-    );
-    await _inventoryConfigService.ensureDefaultProfile(
-      tenantId: companyRef.id,
-      source: 'new_workspace_existing_user',
-      companyData: companyData,
-    );
 
     await companyRef.collection('users').doc(uid).set({
       'uid': uid,
@@ -237,33 +252,23 @@ class RegisterWorkspaceService {
       'isActive': true,
     }, SetOptions(merge: true));
 
-    await _tenantModuleService.ensureTenantModulesInitialized(
-      tenantId: companyId,
-      source: 'workspace_update',
-    );
-    await _inventoryConfigService.ensureDefaultProfile(
-      tenantId: companyId,
-      source: 'workspace_update',
-      companyData: companyData,
-    );
-
     await _firestore
         .collection('companies')
         .doc(companyId)
         .collection('users')
         .doc(uid)
         .set({
-          'uid': uid,
-          'companyId': companyId,
-          'name': displayName,
-          'email': email,
-          'phone': companyData['phone'] ?? '',
-          'role': 'admin',
-          'isAdmin': true,
-          'isActive': true,
-          'permissions': adminPermissions,
-          'updatedAt': FieldValue.serverTimestamp(),
-        }, SetOptions(merge: true));
+      'uid': uid,
+      'companyId': companyId,
+      'name': displayName,
+      'email': email,
+      'phone': companyData['phone'] ?? '',
+      'role': 'admin',
+      'isAdmin': true,
+      'isActive': true,
+      'permissions': adminPermissions,
+      'updatedAt': FieldValue.serverTimestamp(),
+    }, SetOptions(merge: true));
 
     await _firestore.collection('users').doc(uid).set({
       'uid': uid,
@@ -354,10 +359,6 @@ class RegisterWorkspaceService {
     final adminPermissions = Map<String, dynamic>.from(
       data['adminPermissions'] ?? const {},
     );
-    final verifiedModuleIds = _stringSetFromValue(data['selectedModuleIds']);
-    final moduleIdsForTenant = verifiedModuleIds.isEmpty
-        ? enabledModuleIds
-        : verifiedModuleIds;
 
     if (email.isEmpty || password.isEmpty) {
       throw Exception('Incomplete verification response from server.');
@@ -385,17 +386,6 @@ class RegisterWorkspaceService {
       adminPermissions: adminPermissions,
     );
 
-    await _tenantModuleService.configureNewWorkspaceModules(
-      tenantId: companyId,
-      enabledModuleIds: moduleIdsForTenant,
-      source: 'new_workspace_otp',
-    );
-    await _inventoryConfigService.ensureDefaultProfile(
-      tenantId: companyId,
-      source: 'new_workspace_otp',
-      companyData: companyData,
-    );
-
     await _syncLocalWorkspaceUser(
       uid: uid,
       email: email,
@@ -411,12 +401,6 @@ class RegisterWorkspaceService {
     required String password,
   }) async {
     final normalizedEmail = email.trim().toLowerCase();
-    debugPrint(
-      'RegisterWorkspaceService auth create/recover email: $normalizedEmail',
-    );
-    debugPrint(
-      'RegisterWorkspaceService auth password length: ${password.length}',
-    );
 
     try {
       final credential = await _auth.createUserWithEmailAndPassword(
@@ -430,10 +414,6 @@ class RegisterWorkspaceService {
       }
       return user;
     } on FirebaseAuthException catch (e) {
-      debugPrint('RegisterWorkspaceService create auth error code: ${e.code}');
-      debugPrint(
-        'RegisterWorkspaceService create auth error message: ${e.message}',
-      );
       if (e.code != 'email-already-in-use') {
         rethrow;
       }
@@ -562,15 +542,14 @@ class RegisterWorkspaceService {
         'status': 'completed',
         'completedAt': FieldValue.serverTimestamp(),
         'completedByUid': uid,
-        'companyId': companyId,
         'password': FieldValue.delete(),
       }, SetOptions(merge: true));
     });
   }
 
   Future<void> _deleteLegacyWorkspaceRequestSecrets(
-    String registrationId,
-  ) async {
+      String registrationId,
+      ) async {
     final normalizedRegistrationId = registrationId.trim();
     if (normalizedRegistrationId.isEmpty) return;
 
@@ -579,26 +558,9 @@ class RegisterWorkspaceService {
           .collection('workspace_requests')
           .doc(normalizedRegistrationId)
           .update({'password': FieldValue.delete()});
-      debugPrint(
-        'RegisterWorkspaceService: cleaned legacy workspace request secrets',
-      );
-    } on FirebaseException catch (e) {
-      if (e.code == 'not-found') return;
-      debugPrint(
-        'RegisterWorkspaceService: legacy workspace cleanup skipped: ${e.code}',
-      );
     } catch (e) {
-      debugPrint('RegisterWorkspaceService: legacy workspace cleanup skipped');
+      // Safely ignore
     }
-  }
-
-  Set<String> _stringSetFromValue(Object? value) {
-    if (value is! Iterable) return const {};
-
-    return value
-        .map((item) => item.toString().trim())
-        .where((item) => item.isNotEmpty)
-        .toSet();
   }
 
   Future<void> _syncLocalWorkspaceUser({
