@@ -55,6 +55,9 @@ class _SalesOrderListScreenState extends State<SalesOrderListScreen> {
   final ScrollController _scrollController = ScrollController();
   Timer? _debounce;
 
+  String? _currentUserUid;
+  String? _currentUserRole;
+
   String _searchQuery = '';
   String _selectedStatus = 'All';
   String _selectedSort = 'Latest';
@@ -71,11 +74,26 @@ class _SalesOrderListScreenState extends State<SalesOrderListScreen> {
 
   final Map<String, String> _userNameCache = {};
 
+  bool get _isAdminOrManager {
+    if (_currentUserRole == null) return false;
+    final role = _currentUserRole!.trim().toLowerCase().replaceAll('_', '');
+    return [
+      'admin',
+      'manager',
+      'owner',
+      'founder',
+      'ceo',
+      'superadmin',
+      'director',
+      'md',
+    ].contains(role);
+  }
+
   @override
   void initState() {
     super.initState();
     _scrollController.addListener(_onScroll);
-    _fetchInitialData();
+    _loadUserContext();
   }
 
   @override
@@ -84,6 +102,44 @@ class _SalesOrderListScreenState extends State<SalesOrderListScreen> {
     _searchController.dispose();
     _scrollController.dispose();
     super.dispose();
+  }
+
+  Future<void> _loadUserContext() async {
+    try {
+      final user = FirebaseAuth.instance.currentUser;
+      if (user != null) {
+        _currentUserUid = user.uid;
+
+        final companyUserDoc = await FirebaseFirestore.instance
+            .collection('companies')
+            .doc(widget.companyId)
+            .collection('users')
+            .doc(user.uid)
+            .get();
+
+        if (companyUserDoc.exists && companyUserDoc.data() != null) {
+          _currentUserRole = companyUserDoc.data()!['role']?.toString();
+        } else {
+          final globalUserDoc = await FirebaseFirestore.instance
+              .collection('users')
+              .doc(user.uid)
+              .get();
+
+          if (globalUserDoc.exists && globalUserDoc.data() != null) {
+            final data = globalUserDoc.data()!;
+            if (data['memberships'] is Map && data['memberships'][widget.companyId] is Map) {
+              _currentUserRole = data['memberships'][widget.companyId]['role']?.toString();
+            }
+            _currentUserRole ??= data['role']?.toString();
+          }
+        }
+      }
+    } catch (e) {
+      debugPrint('Error loading user context: $e');
+    }
+
+    _currentUserRole ??= 'sales';
+    _fetchInitialData();
   }
 
   Future<String> _getUserName(String uid) async {
@@ -159,7 +215,9 @@ class _SalesOrderListScreenState extends State<SalesOrderListScreen> {
           break;
       }
 
-      query = query.limit(20);
+      // Increased to 50 to ensure standard users get a sufficient page size
+      // after local RBAC filtering isolates their records.
+      query = query.limit(50);
       if (_lastDocument != null) {
         query = query.startAfterDocument(_lastDocument!);
       }
@@ -179,7 +237,7 @@ class _SalesOrderListScreenState extends State<SalesOrderListScreen> {
 
         _salesOrders.addAll(newDocs);
 
-        if (snapshot.docs.length < 20) {
+        if (snapshot.docs.length < 50) {
           _hasMore = false;
         }
       } else {
@@ -223,14 +281,37 @@ class _SalesOrderListScreenState extends State<SalesOrderListScreen> {
   }
 
   List<QueryDocumentSnapshot<Map<String, dynamic>>> _getFilteredOrders() {
-    if (_searchQuery.trim().isEmpty) return _salesOrders;
-
     final query = _searchQuery.trim().toLowerCase();
+
     return _salesOrders.where((doc) {
       final data = doc.data();
-      final soNum = _parseSafeString(data['salesOrderNumber'] ?? data['soNumber'] ?? data['orderNumber'], fallback: '').toLowerCase();
-      final custName = _parseSafeString(data['customerName'] ?? data['clientName'] ?? data['partyName'] ?? data['customer'], fallback: '').toLowerCase();
-      return soNum.contains(query) || custName.contains(query);
+
+      // 1. RBAC Data Isolation
+      bool matchesRole = true;
+      if (!_isAdminOrManager && _currentUserUid != null) {
+        final createdBy = _parseSafeString(data['createdBy']);
+        final assignedToUid = _parseSafeString(data['assignedToUid']);
+        final assignedToUsers = data['assignedToUsers'] as List<dynamic>? ?? [];
+
+        if (createdBy != _currentUserUid &&
+            assignedToUid != _currentUserUid &&
+            !assignedToUsers.contains(_currentUserUid)) {
+          matchesRole = false;
+        }
+      }
+
+      if (!matchesRole) return false;
+
+      // 2. Search Text Filtering
+      if (query.isNotEmpty) {
+        final soNum = _parseSafeString(data['salesOrderNumber'] ?? data['soNumber'] ?? data['orderNumber'], fallback: '').toLowerCase();
+        final custName = _parseSafeString(data['customerName'] ?? data['clientName'] ?? data['partyName'] ?? data['customer'], fallback: '').toLowerCase();
+        if (!soNum.contains(query) && !custName.contains(query)) {
+          return false;
+        }
+      }
+
+      return true;
     }).toList();
   }
 

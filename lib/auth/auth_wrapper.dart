@@ -16,32 +16,47 @@ class AuthWrapper extends StatelessWidget {
     return StreamBuilder<User?>(
       stream: FirebaseAuth.instance.authStateChanges(),
       builder: (_, authSnap) {
+        // 1. Await Firebase Auth resolution
         if (authSnap.connectionState == ConnectionState.waiting) {
           return const Scaffold(
-            body: Center(child: CircularProgressIndicator()),
+            backgroundColor: Colors.white,
+            body: Center(
+              child: CircularProgressIndicator(
+                color: Color(0xFF2563EB),
+                strokeWidth: 3,
+              ),
+            ),
           );
         }
 
-        if (authSnap.data == null) {
-          return LoginScreen();
+        // 2. User is logged out
+        if (!authSnap.hasData || authSnap.data == null) {
+          return const LoginScreen();
         }
 
-        return _UserProfileGate(firebaseUser: authSnap.data!);
+        // 3. User is logged in.
+        // 🚨 CRITICAL FIX: The ValueKey ensures that if a new user logs in,
+        // the old state is completely destroyed and we fetch fresh data.
+        // This stops the "Context Bleed" where Workspace B uses Workspace A's cache.
+        return _WorkspaceGate(
+          key: ValueKey(authSnap.data!.uid),
+          firebaseUser: authSnap.data!,
+        );
       },
     );
   }
 }
 
-class _UserProfileGate extends StatefulWidget {
+class _WorkspaceGate extends StatefulWidget {
   final User firebaseUser;
 
-  const _UserProfileGate({required this.firebaseUser});
+  const _WorkspaceGate({super.key, required this.firebaseUser});
 
   @override
-  State<_UserProfileGate> createState() => _UserProfileGateState();
+  State<_WorkspaceGate> createState() => _WorkspaceGateState();
 }
 
-class _UserProfileGateState extends State<_UserProfileGate> {
+class _WorkspaceGateState extends State<_WorkspaceGate> {
   bool _loading = true;
   String? _error;
   Map<String, dynamic>? _data;
@@ -49,10 +64,25 @@ class _UserProfileGateState extends State<_UserProfileGate> {
   @override
   void initState() {
     super.initState();
-    _loadUserProfileWithRetry();
+    _loadWorkspaceContextWithRetry();
   }
 
-  Future<void> _loadUserProfileWithRetry() async {
+  // Fallback protection: If the widget updates with a new user while mounted
+  @override
+  void didUpdateWidget(covariant _WorkspaceGate oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.firebaseUser.uid != widget.firebaseUser.uid) {
+      _loadWorkspaceContextWithRetry();
+    }
+  }
+
+  Future<void> _loadWorkspaceContextWithRetry() async {
+    if (!mounted) return;
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+
     try {
       final firestore = FirebaseFirestore.instance;
       final uid = widget.firebaseUser.uid;
@@ -79,13 +109,14 @@ class _UserProfileGateState extends State<_UserProfileGate> {
       if (!mounted) return;
       setState(() {
         _loading = false;
-        _error = 'User profile not found in database.';
+        _error = 'Workspace profile not found. Please contact your administrator.';
       });
     } catch (e) {
+      debugPrint('[AUTH WRAPPER] Failed to load user profile: $e');
       if (!mounted) return;
       setState(() {
         _loading = false;
-        _error = 'Failed to load user profile: $e';
+        _error = 'Failed to load user context safely.\n$e';
       });
     }
   }
@@ -97,29 +128,62 @@ class _UserProfileGateState extends State<_UserProfileGate> {
   @override
   Widget build(BuildContext context) {
     if (_loading) {
-      return const Scaffold(body: Center(child: CircularProgressIndicator()));
+      return const Scaffold(
+        backgroundColor: Colors.white,
+        body: Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              CircularProgressIndicator(
+                color: Color(0xFF2563EB),
+                strokeWidth: 3,
+              ),
+              SizedBox(height: 16),
+              Text(
+                'Securing Workspace...',
+                style: TextStyle(
+                  color: Colors.grey,
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
     }
 
     if (_error != null) {
       return Scaffold(
+        backgroundColor: Colors.white,
         body: Center(
           child: Padding(
             padding: const EdgeInsets.all(24),
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                const Icon(Icons.error_outline, size: 48, color: Colors.red),
-                const SizedBox(height: 12),
+                const Icon(Icons.gpp_bad_outlined, size: 54, color: Colors.red),
+                const SizedBox(height: 16),
                 Text(
                   _error!,
                   style: const TextStyle(
                     fontSize: 16,
                     fontWeight: FontWeight.bold,
+                    color: Color(0xFF1E293B),
                   ),
                   textAlign: TextAlign.center,
                 ),
-                const SizedBox(height: 10),
-                ElevatedButton(onPressed: _logout, child: const Text('Logout')),
+                const SizedBox(height: 24),
+                ElevatedButton.icon(
+                  onPressed: _logout,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFF1E293B),
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                  ),
+                  icon: const Icon(Icons.logout, size: 18),
+                  label: const Text('Sign Out & Switch Account'),
+                ),
               ],
             ),
           ),
@@ -129,6 +193,7 @@ class _UserProfileGateState extends State<_UserProfileGate> {
 
     final data = _data!;
 
+    // 1. Check Active Status
     final isActive = data['isActive'] ?? true;
     if (isActive != true) {
       Future.microtask(() async {
@@ -136,13 +201,18 @@ class _UserProfileGateState extends State<_UserProfileGate> {
       });
 
       return const Scaffold(
+        backgroundColor: Colors.white,
         body: Center(
-          child: Text('Your account is inactive. Please contact admin.'),
+          child: Text(
+            'Your account is inactive.\nPlease contact your workspace admin.',
+            textAlign: TextAlign.center,
+            style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+          ),
         ),
       );
     }
 
-    // Dynamic companyId extraction
+    // 2. Dynamic Company ID Extraction
     String companyId = (data['companyId'] ?? '').toString();
     if (companyId.isEmpty) {
       final companyIds = data['companyIds'];
@@ -156,37 +226,36 @@ class _UserProfileGateState extends State<_UserProfileGate> {
       }
     }
 
+    // 3. Fallback Mapping
     final role = (data['role'] ?? 'sales').toString();
-    final companyName =
-    (data['companyName'] ?? widget.firebaseUser.email ?? 'Workspace')
-        .toString();
-
+    final companyName = (data['companyName'] ?? widget.firebaseUser.email ?? 'Workspace').toString();
     final permissions = Map<String, dynamic>.from(data['permissions'] ?? {});
-
     final userDisplayName = (data['fullName'] ??
         data['name'] ??
         data['employeeName'] ??
         data['displayName'] ??
-        '')
+        'ERP User')
         .toString();
 
+    // 4. Missing Workspace Handler
     if (companyId.isEmpty) {
       return Scaffold(
+        backgroundColor: const Color(0xFFF8FAFC),
         body: Center(
           child: Padding(
             padding: const EdgeInsets.all(24),
             child: Container(
               constraints: const BoxConstraints(maxWidth: 460),
-              padding: const EdgeInsets.all(28),
+              padding: const EdgeInsets.all(32),
               decoration: BoxDecoration(
                 color: Colors.white,
                 borderRadius: BorderRadius.circular(20),
                 border: Border.all(color: Colors.grey.shade300),
                 boxShadow: [
                   BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.06),
-                    blurRadius: 26,
-                    offset: const Offset(0, 12),
+                    color: Colors.black.withValues(alpha: 0.05),
+                    blurRadius: 30,
+                    offset: const Offset(0, 10),
                   ),
                 ],
               ),
@@ -194,31 +263,31 @@ class _UserProfileGateState extends State<_UserProfileGate> {
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   const CircleAvatar(
-                    radius: 28,
+                    radius: 32,
                     backgroundColor: Color(0xFFEFF6FF),
                     child: Icon(
-                      Icons.group_add_outlined,
-                      size: 28,
-                      color: Colors.blue,
+                      Icons.domain_disabled_outlined,
+                      size: 32,
+                      color: Color(0xFF2563EB),
                     ),
                   ),
-                  const SizedBox(height: 16),
+                  const SizedBox(height: 20),
                   const Text(
-                    'You are not linked to any company yet',
+                    'No Active Workspace',
                     style: TextStyle(
-                      fontSize: 18,
+                      fontSize: 20,
                       fontWeight: FontWeight.w800,
-                      color: Colors.black87,
+                      color: Color(0xFF0F172A),
                     ),
                     textAlign: TextAlign.center,
                   ),
                   const SizedBox(height: 8),
                   const Text(
-                    'Join your company using an invite code to access your workspace.',
-                    style: TextStyle(color: Colors.grey, height: 1.4),
+                    'Your account is valid, but it is not currently linked to any active company workspace.',
+                    style: TextStyle(color: Color(0xFF64748B), height: 1.5),
                     textAlign: TextAlign.center,
                   ),
-                  const SizedBox(height: 18),
+                  const SizedBox(height: 24),
                   SizedBox(
                     width: double.infinity,
                     height: 48,
@@ -232,27 +301,38 @@ class _UserProfileGateState extends State<_UserProfileGate> {
                         );
 
                         if (!mounted) return;
-                        setState(() {
-                          _loading = true;
-                          _error = null;
-                          _data = null;
-                        });
-                        _loadUserProfileWithRetry();
+                        _loadWorkspaceContextWithRetry();
                       },
                       style: FilledButton.styleFrom(
-                        backgroundColor: Colors.blue,
+                        backgroundColor: const Color(0xFF2563EB),
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(12),
                         ),
                       ),
                       child: const Text(
                         'Join Existing Company',
-                        style: TextStyle(fontWeight: FontWeight.bold),
+                        style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
                       ),
                     ),
                   ),
-                  const SizedBox(height: 8),
-                  TextButton(onPressed: _logout, child: const Text('Logout')),
+                  const SizedBox(height: 12),
+                  SizedBox(
+                    width: double.infinity,
+                    height: 48,
+                    child: OutlinedButton(
+                      onPressed: _logout,
+                      style: OutlinedButton.styleFrom(
+                        side: BorderSide(color: Colors.grey.shade300),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
+                      child: const Text(
+                        'Sign Out',
+                        style: TextStyle(color: Color(0xFF475569), fontWeight: FontWeight.w600),
+                      ),
+                    ),
+                  ),
                 ],
               ),
             ),
@@ -261,8 +341,12 @@ class _UserProfileGateState extends State<_UserProfileGate> {
       );
     }
 
-    // Direct routing to the single-company ERP Shell
+    // 5. Direct Routing to ERP Shell
+    // 🚨 CRITICAL FIX: Adding a Key to ZohoShell using UID + CompanyID
+    // forces the Shell and ALL its sub-modules to physically unmount and rebuild
+    // entirely from scratch if the user switches accounts.
     return ZohoShell(
+      key: ValueKey('${widget.firebaseUser.uid}_$companyId'),
       userEmail: widget.firebaseUser.email ?? 'user@workspace.com',
       userUid: widget.firebaseUser.uid,
       companyId: companyId,

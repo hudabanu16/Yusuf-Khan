@@ -1,4 +1,3 @@
-// FILE PATH: lib/modules/sales/quotations/screens_quotation_list.dart
 import 'dart:async';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -204,19 +203,10 @@ class _ScreensQuotationListState extends State<ScreensQuotationList> {
         .doc(companyId)
         .collection(_kCollectionQuotations);
 
-    if (!_isAdminOrManager && _currentUserUid != null) {
-      _primaryQuery = _quotationCollection!
-          .where(
-        Filter.or(
-          Filter('createdBy', isEqualTo: _currentUserUid),
-          Filter('assignedToUsers', arrayContains: _currentUserUid),
-        ),
-      )
-          .orderBy('createdAt', descending: true);
-    } else {
-      _primaryQuery =
-          _quotationCollection!.orderBy('createdAt', descending: true);
-    }
+    // 🔥 FIX: Remove .where() filters from here.
+    // Mixing OR filters + orderBy immediately crashes without a custom index.
+    // We now fetch safely and let `_applyLocalFilters` handle the RBAC logic perfectly.
+    _primaryQuery = _quotationCollection!.orderBy('createdAt', descending: true);
   }
 
   String _safeString(dynamic value, {String fallback = ''}) {
@@ -732,6 +722,17 @@ class _ScreensQuotationListState extends State<ScreensQuotationList> {
     var filtered = docs.where((doc) {
       final data = doc.data();
 
+      // 🔥 FIX: RBAC Role Filter applied locally here instead of Firestore .where()
+      bool matchesRole = true;
+      if (!_isAdminOrManager && _currentUserUid != null) {
+        final createdBy = _safeString(data['createdBy']);
+        final assignedToUsers = data['assignedToUsers'] as List<dynamic>? ?? [];
+
+        if (createdBy != _currentUserUid && !assignedToUsers.contains(_currentUserUid)) {
+          matchesRole = false;
+        }
+      }
+
       if (data['quoteNumber'] == null) {
         return false;
       }
@@ -747,7 +748,7 @@ class _ScreensQuotationListState extends State<ScreensQuotationList> {
       final matchesStatus = _statusFilter == 'All' ||
           status.toLowerCase() == _statusFilter.toLowerCase();
 
-      return !isDeleted && matchesSearch && matchesStatus;
+      return matchesRole && !isDeleted && matchesSearch && matchesStatus;
     }).toList();
 
     filtered.sort((a, b) {
@@ -892,10 +893,11 @@ class _ScreensQuotationListState extends State<ScreensQuotationList> {
   @override
   Widget build(BuildContext context) {
     if (_isLoadingContext) {
-      return const Scaffold(body: Center(child: CircularProgressIndicator()));
+      return const Scaffold(backgroundColor: Colors.white, body: Center(child: CircularProgressIndicator()));
     }
     if (_errorMessage != null) {
       return Scaffold(
+        backgroundColor: Colors.white,
         body: Center(
           child: Text(
             _errorMessage!,
@@ -909,6 +911,7 @@ class _ScreensQuotationListState extends State<ScreensQuotationList> {
     }
     if (_primaryQuery == null) {
       return const Scaffold(
+        backgroundColor: Colors.white,
         body: Center(child: Text('System initialization failed')),
       );
     }
@@ -967,8 +970,7 @@ class _ScreensQuotationListState extends State<ScreensQuotationList> {
                 padding: const EdgeInsets.fromLTRB(16, 6, 16, 8),
                 child: Row(
                   children: [
-                    ConstrainedBox(
-                      constraints: const BoxConstraints(maxWidth: 320),
+                    Expanded(
                       child: SizedBox(
                         height: 38,
                         child: TextField(
@@ -1052,20 +1054,27 @@ class _ScreensQuotationListState extends State<ScreensQuotationList> {
                         ),
                       ),
                     ),
-                    const Spacer(),
+                  ],
+                ),
+              ),
+              SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: Row(
+                  children: [
                     _MiniStatText(label: 'Total', value: totalQuotes.toString()),
-                    const SizedBox(width: 10),
+                    const SizedBox(width: 14),
                     _MiniStatText(label: 'Sent', value: sent.toString()),
-                    const SizedBox(width: 10),
+                    const SizedBox(width: 14),
                     _MiniStatText(label: 'Approved', value: approved.toString()),
-                    const SizedBox(width: 10),
+                    const SizedBox(width: 14),
                     _MiniStatText(label: 'Converted', value: converted.toString()),
                   ],
                 ),
               ),
               if (_hasActiveFilters)
                 Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 4),
+                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
                   child: Row(
                     children: [
                       Expanded(
@@ -1080,11 +1089,17 @@ class _ScreensQuotationListState extends State<ScreensQuotationList> {
                       ),
                       TextButton(
                         onPressed: _resetFilters,
-                        child: const Text('Clear'),
+                        style: TextButton.styleFrom(
+                          minimumSize: Size.zero,
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                        ),
+                        child: const Text('Clear Filters', style: TextStyle(fontSize: 12)),
                       ),
                     ],
                   ),
                 ),
+              const SizedBox(height: 8),
               Expanded(
                 child: filteredDocs.isEmpty
                     ? _EmptyQuotationsState(
@@ -1141,7 +1156,7 @@ class _ScreensQuotationListState extends State<ScreensQuotationList> {
                         ),
                       ),
                       child: Padding(
-                        padding: const EdgeInsets.all(10), // Condensed padding
+                        padding: const EdgeInsets.all(10),
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
@@ -1149,7 +1164,7 @@ class _ScreensQuotationListState extends State<ScreensQuotationList> {
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
                                 CircleAvatar(
-                                  radius: 18, // Slightly more compact avatar
+                                  radius: 18,
                                   backgroundColor: Colors.blue.shade50,
                                   child: Text(
                                     customer.isNotEmpty
@@ -1176,7 +1191,7 @@ class _ScreensQuotationListState extends State<ScreensQuotationList> {
                                           fontWeight: FontWeight.w700,
                                         ),
                                       ),
-                                      const SizedBox(height: 1), // Tighter spacing
+                                      const SizedBox(height: 1),
                                       Text(
                                         customer,
                                         maxLines: 1,
@@ -1402,12 +1417,20 @@ class _MiniStatText extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Text(
-      '$label: $value',
-      style: TextStyle(
-        fontSize: 12,
-        color: Colors.grey.shade700,
-        fontWeight: FontWeight.w600,
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: Colors.grey.shade100,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: Colors.grey.shade200),
+      ),
+      child: Text(
+        '$label: $value',
+        style: TextStyle(
+          fontSize: 12,
+          color: Colors.grey.shade800,
+          fontWeight: FontWeight.w600,
+        ),
       ),
     );
   }
@@ -1426,14 +1449,14 @@ class _InlineInfo extends StatelessWidget {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(icon, size: 14, color: Colors.grey.shade600), // Slightly smaller, softer icon
+          Icon(icon, size: 14, color: Colors.grey.shade600),
           const SizedBox(width: 4),
           Flexible(
             child: Text(
               text,
               overflow: TextOverflow.ellipsis,
               style: TextStyle(
-                fontSize: 12, // Condensed size
+                fontSize: 12,
                 color: Colors.grey.shade800,
                 fontWeight: FontWeight.w500,
               ),
@@ -1459,7 +1482,7 @@ class _InfoChip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4), // Tighter padding
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       decoration: BoxDecoration(
         color: backgroundColor,
         borderRadius: BorderRadius.circular(999),
@@ -1467,7 +1490,7 @@ class _InfoChip extends StatelessWidget {
       child: Text(
         label,
         style: TextStyle(
-          fontSize: 11, // Condensed font for secondary chips
+          fontSize: 11,
           fontWeight: FontWeight.w700,
           color: textColor,
         ),

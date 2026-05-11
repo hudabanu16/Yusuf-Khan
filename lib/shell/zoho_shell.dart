@@ -322,21 +322,36 @@ class ZohoShell extends StatefulWidget {
 class _ZohoShellState extends State<ZohoShell> {
   ShellPage activePage = ShellPage.dashboard;
 
-  // Initialize strictly empty. ALL groups stay collapsed on load.
   final Set<String> expandedGroups = {};
 
   String? _resolvedIndustry;
   bool _isLoadingIndustry = true;
 
-  // Live State tracked securely via Firestore streams
   String _currentRole = 'viewer';
   Map<String, dynamic> _currentPermissions = {};
   List<SidebarGroup> _currentSidebarGroups = [];
+
+  late Stream<DocumentSnapshot<Map<String, dynamic>>> _userSessionStream;
+  late Stream<QuerySnapshot<Map<String, dynamic>>> _inquiryCountStream;
 
   @override
   void initState() {
     super.initState();
     _resolvedIndustry = widget.industry;
+
+    _userSessionStream = FirebaseFirestore.instance
+        .collection('companies')
+        .doc(widget.companyId)
+        .collection('users')
+        .doc(widget.userUid)
+        .snapshots();
+
+    _inquiryCountStream = FirebaseFirestore.instance
+        .collection('companies')
+        .doc(widget.companyId)
+        .collection('inquiries')
+        .where('assignedToUid', isEqualTo: widget.userUid)
+        .snapshots();
 
     if (_resolvedIndustry == null || _resolvedIndustry!.isEmpty) {
       _fetchIndustry();
@@ -390,34 +405,40 @@ class _ZohoShellState extends State<ZohoShell> {
         r == 'manager';
   }
 
-  bool _hasPermission(
-      String module,
-      String submodule, {
-        String action = 'view',
-      }) {
-    if (isAdminOrManager) return true;
-
+  // 🔥 CRITICAL FIX: Smart Permission Getter
+  // Automatically detects plural and singular mismatches from database records
+  bool _checkPerm(String module, String submodule, String action) {
     final moduleData = _currentPermissions[module];
     if (moduleData is Map && moduleData.containsKey(submodule)) {
       final subData = moduleData[submodule];
-      if (subData is Map) {
-        return subData[action] == true;
-      }
+      if (subData is Map) return subData[action] == true;
       return subData == true;
     }
 
     if (_currentPermissions.containsKey(submodule)) {
       final legacySubData = _currentPermissions[submodule];
-      if (legacySubData is Map) {
-        return legacySubData[action] == true;
-      }
+      if (legacySubData is Map) return legacySubData[action] == true;
       return legacySubData == true && action == 'view';
     }
 
     if (_currentPermissions.containsKey('$module.$submodule')) {
-      return _currentPermissions['$module.$submodule'] == true &&
-          action == 'view';
+      return _currentPermissions['$module.$submodule'] == true && action == 'view';
     }
+
+    return false;
+  }
+
+  bool _hasPermission(String module, String submodule, {String action = 'view'}) {
+    if (isAdminOrManager) return true;
+
+    // 1. Exact match check
+    if (_checkPerm(module, submodule, action)) return true;
+
+    // 2. Fallback: Check Plural version if singular failed
+    if (!submodule.endsWith('s') && _checkPerm(module, submodule + 's', action)) return true;
+
+    // 3. Fallback: Check Singular version if plural failed
+    if (submodule.endsWith('s') && _checkPerm(module, submodule.substring(0, submodule.length - 1), action)) return true;
 
     return false;
   }
@@ -429,6 +450,8 @@ class _ZohoShellState extends State<ZohoShell> {
 
   bool _canViewPage(ShellPage page) {
     if (_resolvedIndustry == 'export_import') {
+      // Explictly hide Inquiries and Quotations per previous rules,
+      // but ALLOW Sales Orders if permission exists.
       if (page == ShellPage.salesInquiries ||
           page == ShellPage.salesQuotations ||
           page == ShellPage.reportsInquiry) {
@@ -449,7 +472,7 @@ class _ZohoShellState extends State<ZohoShell> {
       case ShellPage.salesQuotations:
         return _hasPermission('sales', 'quotations');
       case ShellPage.salesOrders:
-        return _hasPermission('sales', 'salesOrder');
+        return _hasPermission('sales', 'salesOrder'); // Safe plural alias fallback will handle it automatically
       case ShellPage.salesFollowUps:
         return _hasPermission('sales', 'followUps');
       case ShellPage.salesTasks:
@@ -538,8 +561,15 @@ class _ZohoShellState extends State<ZohoShell> {
   }
 
   List<SidebarGroup> get _allSidebarGroups {
+    // 🔥 CRITICAL FIX: Explicitly Added the Sales Group back in with Sales Orders for Export_Import users
     if (_resolvedIndustry == 'export_import') {
       return const [
+        SidebarGroup(
+          key: 'sales',
+          title: 'Sales',
+          icon: Icons.trending_up_outlined,
+          children: [ShellPage.salesOrders], // Inquiries and Quotations remain hidden
+        ),
         SidebarGroup(
           key: 'crm',
           title: 'CRM',
@@ -728,9 +758,10 @@ class _ZohoShellState extends State<ZohoShell> {
     switch (page) {
       case ShellPage.dashboard:
       case ShellPage.salesInquiries:
+      case ShellPage.salesQuotations:
+      case ShellPage.salesOrders: // 🔥 CRITICAL FIX: Registered as implemented so it renders the screen
       case ShellPage.crmCustomers:
       case ShellPage.inventoryProducts:
-      case ShellPage.salesQuotations:
       case ShellPage.adminUsers:
       case ShellPage.settingsGeneral:
       case ShellPage.financeProforma:
@@ -882,12 +913,7 @@ class _ZohoShellState extends State<ZohoShell> {
     }
 
     return StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
-      stream: FirebaseFirestore.instance
-          .collection('companies')
-          .doc(widget.companyId)
-          .collection('users')
-          .doc(widget.userUid)
-          .snapshots(),
+      stream: _userSessionStream,
       builder: (context, userSnap) {
         if (userSnap.connectionState == ConnectionState.waiting &&
             !userSnap.hasData) {
@@ -1166,8 +1192,6 @@ class _ZohoShellState extends State<ZohoShell> {
                   if (expanded) {
                     expandedGroups.remove(group.key);
                   } else {
-                    // Professional Accordion behavior:
-                    // Collapse all other groups and expand the clicked one.
                     expandedGroups.clear();
                     expandedGroups.add(group.key);
                   }
@@ -1282,12 +1306,7 @@ class _ZohoShellState extends State<ZohoShell> {
 
   Widget _inquiryBadge({required bool selected}) {
     return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-      stream: FirebaseFirestore.instance
-          .collection('companies')
-          .doc(widget.companyId)
-          .collection('inquiries')
-          .where('assignedToUid', isEqualTo: widget.userUid)
-          .snapshots(),
+      stream: _inquiryCountStream,
       builder: (context, snap) {
         final count = snap.data?.docs.length ?? 0;
         return Container(
@@ -1882,12 +1901,7 @@ class _ZohoShellState extends State<ZohoShell> {
     final welcomeText = _dashboardWelcomeText();
 
     final inquiryStream = canShowInquiryDashboard
-        ? FirebaseFirestore.instance
-        .collection('companies')
-        .doc(widget.companyId)
-        .collection('inquiries')
-        .where('assignedToUid', isEqualTo: widget.userUid)
-        .snapshots()
+        ? _inquiryCountStream
         : null;
 
     if (!canShowInquiryDashboard) {

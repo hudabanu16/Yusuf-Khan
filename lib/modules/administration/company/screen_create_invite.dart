@@ -1,5 +1,3 @@
-// FILE PATH: lib/modules/administration/company/screen_create_invite.dart
-
 import 'package:flutter/material.dart';
 
 import 'package:QUIK/modules/administration/users/helpers/user_management_constants.dart';
@@ -271,6 +269,64 @@ class _ScreenCreateInviteState extends State<ScreenCreateInvite> {
     return result;
   }
 
+  // -------------------------------------------------------------
+  // 🔥 CRITICAL FIX: PRE-FLIGHT PERMISSION NORMALIZATION
+  // -------------------------------------------------------------
+  // This safely intercepts the permissions map right before it goes
+  // to Firestore. It forces synchronization between singular/plural
+  // keys (like 'salesOrder' vs 'salesOrders') because occasionally
+  // constants define one, but the ZohoShell checks for the other.
+  Map<String, dynamic> _normalizePermissionsForPayload(Map<String, dynamic> rawPerms) {
+    final payload = _deepCopyPermissions(rawPerms);
+
+    // 1. Normalize Sales Modifiers
+    if (payload['sales'] is Map) {
+      final sales = payload['sales'] as Map<String, dynamic>;
+
+      if (sales.containsKey('salesOrder') && !sales.containsKey('salesOrders')) {
+        sales['salesOrders'] = sales['salesOrder'];
+      } else if (sales.containsKey('salesOrders') && !sales.containsKey('salesOrder')) {
+        sales['salesOrder'] = sales['salesOrders'];
+      }
+
+      if (sales.containsKey('followUps') && !sales.containsKey('followUp')) {
+        sales['followUp'] = sales['followUps'];
+      } else if (sales.containsKey('followUp') && !sales.containsKey('followUps')) {
+        sales['followUps'] = sales['followUp'];
+      }
+
+      payload['sales'] = sales;
+    }
+
+    // 2. Normalize Purchase Modifiers
+    if (payload['purchase'] is Map) {
+      final purchase = payload['purchase'] as Map<String, dynamic>;
+
+      if (purchase.containsKey('purchaseOrder') && !purchase.containsKey('purchaseOrders')) {
+        purchase['purchaseOrders'] = purchase['purchaseOrder'];
+      } else if (purchase.containsKey('purchaseOrders') && !purchase.containsKey('purchaseOrder')) {
+        purchase['purchaseOrder'] = purchase['purchaseOrders'];
+      }
+
+      payload['purchase'] = purchase;
+    }
+
+    // 3. Normalize CRM Modifiers
+    if (payload['crm'] is Map) {
+      final crm = payload['crm'] as Map<String, dynamic>;
+
+      if (crm.containsKey('customers') && !crm.containsKey('customer')) {
+        crm['customer'] = crm['customers'];
+      } else if (crm.containsKey('customer') && !crm.containsKey('customers')) {
+        crm['customers'] = crm['customer'];
+      }
+
+      payload['crm'] = crm;
+    }
+
+    return payload;
+  }
+
   int _selectedPermissionCount(
       Map<String, dynamic> permissionsMap, List<String> activeMods) {
     int count = 0;
@@ -350,11 +406,14 @@ class _ScreenCreateInviteState extends State<ScreenCreateInvite> {
     setState(() => isLoading = true);
 
     try {
+      // Apply the normalization fix right before API call
+      final normalizedPermissions = _normalizePermissionsForPayload(permissions);
+
       final result = await _userManagementService.createInvite(
         companyId: widget.companyId,
         email: _normalizeEmail(emailController.text),
         role: selectedRole,
-        permissions: permissions,
+        permissions: normalizedPermissions, // Used synchronized map
         invitedByUid: widget.currentUid,
         name: nameController.text.trim(),
         phone: phoneController.text.trim(),

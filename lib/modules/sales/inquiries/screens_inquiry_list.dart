@@ -1,5 +1,3 @@
-// FILE PATH: lib/modules/sales/inquiries/screens_inquiry_list.dart
-
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
@@ -9,7 +7,10 @@ import 'package:QUIK/modules/sales/inquiries/screens_add_inquiry.dart';
 import 'package:QUIK/modules/sales/quotations/quotation_screen_local.dart';
 
 class ScreensInquiryList extends StatefulWidget {
-  const ScreensInquiryList({super.key});
+  // 🔥 FIX: Added optional companyId so ZohoShell can pass it directly
+  final String? companyId;
+
+  const ScreensInquiryList({super.key, this.companyId});
 
   @override
   State<ScreensInquiryList> createState() => _ScreensInquiryListState();
@@ -22,7 +23,6 @@ class _ScreensInquiryListState extends State<ScreensInquiryList> {
   String _statusFilter = 'All';
   String _priorityFilter = 'All';
 
-  // State Variables to hold Company ID to prevent scope leaks
   String? _companyId;
 
   Future<Map<String, dynamic>?>? _profileDataFuture;
@@ -47,15 +47,20 @@ class _ScreensInquiryListState extends State<ScreensInquiryList> {
   }
 
   Future<Map<String, dynamic>?> _loadProfileAndQuery(String uid) async {
-    final userData = await _loadCurrentUserProfile(uid);
-    if (userData != null) {
-      final resolvedCompanyId = _getString(userData, 'companyId');
-      if (resolvedCompanyId.isNotEmpty) {
-        _companyId = resolvedCompanyId;
-        _inquiryQuery = await _resolveInquiryQuery(resolvedCompanyId);
+    try {
+      final userData = await _loadCurrentUserProfile(uid);
+      if (userData != null) {
+        final resolvedCompanyId = _getString(userData, 'companyId');
+        if (resolvedCompanyId.isNotEmpty) {
+          _companyId = resolvedCompanyId;
+          _inquiryQuery = await _resolveInquiryQuery(resolvedCompanyId);
+        }
       }
+      return userData;
+    } catch (e) {
+      debugPrint('[INQUIRY LIST] Future Error: $e');
+      throw Exception(e.toString());
     }
-    return userData;
   }
 
   // --- DRY: Centralized Safe String Handling ---
@@ -84,77 +89,73 @@ class _ScreensInquiryListState extends State<ScreensInquiryList> {
   // --- DRY: Reusable Role Checking Logic ---
   bool _isAdminOrManager(String role) {
     final r = role.trim().toLowerCase();
-    return [
-      'admin',
-      'manager',
-      'owner',
-      'founder',
-      'ceo',
-      'superadmin',
-    ].contains(r);
+    return ['admin', 'manager', 'owner', 'founder', 'ceo', 'superadmin'].contains(r);
   }
 
-  // --- FULL MULTI-TENANT PROFILE LOADER ---
+  // --- FULL MULTI-TENANT PROFILE LOADER (BULLETPROOFED) ---
   Future<Map<String, dynamic>?> _loadCurrentUserProfile(String uid) async {
-    final globalDoc = await FirebaseFirestore.instance
-        .collection('users')
-        .doc(uid)
-        .get();
+    try {
+      final globalDoc = await FirebaseFirestore.instance.collection('users').doc(uid).get();
 
-    if (!globalDoc.exists) return null;
+      Map<String, dynamic> userData = {};
+      if (globalDoc.exists && globalDoc.data() != null) {
+        userData = globalDoc.data()!;
+      }
 
-    Map<String, dynamic> userData = globalDoc.data() ?? {};
+      // 🔥 FIX: 1. Trust ZohoShell's provided companyId first.
+      String resolvedCompanyId = widget.companyId ?? '';
 
-    // Cascading Fallback for Company ID
-    String resolvedCompanyId = _getString(userData, 'activeCompanyId');
+      // 2. Cascading Fallback if Shell didn't provide one
+      if (resolvedCompanyId.isEmpty) {
+        resolvedCompanyId = _getString(userData, 'activeCompanyId');
+        if (resolvedCompanyId.isEmpty) {
+          resolvedCompanyId = _getString(userData, 'companyId');
+        }
+        if (resolvedCompanyId.isEmpty && userData['companyIds'] is List && (userData['companyIds'] as List).isNotEmpty) {
+          resolvedCompanyId = _safeString((userData['companyIds'] as List).first);
+        }
+        if (resolvedCompanyId.isEmpty && userData['memberships'] is Map && (userData['memberships'] as Map).isNotEmpty) {
+          resolvedCompanyId = _safeString((userData['memberships'] as Map).keys.first);
+        }
+      }
 
-    if (resolvedCompanyId.isEmpty) {
-      resolvedCompanyId = _getString(userData, 'companyId');
-    }
+      userData['companyId'] = resolvedCompanyId;
 
-    if (resolvedCompanyId.isEmpty &&
-        userData['companyIds'] is List &&
-        (userData['companyIds'] as List).isNotEmpty) {
-      resolvedCompanyId = _safeString((userData['companyIds'] as List).first);
-    }
+      // 3. Merge Local Company Profile (Wrapped in try/catch to prevent Permission crashes)
+      if (resolvedCompanyId.isNotEmpty) {
+        try {
+          final companyUserDoc = await FirebaseFirestore.instance
+              .collection('companies')
+              .doc(resolvedCompanyId)
+              .collection('users')
+              .doc(uid)
+              .get();
 
-    if (resolvedCompanyId.isEmpty &&
-        userData['memberships'] is Map &&
-        (userData['memberships'] as Map).isNotEmpty) {
-      resolvedCompanyId = _safeString(
-        (userData['memberships'] as Map).keys.first,
-      );
-    }
-
-    userData['companyId'] = resolvedCompanyId;
-
-    // Merge Company-Scoped Data Override
-    if (resolvedCompanyId.isNotEmpty) {
-      final companyUserDoc = await FirebaseFirestore.instance
-          .collection('companies')
-          .doc(resolvedCompanyId)
-          .collection('users')
-          .doc(uid)
-          .get();
-
-      if (companyUserDoc.exists && companyUserDoc.data() != null) {
-        userData.addAll(companyUserDoc.data()!);
-        userData['companyId'] = resolvedCompanyId; // Re-enforce
-      } else {
-        if (userData['memberships'] is Map) {
-          final membershipsMap = userData['memberships'] as Map;
-          if (membershipsMap[resolvedCompanyId] is Map) {
-            final memberData = membershipsMap[resolvedCompanyId];
-            if (_getString(userData, 'role').isEmpty) {
-              userData['role'] = memberData['role'];
+          if (companyUserDoc.exists && companyUserDoc.data() != null) {
+            userData.addAll(companyUserDoc.data()!);
+            userData['companyId'] = resolvedCompanyId; // Re-enforce
+          }
+        } catch (e) {
+          debugPrint("[INQUIRY LIST] Firebase Rules blocked local user fetch. Failing over safely: $e");
+          // Safe failover: use global memberships if local read fails
+          if (userData['memberships'] is Map) {
+            final membershipsMap = userData['memberships'] as Map;
+            if (membershipsMap[resolvedCompanyId] is Map) {
+              final memberData = membershipsMap[resolvedCompanyId];
+              if (_getString(userData, 'role').isEmpty) {
+                userData['role'] = memberData['role'];
+              }
+              userData['permissions'] ??= memberData['permissions'];
             }
-            userData['permissions'] ??= memberData['permissions'];
           }
         }
       }
-    }
 
-    return userData;
+      return userData;
+    } catch (e) {
+      debugPrint("[INQUIRY LIST] Critical Profile Load Error: $e");
+      throw Exception("Unable to load profile data.");
+    }
   }
 
   // --- ROBUST PERMISSION SYSTEM ---
@@ -179,9 +180,7 @@ class _ScreensInquiryListState extends State<ScreensInquiryList> {
   }
 
   // --- SMART FIRESTORE AUTO-FALLBACK QUERY ---
-  Future<Query<Map<String, dynamic>>> _resolveInquiryQuery(
-      String companyId,
-      ) async {
+  Future<Query<Map<String, dynamic>>> _resolveInquiryQuery(String companyId) async {
     final scopedQuery = FirebaseFirestore.instance
         .collection('companies')
         .doc(companyId)
@@ -227,8 +226,7 @@ class _ScreensInquiryListState extends State<ScreensInquiryList> {
             ? _getString(data, 'createdBy')
             : _getString(data, 'createdByUid');
 
-        matchesRole =
-            assignedToUid == currentUserUid || createdByUid == currentUserUid;
+        matchesRole = assignedToUid == currentUserUid || createdByUid == currentUserUid;
       }
 
       final inquiryCode = _getString(data, 'inquiryCode').isEmpty
@@ -257,29 +255,24 @@ class _ScreensInquiryListState extends State<ScreensInquiryList> {
 
       final projectName = _getString(data, 'projectName').toLowerCase();
       final source = _getString(data, 'source').toLowerCase();
-      final requiredProducts = _getString(
-        data,
-        'requiredProducts',
-      ).toLowerCase();
+      final requiredProducts = _getString(data, 'requiredProducts').toLowerCase();
 
       final status = _getString(data, 'status');
       final priority = _getString(data, 'priority');
 
-      final matchesSearch =
-          normalizedSearch.isEmpty ||
-              inquiryCode.contains(normalizedSearch) ||
-              customerCode.contains(normalizedSearch) ||
-              customerName.contains(normalizedSearch) ||
-              subject.contains(normalizedSearch) ||
-              contactName.contains(normalizedSearch) ||
-              mobile.contains(normalizedSearch) ||
-              projectName.contains(normalizedSearch) ||
-              source.contains(normalizedSearch) ||
-              requiredProducts.contains(normalizedSearch);
+      final matchesSearch = normalizedSearch.isEmpty ||
+          inquiryCode.contains(normalizedSearch) ||
+          customerCode.contains(normalizedSearch) ||
+          customerName.contains(normalizedSearch) ||
+          subject.contains(normalizedSearch) ||
+          contactName.contains(normalizedSearch) ||
+          mobile.contains(normalizedSearch) ||
+          projectName.contains(normalizedSearch) ||
+          source.contains(normalizedSearch) ||
+          requiredProducts.contains(normalizedSearch);
 
       final matchesStatus = _statusFilter == 'All' || status == _statusFilter;
-      final matchesPriority =
-          _priorityFilter == 'All' || priority == _priorityFilter;
+      final matchesPriority = _priorityFilter == 'All' || priority == _priorityFilter;
 
       return matchesRole && matchesSearch && matchesStatus && matchesPriority;
     }).toList();
@@ -301,8 +294,7 @@ class _ScreensInquiryListState extends State<ScreensInquiryList> {
     return filtered;
   }
 
-  bool get _hasActiveFilters =>
-      _statusFilter != 'All' || _priorityFilter != 'All';
+  bool get _hasActiveFilters => _statusFilter != 'All' || _priorityFilter != 'All';
 
   void _resetFilters() {
     setState(() {
@@ -364,9 +356,7 @@ class _ScreensInquiryListState extends State<ScreensInquiryList> {
                         border: OutlineInputBorder(),
                       ),
                       items: statuses
-                          .map(
-                            (e) => DropdownMenuItem(value: e, child: Text(e)),
-                      )
+                          .map((e) => DropdownMenuItem(value: e, child: Text(e)))
                           .toList(),
                       onChanged: (value) {
                         setModalState(() {
@@ -383,9 +373,7 @@ class _ScreensInquiryListState extends State<ScreensInquiryList> {
                         border: OutlineInputBorder(),
                       ),
                       items: priorities
-                          .map(
-                            (e) => DropdownMenuItem(value: e, child: Text(e)),
-                      )
+                          .map((e) => DropdownMenuItem(value: e, child: Text(e)))
                           .toList(),
                       onChanged: (value) {
                         setModalState(() {
@@ -439,8 +427,9 @@ class _ScreensInquiryListState extends State<ScreensInquiryList> {
     required String currentUserUid,
     required String role,
   }) async {
-    final targetCompanyId = inquiry.companyId.isNotEmpty
-        ? inquiry.companyId
+    final docData = doc.data();
+    final targetCompanyId = _getString(docData, 'companyId').isNotEmpty
+        ? _getString(docData, 'companyId')
         : (_companyId ?? '');
 
     if (targetCompanyId.isEmpty) {
@@ -477,14 +466,14 @@ class _ScreensInquiryListState extends State<ScreensInquiryList> {
     }
   }
 
-  // --- FIXED & UPGRADED: Inquiry -> Quotation Data Flow ---
   Future<void> _openQuotationFromInquiry({
     required BuildContext context,
-    required Inquiry inquiry,
-    required Map<String, dynamic> inquiryData,
+    required QueryDocumentSnapshot<Map<String, dynamic>> doc,
   }) async {
-    final targetCompanyId = inquiry.companyId.isNotEmpty
-        ? inquiry.companyId
+    final inquiryData = doc.data();
+
+    final targetCompanyId = _getString(inquiryData, 'companyId').isNotEmpty
+        ? _getString(inquiryData, 'companyId')
         : (_companyId ?? '');
 
     if (targetCompanyId.isEmpty) {
@@ -499,22 +488,22 @@ class _ScreensInquiryListState extends State<ScreensInquiryList> {
       return;
     }
 
-    // UX: Show un-dismissible loader while fetching CRM data
     showDialog(
       context: context,
       barrierDismissible: false,
       builder: (_) => const Center(child: CircularProgressIndicator()),
     );
 
-    // Fetch FULL customer details to populate Billing Address, GST, State etc.
     Map<String, dynamic> customerData = {};
-    if (inquiry.customerId.isNotEmpty) {
+    final customerId = _getString(inquiryData, 'customerId');
+
+    if (customerId.isNotEmpty) {
       try {
         final custDoc = await FirebaseFirestore.instance
             .collection('companies')
             .doc(targetCompanyId)
             .collection('customers')
-            .doc(inquiry.customerId)
+            .doc(customerId)
             .get();
         if (custDoc.exists && custDoc.data() != null) {
           customerData = custDoc.data()!;
@@ -524,37 +513,26 @@ class _ScreensInquiryListState extends State<ScreensInquiryList> {
       }
     }
 
-    if (context.mounted) Navigator.pop(context); // Dismiss loader
+    if (context.mounted) Navigator.pop(context);
 
-    // Standardize seed structure allowing fallback parsing
+    final fallbackCustomerName = _getString(inquiryData, 'customerName');
+
     final Map<String, dynamic> comprehensiveSeed = {
-      'id': inquiry.id,
-      'inquiryId': inquiry.id,
-      'inquiryNumber': inquiry.inquiryNumber,
-      'customerId': inquiry.customerId,
-      'customerName':
-      customerData['companyName'] ??
-          customerData['name'] ??
-          inquiry.customerName,
-      'contactPerson': customerData['contactPerson'] ?? inquiry.contactName,
-      'mobile':
-      customerData['mobile'] ??
-          customerData['phone'] ??
-          inquiry.contactPhone,
-      'email': customerData['email'] ?? inquiry.contactEmail,
-      'address':
-      customerData['address'] ?? customerData['billingAddress'] ?? '',
+      'id': doc.id,
+      'inquiryId': doc.id,
+      'inquiryNumber': _getString(inquiryData, 'inquiryNumber'),
+      'customerId': customerId,
+      'customerName': customerData['companyName'] ?? customerData['name'] ?? fallbackCustomerName,
+      'contactPerson': customerData['contactPerson'] ?? _getString(inquiryData, 'contactName'),
+      'mobile': customerData['mobile'] ?? customerData['phone'] ?? _getString(inquiryData, 'contactPhone'),
+      'email': customerData['email'] ?? _getString(inquiryData, 'contactEmail'),
+      'address': customerData['address'] ?? customerData['billingAddress'] ?? '',
       'state': customerData['state'] ?? '',
       'gstNo': customerData['gstNo'] ?? customerData['gst'] ?? '',
-      'subject': inquiry.subject,
-      'notes':
-      inquiryData['notes'] ??
-          inquiryData['description'] ??
-          inquiry.notes ??
-          '',
-      'location': inquiry.location,
-      'source': inquiry.source,
-      // Pass the raw array whether it was saved as 'items' or 'products'
+      'subject': _getString(inquiryData, 'subject'),
+      'notes': inquiryData['notes'] ?? inquiryData['description'] ?? '',
+      'location': _getString(inquiryData, 'location'),
+      'source': _getString(inquiryData, 'source'),
       'items': inquiryData['products'] ?? inquiryData['items'] ?? [],
     };
 
@@ -576,9 +554,9 @@ class _ScreensInquiryListState extends State<ScreensInquiryList> {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(
-          inquiry.customerName.isEmpty
+          fallbackCustomerName.isEmpty
               ? 'Quotation screen opened'
-              : 'Quotation screen opened for ${inquiry.customerName}',
+              : 'Quotation screen opened for $fallbackCustomerName',
         ),
       ),
     );
@@ -599,30 +577,46 @@ class _ScreensInquiryListState extends State<ScreensInquiryList> {
       builder: (context, userSnap) {
         if (userSnap.connectionState == ConnectionState.waiting) {
           return const Scaffold(
+            backgroundColor: Colors.white,
             body: Center(child: CircularProgressIndicator()),
           );
         }
 
-        if (userSnap.hasError || userSnap.data == null) {
+        // 🔥 FIX: Show the exact error if Future fails
+        if (userSnap.hasError) {
+          return Scaffold(
+            backgroundColor: Colors.white,
+            body: Center(
+              child: Text(
+                'Failed to load user profile.\nError: ${userSnap.error}',
+                textAlign: TextAlign.center,
+                style: const TextStyle(color: Colors.red),
+              ),
+            ),
+          );
+        }
+
+        if (userSnap.data == null) {
           return const Scaffold(
-            body: Center(child: Text('Error loading user profile')),
+            backgroundColor: Colors.white,
+            body: Center(child: Text('User profile data not found.')),
           );
         }
 
         final userData = userSnap.data!;
         final compId = _companyId ?? _getString(userData, 'companyId');
-        final role = _getString(userData, 'role').isEmpty
-            ? 'sales'
-            : _getString(userData, 'role');
+        final role = _getString(userData, 'role').isEmpty ? 'sales' : _getString(userData, 'role');
 
         if (compId.isEmpty || !_hasInquiryPermission(userData)) {
           return const Scaffold(
-            body: Center(child: Text('No permission or company linked.')),
+            backgroundColor: Colors.white,
+            body: Center(child: Text('No permission or company linked to this user.')),
           );
         }
 
         if (_inquiryQuery == null) {
           return const Scaffold(
+            backgroundColor: Colors.white,
             body: Center(child: Text('Error resolving data path')),
           );
         }
@@ -702,13 +696,13 @@ class _ScreensInquiryListState extends State<ScreensInquiryList> {
               }
 
               return Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Padding(
                     padding: const EdgeInsets.fromLTRB(16, 6, 16, 8),
                     child: Row(
                       children: [
-                        ConstrainedBox(
-                          constraints: const BoxConstraints(maxWidth: 320),
+                        Expanded(
                           child: SizedBox(
                             height: 38,
                             child: TextField(
@@ -792,23 +786,30 @@ class _ScreensInquiryListState extends State<ScreensInquiryList> {
                             ),
                           ),
                         ),
-                        const Spacer(),
+                      ],
+                    ),
+                  ),
+                  SingleChildScrollView(
+                    scrollDirection: Axis.horizontal,
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    child: Row(
+                      children: [
                         _MiniStatText(label: 'Total', value: total.toString()),
-                        const SizedBox(width: 10),
+                        const SizedBox(width: 14),
                         _MiniStatText(label: 'Open', value: open.toString()),
-                        const SizedBox(width: 10),
+                        const SizedBox(width: 14),
                         _MiniStatText(
                           label: 'Follow-up',
                           value: followUp.toString(),
                         ),
-                        const SizedBox(width: 10),
+                        const SizedBox(width: 14),
                         _MiniStatText(label: 'Won', value: won.toString()),
                       ],
                     ),
                   ),
                   if (_hasActiveFilters)
                     Padding(
-                      padding: const EdgeInsets.fromLTRB(16, 0, 16, 4),
+                      padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
                       child: Row(
                         children: [
                           Expanded(
@@ -823,17 +824,21 @@ class _ScreensInquiryListState extends State<ScreensInquiryList> {
                           ),
                           TextButton(
                             onPressed: _resetFilters,
-                            child: const Text('Clear'),
+                            style: TextButton.styleFrom(
+                              minimumSize: Size.zero,
+                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                            ),
+                            child: const Text('Clear Filters', style: TextStyle(fontSize: 12)),
                           ),
                         ],
                       ),
                     ),
+                  const SizedBox(height: 8),
                   Expanded(
                     child: filteredDocs.isEmpty
                         ? _EmptyInquiriesState(
-                      hasSearch:
-                      _searchText.trim().isNotEmpty ||
-                          _hasActiveFilters,
+                      hasSearch: _searchText.trim().isNotEmpty || _hasActiveFilters,
                       onReset: () {
                         _searchController.clear();
                         setState(() {
@@ -845,36 +850,45 @@ class _ScreensInquiryListState extends State<ScreensInquiryList> {
                         : ListView.separated(
                       padding: const EdgeInsets.fromLTRB(16, 4, 16, 90),
                       itemCount: filteredDocs.length,
-                      separatorBuilder: (_, __) =>
-                      const SizedBox(height: 8),
+                      separatorBuilder: (_, __) => const SizedBox(height: 8),
                       itemBuilder: (context, index) {
                         final doc = filteredDocs[index];
+                        final data = doc.data();
+
                         final inquiry = Inquiry.fromSnapshot(doc);
 
-                        final priority = inquiry.priority.isEmpty
+                        final priority = _getString(data, 'priority').isEmpty
                             ? 'Warm'
-                            : inquiry.priority;
-                        final status = inquiry.status.isEmpty
+                            : _getString(data, 'priority');
+                        final status = _getString(data, 'status').isEmpty
                             ? 'Open'
-                            : inquiry.status;
-                        final subject = inquiry.subject;
-                        final customerName = inquiry.customerName.isEmpty
+                            : _getString(data, 'status');
+                        final subject = _getString(data, 'subject');
+                        final customerName = _getString(data, 'customerName').isEmpty
                             ? 'Unknown Customer'
-                            : inquiry.customerName;
-                        final inquiryNumber =
-                        inquiry.inquiryNumber.isEmpty
+                            : _getString(data, 'customerName');
+                        final inquiryNumber = _getString(data, 'inquiryNumber').isEmpty
                             ? '-'
-                            : inquiry.inquiryNumber;
-                        final assignedToName =
-                        inquiry.assignedToName.isEmpty
+                            : _getString(data, 'inquiryNumber');
+                        final assignedToName = _getString(data, 'assignedToName').isEmpty
                             ? 'Unassigned'
-                            : inquiry.assignedToName;
-                        final contactName = inquiry.contactName;
-                        final phone = inquiry.contactPhone.isEmpty
+                            : _getString(data, 'assignedToName');
+                        final contactName = _getString(data, 'contactName');
+                        final phone = _getString(data, 'contactPhone').isEmpty
                             ? 'No Phone'
-                            : inquiry.contactPhone;
+                            : _getString(data, 'contactPhone');
 
-                        // UI REFACTOR: Condensed Card, No Timeline Box, Wrap Data efficiently.
+                        final expectedValue = _getString(data, 'expectedValue');
+                        final quantityScope = _getString(data, 'quantityScope');
+                        final source = _getString(data, 'source');
+                        final inquiryType = _getString(data, 'inquiryType');
+                        final location = _getString(data, 'location');
+
+                        final createdAtTs = data['createdAt'];
+                        final nextTs = data['nextFollowUpDate'];
+                        final createdAt = createdAtTs is Timestamp ? createdAtTs.toDate() : null;
+                        final nextFollowUpDate = nextTs is Timestamp ? nextTs.toDate() : null;
+
                         return Container(
                           decoration: BoxDecoration(
                             color: Colors.white,
@@ -885,7 +899,7 @@ class _ScreensInquiryListState extends State<ScreensInquiryList> {
                             ),
                           ),
                           child: Padding(
-                            padding: const EdgeInsets.all(10), // Condensed padding
+                            padding: const EdgeInsets.all(12),
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
@@ -893,7 +907,7 @@ class _ScreensInquiryListState extends State<ScreensInquiryList> {
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
                                     CircleAvatar(
-                                      radius: 18, // Slightly more compact avatar
+                                      radius: 18,
                                       backgroundColor: Colors.blue.shade50,
                                       child: Text(
                                         customerName.isNotEmpty
@@ -906,15 +920,13 @@ class _ScreensInquiryListState extends State<ScreensInquiryList> {
                                         ),
                                       ),
                                     ),
-                                    const SizedBox(width: 8),
+                                    const SizedBox(width: 10),
                                     Expanded(
                                       child: Column(
                                         crossAxisAlignment: CrossAxisAlignment.start,
                                         children: [
                                           Text(
-                                            subject.isEmpty
-                                                ? 'No Subject'
-                                                : subject,
+                                            subject.isEmpty ? 'No Subject' : subject,
                                             maxLines: 1,
                                             overflow: TextOverflow.ellipsis,
                                             style: const TextStyle(
@@ -922,7 +934,7 @@ class _ScreensInquiryListState extends State<ScreensInquiryList> {
                                               fontWeight: FontWeight.w700,
                                             ),
                                           ),
-                                          const SizedBox(height: 1), // Tighter spacing
+                                          const SizedBox(height: 2),
                                           Text(
                                             customerName,
                                             maxLines: 1,
@@ -955,8 +967,7 @@ class _ScreensInquiryListState extends State<ScreensInquiryList> {
                                           } else if (value == 'quote') {
                                             _openQuotationFromInquiry(
                                               context: context,
-                                              inquiry: inquiry,
-                                              inquiryData: doc.data(),
+                                              doc: doc,
                                             );
                                           }
                                         },
@@ -974,7 +985,7 @@ class _ScreensInquiryListState extends State<ScreensInquiryList> {
                                     ),
                                   ],
                                 ),
-                                const SizedBox(height: 8),
+                                const SizedBox(height: 10),
                                 Wrap(
                                   spacing: 6,
                                   runSpacing: 6,
@@ -989,30 +1000,30 @@ class _ScreensInquiryListState extends State<ScreensInquiryList> {
                                       backgroundColor: _priorityBg(priority),
                                       textColor: _priorityFg(priority),
                                     ),
-                                    if (inquiry.source.isNotEmpty)
+                                    if (source.isNotEmpty)
                                       _InfoChip(
-                                        label: inquiry.source,
+                                        label: source,
                                         backgroundColor: Colors.grey.shade100,
                                         textColor: Colors.grey.shade800,
                                       ),
-                                    if (inquiry.inquiryType.isNotEmpty)
+                                    if (inquiryType.isNotEmpty)
                                       _InfoChip(
-                                        label: inquiry.inquiryType,
+                                        label: inquiryType,
                                         backgroundColor: Colors.blue.shade50,
                                         textColor: Colors.blue.shade800,
                                       ),
-                                    if (inquiry.location.isNotEmpty)
+                                    if (location.isNotEmpty)
                                       _InfoChip(
-                                        label: inquiry.location,
+                                        label: location,
                                         backgroundColor: Colors.grey.shade100,
                                         textColor: Colors.grey.shade800,
                                       ),
                                   ],
                                 ),
-                                const SizedBox(height: 8),
+                                const SizedBox(height: 10),
                                 Wrap(
                                   spacing: 12,
-                                  runSpacing: 6,
+                                  runSpacing: 8,
                                   crossAxisAlignment: WrapCrossAlignment.center,
                                   children: [
                                     _InlineInfo(
@@ -1027,29 +1038,28 @@ class _ScreensInquiryListState extends State<ScreensInquiryList> {
                                       icon: Icons.phone_outlined,
                                       text: phone,
                                     ),
-                                    if (inquiry.expectedValue.isNotEmpty)
+                                    if (expectedValue.isNotEmpty)
                                       _InlineInfo(
                                         icon: Icons.currency_rupee_outlined,
-                                        text: inquiry.expectedValue,
+                                        text: expectedValue,
                                       ),
-                                    if (inquiry.quantityScope.isNotEmpty)
+                                    if (quantityScope.isNotEmpty)
                                       _InlineInfo(
                                         icon: Icons.numbers_outlined,
-                                        text: inquiry.quantityScope,
+                                        text: quantityScope,
                                       ),
                                     _InlineInfo(
                                       icon: Icons.assignment_ind_outlined,
                                       text: assignedToName,
                                     ),
-                                    // TIMELINE DATA MERGED IN HERE
                                     _InlineInfo(
                                       icon: Icons.add_circle_outline,
-                                      text: 'Created: ${_formatCompactDate(inquiry.createdAt)}',
+                                      text: 'Created: ${_formatCompactDate(createdAt)}',
                                     ),
-                                    if (inquiry.nextFollowUpDate != null)
+                                    if (nextFollowUpDate != null)
                                       _InlineInfo(
                                         icon: Icons.event_repeat_outlined,
-                                        text: 'Next: ${_formatCompactDate(inquiry.nextFollowUpDate)}',
+                                        text: 'Next: ${_formatCompactDate(nextFollowUpDate)}',
                                       ),
                                   ],
                                 ),
@@ -1078,12 +1088,20 @@ class _MiniStatText extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Text(
-      '$label: $value',
-      style: TextStyle(
-        fontSize: 12,
-        color: Colors.grey.shade700,
-        fontWeight: FontWeight.w600,
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: Colors.grey.shade100,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: Colors.grey.shade200),
+      ),
+      child: Text(
+        '$label: $value',
+        style: TextStyle(
+          fontSize: 12,
+          color: Colors.grey.shade800,
+          fontWeight: FontWeight.w600,
+        ),
       ),
     );
   }
@@ -1102,14 +1120,14 @@ class _InlineInfo extends StatelessWidget {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(icon, size: 14, color: Colors.grey.shade600), // Slightly smaller, softer icon
+          Icon(icon, size: 14, color: Colors.grey.shade600),
           const SizedBox(width: 4),
           Flexible(
             child: Text(
               text,
               overflow: TextOverflow.ellipsis,
               style: TextStyle(
-                fontSize: 12, // Condensed size
+                fontSize: 12,
                 color: Colors.grey.shade800,
                 fontWeight: FontWeight.w500,
               ),
@@ -1135,7 +1153,7 @@ class _InfoChip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4), // Tighter padding
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       decoration: BoxDecoration(
         color: backgroundColor,
         borderRadius: BorderRadius.circular(999),
@@ -1143,7 +1161,7 @@ class _InfoChip extends StatelessWidget {
       child: Text(
         label,
         style: TextStyle(
-          fontSize: 11, // Condensed font for secondary chips
+          fontSize: 11,
           fontWeight: FontWeight.w700,
           color: textColor,
         ),

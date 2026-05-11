@@ -140,48 +140,129 @@ class QuotationDataService {
   static Future<Map<String, dynamic>> fetchWorkspaceAndSignatureData() async {
     try {
       final user = FirebaseAuth.instance.currentUser;
-      if (user == null) return {};
+      if (user == null) return <String, dynamic>{};
 
       final userDoc = await FirebaseFirestore.instance
           .collection('users')
           .doc(user.uid)
           .get();
-      if (!userDoc.exists) return {};
+      if (!userDoc.exists) return <String, dynamic>{};
 
-      final userData = userDoc.data() ?? {};
+      final rootData = userDoc.data() ?? <String, dynamic>{};
 
-      final companyId = userData['companyId']?.toString() ?? '';
-      if (companyId.trim().isEmpty || companyId.trim() == 'null') return {};
+      final companyId = (rootData['activeCompanyId'] ?? rootData['companyId'] ?? '').toString().trim();
+      if (companyId.isEmpty || companyId == 'null') return <String, dynamic>{};
 
-      final wsDoc = await FirebaseFirestore.instance
-          .collection('workspaces')
+      DocumentSnapshot compDoc = await FirebaseFirestore.instance
+          .collection('companies')
           .doc(companyId)
           .get();
-      final workspaceData = wsDoc.exists ? (wsDoc.data() ?? {}) : {};
+
+      if (!compDoc.exists) {
+        compDoc = await FirebaseFirestore.instance
+            .collection('workspaces')
+            .doc(companyId)
+            .get();
+      }
+
+      final Map<String, dynamic> workspaceData = compDoc.exists && compDoc.data() != null
+          ? Map<String, dynamic>.from(compDoc.data() as Map)
+          : <String, dynamic>{};
+
+      Map<String, dynamic>? membershipData;
+      if (rootData['memberships'] != null) {
+        membershipData = rootData['memberships'][companyId] as Map<String, dynamic>?;
+      }
+
+      Map<String, dynamic> compUserData = <String, dynamic>{};
+      final compUserDoc = await FirebaseFirestore.instance
+          .collection('companies')
+          .doc(companyId)
+          .collection('users')
+          .doc(user.uid)
+          .get();
+
+      if (compUserDoc.exists && compUserDoc.data() != null) {
+        compUserData = Map<String, dynamic>.from(compUserDoc.data() as Map);
+      }
 
       final authName = user.displayName ?? '';
       final authPhone = user.phoneNumber ?? '';
 
-      final sigName = authName.trim().isNotEmpty
-          ? authName
-          : (userData['name']?.toString() ?? '');
+      final sigName = (
+          compUserData['name'] ?? compUserData['fullName'] ??
+              membershipData?['name'] ??
+              rootData['name'] ?? rootData['fullName'] ??
+              authName
+      ).toString().trim();
 
-      final sigPhone = authPhone.trim().isNotEmpty
-          ? authPhone
-          : (userData['phone']?.toString() ?? '');
+      String sigDesignation = (
+          compUserData['designation'] ??
+              membershipData?['designation'] ??
+              rootData['designation'] ??
+              ''
+      ).toString().trim();
 
-      String sigDesignation = userData['designation']?.toString() ?? '';
-      if (sigDesignation.trim().isEmpty || sigDesignation.trim() == 'null') {
-        sigDesignation = 'Sales';
+      String userDepartment = (
+          compUserData['department'] ??
+              membershipData?['department'] ??
+              rootData['department'] ??
+              ''
+      ).toString().trim();
+
+      String userRole = (
+          membershipData?['role'] ??
+              rootData['role'] ??
+              'Sales'
+      ).toString().trim();
+
+      if (sigDesignation.isEmpty) {
+        sigDesignation = userDepartment.isNotEmpty ? userDepartment : userRole.toUpperCase();
       }
 
+      final sigPhone = (
+          compUserData['phone'] ?? compUserData['mobile'] ??
+              membershipData?['phone'] ?? membershipData?['mobile'] ??
+              rootData['phone'] ?? rootData['mobile'] ??
+              authPhone
+      ).toString().trim();
+
+      String buildCompleteAddress(Map<String, dynamic> data) {
+        List<String> addressLines = [];
+
+        final street = (data['streetAddress'] ?? data['address'] ?? '').toString().trim();
+        if (street.isNotEmpty) addressLines.add(street);
+
+        final city = (data['city'] ?? '').toString().trim();
+        final state = (data['state'] ?? '').toString().trim();
+        final zip = (data['postalCode'] ?? data['pincode'] ?? data['zip'] ?? '').toString().trim();
+
+        List<String> localityParts = [];
+        if (city.isNotEmpty) localityParts.add(city);
+        if (state.isNotEmpty) localityParts.add(state);
+        if (zip.isNotEmpty) localityParts.add(zip);
+
+        if (localityParts.isNotEmpty) {
+          addressLines.add(localityParts.join(', '));
+        }
+
+        final country = (data['country'] ?? '').toString().trim();
+        if (country.isNotEmpty && country.toLowerCase() != 'india') {
+          addressLines.add(country);
+        }
+
+        return addressLines.join('\n');
+      }
+
+      final fullAddress = buildCompleteAddress(workspaceData);
+
       return {
-        'companyName': workspaceData['entityName']?.toString() ?? '',
-        'companyAddress': workspaceData['address']?.toString() ?? '',
-        'companyGst': workspaceData['gstin']?.toString() ?? '',
+        'companyName': workspaceData['companyName'] ?? workspaceData['name'] ?? workspaceData['entityName'] ?? '',
+        'companyAddress': fullAddress,
+        'companyGst': workspaceData['gstin'] ?? workspaceData['gstNo'] ?? workspaceData['gst'] ?? '',
         'companyPan': workspaceData['pan']?.toString() ?? '',
         'companyIec': workspaceData['iec']?.toString() ?? '',
-        'companyPhone': workspaceData['phone']?.toString() ?? '',
+        'companyPhone': workspaceData['phone'] ?? workspaceData['mobile'] ?? '',
         'companyEmail': workspaceData['email']?.toString() ?? '',
         'companyWebsite': workspaceData['website']?.toString() ?? '',
         'companyLogoUrl': workspaceData['logoUrl']?.toString() ?? '',
@@ -191,7 +272,7 @@ class QuotationDataService {
         'signaturePhone': sigPhone,
       };
     } catch (e) {
-      return {};
+      return <String, dynamic>{};
     }
   }
 }
@@ -440,7 +521,7 @@ class QuotationPdfGenerator {
                         style: pw.TextStyle(
                           fontSize: 9,
                           color: _textMuted,
-                          lineSpacing: 1.4,
+                          lineSpacing: 1.4, // Essential for multi-line formatting
                         ),
                       ),
                       pw.SizedBox(height: 6),
@@ -1145,7 +1226,7 @@ class QuotationPdfGenerator {
                 if (sigPhone.isNotEmpty) ...[
                   pw.SizedBox(height: 3),
                   pw.Text(
-                    sigPhone,
+                    'Ph: $sigPhone',
                     style: pw.TextStyle(fontSize: 10, color: _textMuted),
                   ),
                 ],
@@ -1228,24 +1309,54 @@ class QuotationPreviewScreen extends StatelessWidget {
 
     final displayTitle = titleOverride ?? '$displayDocumentType Preview';
 
+    // Premium Corporate Color for the Unified Header
+    const headerBgColor = Color(0xFF1E293B);
+
     return Scaffold(
       appBar: AppBar(
-        backgroundColor: const Color(0xFF111827), // Charcoal black
-        foregroundColor: Colors.white,
+        backgroundColor: headerBgColor,
+        // 🔥 FIX: Explicitly set the Back Button and Action Icons to pure white
+        iconTheme: const IconThemeData(color: Colors.white),
+        actionsIconTheme: const IconThemeData(color: Colors.white),
         title: Text(
           displayTitle,
-          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
+          // 🔥 FIX: Explicitly set the Title Text to pure white
+          style: const TextStyle(
+              color: Colors.white,
+              fontWeight: FontWeight.w600,
+              fontSize: 16,
+              letterSpacing: 0.5
+          ),
         ),
         elevation: 0,
+        centerTitle: false,
       ),
-      body: PdfPreview(
-        build: (format) =>
-            QuotationPdfGenerator.buildPdf(format, quotation, items),
-        canChangeOrientation: false,
-        canChangePageFormat: false,
-        allowPrinting: true,
-        allowSharing: true,
-        pdfFileName: '${displayDocumentType}_$docNumber.pdf'.replaceAll(' ', '_'),
+      // Wrapping in a Theme forces the internal PdfPreview toolbar to blend flawlessly with the AppBar
+      body: Theme(
+        data: Theme.of(context).copyWith(
+          primaryColor: headerBgColor, // Matches the internal toolbar to the AppBar
+          appBarTheme: const AppBarTheme(
+            backgroundColor: headerBgColor,
+            foregroundColor: Colors.white,
+            iconTheme: IconThemeData(color: Colors.white),
+            actionsIconTheme: IconThemeData(color: Colors.white),
+          ),
+          iconTheme: const IconThemeData(color: Colors.white), // Forces toolbar buttons to be visible
+        ),
+        child: PdfPreview(
+          build: (format) => QuotationPdfGenerator.buildPdf(format, quotation, items),
+          initialPageFormat: PdfPageFormat.a4,
+          canChangeOrientation: false,
+          canChangePageFormat: false,
+          allowPrinting: true,
+          allowSharing: true,
+          pdfFileName: '${displayDocumentType}_$docNumber.pdf'.replaceAll(' ', '_'),
+          scrollViewDecoration: const BoxDecoration(
+            color: Color(0xFFF1F5F9), // Subtle grey background so the white paper pops
+          ),
+          // maxPageWidth prevents the PDF from rendering too huge on desktop, forcing it to fit nicely
+          maxPageWidth: 800,
+        ),
       ),
     );
   }
