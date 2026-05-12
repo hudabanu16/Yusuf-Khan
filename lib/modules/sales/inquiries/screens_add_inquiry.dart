@@ -642,20 +642,43 @@ class _ScreensAddInquiryState extends State<ScreensAddInquiry> {
     if (_debounceTimer?.isActive ?? false) _debounceTimer!.cancel();
     _debounceTimer = Timer(const Duration(milliseconds: 350), () async {
       try {
-        Query<Map<String, dynamic>> baseQuery = _companyCustomersRef.where(
-          'isActive',
-          isEqualTo: true,
-        );
+        Query<Map<String, dynamic>> baseQuery = _companyCustomersRef;
         QuerySnapshot<Map<String, dynamic>> snap;
 
         if (q.isEmpty) {
           snap = await baseQuery.limit(30).get();
         } else {
-          snap = await baseQuery
-              .where('nameLowercase', isGreaterThanOrEqualTo: q)
-              .where('nameLowercase', isLessThanOrEqualTo: '$q\uf8ff')
-              .limit(30)
-              .get();
+          snap = await baseQuery.limit(100).get();
+
+          final filteredDocs = snap.docs.where((doc) {
+            final data = doc.data();
+
+            final isActive = data['isActive'] == true;
+
+            final name =
+            (data['nameLowercase'] ??
+                data['companyName'] ??
+                data['name'] ??
+                '')
+                .toString()
+                .toLowerCase();
+
+            final phone = (data['phone'] ?? '').toString();
+
+            return isActive &&
+                (name.contains(q) || phone.contains(q));
+          }).toList();
+
+          _customerSearchCache[q] = filteredDocs;
+
+          if (mounted) {
+            setState(() {
+              _customerSuggestions =
+                  _filterCustomersByRole(filteredDocs).toList();
+            });
+          }
+
+          return;
 
           if (snap.docs.isEmpty) {
             final fallbackSnap = await baseQuery.limit(50).get();
