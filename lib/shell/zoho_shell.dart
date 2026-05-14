@@ -32,10 +32,21 @@ enum ShellPage {
   salesInquiries,
   salesQuotations,
   salesOrders,
-  service,
   salesFollowUps,
   salesTasks,
   salesMeetings,
+
+  // Professional Service Workflow
+  serviceDashboard,
+  serviceRequests,
+  serviceWorkOrders,
+  serviceQuotations,
+  serviceVisits,
+  serviceInstallationCommissioning,
+  serviceTechnicians,
+  serviceReports,
+  serviceEquipmentHistory,
+  serviceClosedWorkOrders,
 
   crmCustomers,
   crmContacts,
@@ -94,14 +105,33 @@ extension ShellPageX on ShellPage {
         return 'Quotations';
       case ShellPage.salesOrders:
         return 'Sales Orders';
-      case ShellPage.service:
-        return 'Service';
       case ShellPage.salesFollowUps:
         return 'Follow-ups';
       case ShellPage.salesTasks:
         return 'Tasks';
       case ShellPage.salesMeetings:
         return 'Meetings';
+
+      case ShellPage.serviceDashboard:
+        return 'Dashboard';
+      case ShellPage.serviceRequests:
+        return 'Service Requests';
+      case ShellPage.serviceWorkOrders:
+        return 'Work Orders';
+      case ShellPage.serviceQuotations:
+        return 'Quotations';
+      case ShellPage.serviceVisits:
+        return 'Service Visits';
+      case ShellPage.serviceInstallationCommissioning:
+        return 'Installation / Commissioning';
+      case ShellPage.serviceTechnicians:
+        return 'Service Technicians';
+      case ShellPage.serviceReports:
+        return 'Service Reports';
+      case ShellPage.serviceEquipmentHistory:
+        return 'Equipment History';
+      case ShellPage.serviceClosedWorkOrders:
+        return 'Closed Work Orders';
 
       case ShellPage.crmCustomers:
         return 'Customers';
@@ -195,14 +225,34 @@ extension ShellPageX on ShellPage {
         return Icons.receipt_long_outlined;
       case ShellPage.salesOrders:
         return Icons.shopping_bag_outlined;
-      case ShellPage.service:
-        return Icons.build_outlined;
       case ShellPage.salesFollowUps:
         return Icons.event_repeat_outlined;
       case ShellPage.salesTasks:
         return Icons.task_alt_outlined;
       case ShellPage.salesMeetings:
         return Icons.groups_outlined;
+
+      case ShellPage.serviceDashboard:
+        return Icons.dashboard_outlined;
+      case ShellPage.serviceRequests:
+        return Icons.support_agent_outlined;
+      case ShellPage.serviceWorkOrders:
+        return Icons.handyman_outlined;
+      case ShellPage.serviceQuotations:
+        return Icons.request_quote_outlined;
+      case ShellPage.serviceVisits:
+        return Icons.directions_car_outlined;
+      case ShellPage.serviceInstallationCommissioning:
+        return Icons.precision_manufacturing_outlined;
+      case ShellPage.serviceTechnicians:
+        return Icons.engineering_outlined;
+      case ShellPage.serviceReports:
+        return Icons.assignment_outlined;
+      case ShellPage.serviceEquipmentHistory:
+        return Icons.history_outlined;
+      case ShellPage.serviceClosedWorkOrders:
+        return Icons.fact_check_outlined;
+
       case ShellPage.crmCustomers:
         return Icons.people_outline;
       case ShellPage.crmContacts:
@@ -376,11 +426,7 @@ class _ZohoShellState extends State<ZohoShell> {
             .toString()
             .toLowerCase();
 
-        if (raw.contains('export') && raw.contains('import')) {
-          _resolvedIndustry = 'export_import';
-        } else {
-          _resolvedIndustry = raw;
-        }
+        _resolvedIndustry = raw;
       } else {
         _resolvedIndustry = 'unknown';
       }
@@ -444,21 +490,10 @@ class _ZohoShellState extends State<ZohoShell> {
   }
 
   bool get canInquiries {
-    if (_resolvedIndustry == 'export_import') return false;
     return _hasPermission('sales', 'inquiries');
   }
 
   bool _canViewPage(ShellPage page) {
-    if (_resolvedIndustry == 'export_import') {
-      // Explictly hide Inquiries and Quotations per previous rules,
-      // but ALLOW Sales Orders if permission exists.
-      if (page == ShellPage.salesInquiries ||
-          page == ShellPage.salesQuotations ||
-          page == ShellPage.reportsInquiry) {
-        return false;
-      }
-    }
-
     if (isAdminOrManager) return true;
 
     switch (page) {
@@ -466,22 +501,43 @@ class _ZohoShellState extends State<ZohoShell> {
         return true;
       case ShellPage.settingsGeneral:
         return true;
+
     // Sales
       case ShellPage.salesInquiries:
         return _hasPermission('sales', 'inquiries');
       case ShellPage.salesQuotations:
         return _hasPermission('sales', 'quotations');
       case ShellPage.salesOrders:
-        return _hasPermission('sales', 'salesOrder'); // Safe plural alias fallback will handle it automatically
+        return _hasPermission('sales', 'salesOrder');
       case ShellPage.salesFollowUps:
         return _hasPermission('sales', 'followUps');
       case ShellPage.salesTasks:
         return _hasPermission('sales', 'tasks');
       case ShellPage.salesMeetings:
         return _hasPermission('sales', 'meetings');
-    // Service
-      case ShellPage.service:
-        return true;
+
+    // Service (Industrial Workflow)
+      case ShellPage.serviceDashboard:
+        return _hasPermission('service', 'dashboard');
+      case ShellPage.serviceRequests:
+        return _hasPermission('service', 'serviceRequests');
+      case ShellPage.serviceWorkOrders:
+        return _hasPermission('service', 'workOrders');
+      case ShellPage.serviceQuotations:
+        return _hasPermission('service', 'quotations');
+      case ShellPage.serviceVisits:
+        return _hasPermission('service', 'serviceVisits');
+      case ShellPage.serviceInstallationCommissioning:
+        return _hasPermission('service', 'installationCommissioning');
+      case ShellPage.serviceTechnicians:
+        return _hasPermission('service', 'serviceTechnicians');
+      case ShellPage.serviceReports:
+        return _hasPermission('service', 'serviceReports');
+      case ShellPage.serviceEquipmentHistory:
+        return _hasPermission('service', 'equipmentHistory');
+      case ShellPage.serviceClosedWorkOrders:
+        return _hasPermission('service', 'closedWorkOrders');
+
     // CRM
       case ShellPage.crmCustomers:
         return _hasPermission('crm', 'customers');
@@ -491,6 +547,7 @@ class _ZohoShellState extends State<ZohoShell> {
         return _hasPermission('crm', 'customerVisits');
       case ShellPage.crmCommunication:
         return _hasPermission('crm', 'communicationHistory');
+
     // Purchase
       case ShellPage.purchaseVendors:
         return _hasPermission('purchase', 'vendors');
@@ -500,6 +557,7 @@ class _ZohoShellState extends State<ZohoShell> {
         return _hasPermission('purchase', 'grnMaterialReceipt');
       case ShellPage.purchaseLedger:
         return _hasPermission('purchase', 'vendorLedger');
+
     // Inventory
       case ShellPage.inventoryProducts:
         return _hasPermission('inventory', 'products');
@@ -513,6 +571,7 @@ class _ZohoShellState extends State<ZohoShell> {
         return _hasPermission('inventory', 'warehouse');
       case ShellPage.inventoryLowStock:
         return _hasPermission('inventory', 'lowStockAlerts');
+
     // Dispatch
       case ShellPage.dispatchReady:
         return _hasPermission('dispatch', 'readyForDispatch');
@@ -522,6 +581,7 @@ class _ZohoShellState extends State<ZohoShell> {
         return _hasPermission('dispatch', 'shipmentTracking');
       case ShellPage.dispatchDelivered:
         return _hasPermission('dispatch', 'deliveredOrders');
+
     // Finance
       case ShellPage.financeProforma:
         return _hasPermission('finance', 'proformaInvoice');
@@ -535,6 +595,7 @@ class _ZohoShellState extends State<ZohoShell> {
         return _hasPermission('finance', 'outstanding');
       case ShellPage.financeExpenses:
         return _hasPermission('finance', 'expenseEntries');
+
     // Reports
       case ShellPage.reportsSales:
         return _hasPermission('reports', 'salesReport');
@@ -546,6 +607,7 @@ class _ZohoShellState extends State<ZohoShell> {
         return _hasPermission('reports', 'productReport');
       case ShellPage.reportsPayment:
         return _hasPermission('reports', 'paymentReport');
+
     // Administration
       case ShellPage.adminUsers:
         return _hasPermission('administration', 'users');
@@ -561,54 +623,6 @@ class _ZohoShellState extends State<ZohoShell> {
   }
 
   List<SidebarGroup> get _allSidebarGroups {
-    // 🔥 CRITICAL FIX: Explicitly Added the Sales Group back in with Sales Orders for Export_Import users
-    if (_resolvedIndustry == 'export_import') {
-      return const [
-        SidebarGroup(
-          key: 'sales',
-          title: 'Sales',
-          icon: Icons.trending_up_outlined,
-          children: [ShellPage.salesOrders], // Inquiries and Quotations remain hidden
-        ),
-        SidebarGroup(
-          key: 'crm',
-          title: 'CRM',
-          icon: Icons.people_alt_outlined,
-          children: [ShellPage.crmCustomers],
-        ),
-        SidebarGroup(
-          key: 'finance',
-          title: 'Finance',
-          icon: Icons.account_balance_wallet_outlined,
-          children: [
-            ShellPage.financeProforma,
-            ShellPage.financeTaxInvoice,
-            ShellPage.financePaymentsReceived,
-            ShellPage.financeOutstanding,
-            ShellPage.financeExpenses,
-          ],
-        ),
-        SidebarGroup(
-          key: 'reports',
-          title: 'Reports',
-          icon: Icons.assessment_outlined,
-          children: [
-            ShellPage.reportsSales,
-            ShellPage.reportsCustomer,
-            ShellPage.reportsPayment,
-          ],
-        ),
-        SidebarGroup(
-          key: 'admin',
-          title: 'Administration',
-          icon: Icons.admin_panel_settings_outlined,
-          children: [
-            ShellPage.adminUsers,
-          ],
-        ),
-      ];
-    }
-
     return const [
       SidebarGroup(
         key: 'sales',
@@ -627,7 +641,18 @@ class _ZohoShellState extends State<ZohoShell> {
         key: 'service',
         title: 'Service',
         icon: Icons.build_outlined,
-        children: [ShellPage.service],
+        children: [
+          ShellPage.serviceDashboard,
+          ShellPage.serviceRequests,
+          ShellPage.serviceWorkOrders,
+          ShellPage.serviceQuotations,
+          ShellPage.serviceVisits,
+          ShellPage.serviceInstallationCommissioning,
+          ShellPage.serviceTechnicians,
+          ShellPage.serviceReports,
+          ShellPage.serviceEquipmentHistory,
+          ShellPage.serviceClosedWorkOrders,
+        ],
       ),
       SidebarGroup(
         key: 'crm',
@@ -759,7 +784,17 @@ class _ZohoShellState extends State<ZohoShell> {
       case ShellPage.dashboard:
       case ShellPage.salesInquiries:
       case ShellPage.salesQuotations:
-      case ShellPage.salesOrders: // 🔥 CRITICAL FIX: Registered as implemented so it renders the screen
+      case ShellPage.salesOrders:
+      case ShellPage.serviceDashboard:
+      case ShellPage.serviceRequests:
+      case ShellPage.serviceWorkOrders:
+      case ShellPage.serviceQuotations:
+      case ShellPage.serviceVisits:
+      case ShellPage.serviceInstallationCommissioning:
+      case ShellPage.serviceTechnicians:
+      case ShellPage.serviceReports:
+      case ShellPage.serviceEquipmentHistory:
+      case ShellPage.serviceClosedWorkOrders:
       case ShellPage.crmCustomers:
       case ShellPage.inventoryProducts:
       case ShellPage.adminUsers:
@@ -1363,10 +1398,25 @@ class _ZohoShellState extends State<ZohoShell> {
           child: ScreensInquiryList(),
         );
 
-      case ShellPage.service:
+    // Industrial Service Submodules Routing
+      case ShellPage.serviceDashboard:
         return Padding(
           padding: const EdgeInsets.all(10),
           child: ServiceHomeScreen(),
+        );
+
+      case ShellPage.serviceRequests:
+      case ShellPage.serviceWorkOrders:
+      case ShellPage.serviceQuotations:
+      case ShellPage.serviceVisits:
+      case ShellPage.serviceInstallationCommissioning:
+      case ShellPage.serviceTechnicians:
+      case ShellPage.serviceReports:
+      case ShellPage.serviceEquipmentHistory:
+      case ShellPage.serviceClosedWorkOrders:
+        return Padding(
+          padding: const EdgeInsets.all(10),
+          child: _moduleLandingPage(activePage), // Render professional placeholder for now
         );
 
       case ShellPage.crmCustomers:
@@ -1669,6 +1719,17 @@ class _ZohoShellState extends State<ZohoShell> {
         return ['Access', 'Permissions', 'Roles', 'Team'];
       case ShellPage.settingsGeneral:
         return ['Company', 'Security', 'Users', 'Audit'];
+      case ShellPage.serviceDashboard:
+      case ShellPage.serviceRequests:
+      case ShellPage.serviceWorkOrders:
+      case ShellPage.serviceQuotations:
+      case ShellPage.serviceVisits:
+      case ShellPage.serviceInstallationCommissioning:
+      case ShellPage.serviceTechnicians:
+      case ShellPage.serviceReports:
+      case ShellPage.serviceEquipmentHistory:
+      case ShellPage.serviceClosedWorkOrders:
+        return ['Work Orders', 'Engineers', 'Warranty', 'Field Service', 'Equipment', 'Repairs'];
       default:
         return ['Professional', 'Scalable', 'Modular', 'ERP'];
     }
@@ -1688,6 +1749,27 @@ class _ZohoShellState extends State<ZohoShell> {
         return 'Handle user management, role-based access, and team structure for each company workspace.';
       case ShellPage.settingsGeneral:
         return 'Manage workspace preferences, company controls, users, security, notifications, integrations, and audit-related options from one professional ERP settings hub.';
+
+    // Professional Service Module Descriptions
+      case ShellPage.serviceRequests:
+        return 'Log incoming customer complaints, verify warranty status, and generate initial service requests for the engineering team.';
+      case ShellPage.serviceWorkOrders:
+        return 'Manage active work orders, assign service engineers, and track repair status for industrial equipment.';
+      case ShellPage.serviceQuotations:
+        return 'Manage cost estimations for out-of-warranty services, spare parts, labor, and engineer field visits.';
+      case ShellPage.serviceVisits:
+        return 'Schedule and monitor field visits for service engineers, including site check-ins, travel logs, and utilized spares.';
+      case ShellPage.serviceInstallationCommissioning:
+        return 'Manage complete machine installations, site readiness checks, trial runs, and formal customer handover processes.';
+      case ShellPage.serviceTechnicians:
+        return 'Monitor service team workload, manage engineer skill mapping, track real-time availability, and optimize field assignments.';
+      case ShellPage.serviceReports:
+        return 'Generate and track post-service completion reports and client acknowledgments.';
+      case ShellPage.serviceEquipmentHistory:
+        return 'View complete lifecycle and repair history for specific machines and equipment serial numbers.';
+      case ShellPage.serviceClosedWorkOrders:
+        return 'Review past service interventions and historical completed repair data.';
+
       default:
         return 'This module is part of the professional ERP architecture. You can keep your current app working while gradually connecting this module to its own database, screens, and workflows.';
     }
@@ -1738,6 +1820,23 @@ class _ZohoShellState extends State<ZohoShell> {
           'Security and access',
           'Audit and integrations',
         ];
+
+    // Professional Service Module Recommendations
+      case ShellPage.serviceRequests:
+        return ['Complaint logging', 'Warranty validation', 'Customer mapping', 'Priority assignment'];
+      case ShellPage.serviceWorkOrders:
+        return ['Engineer assignment', 'Spares requirement', 'Work order status', 'Time tracking'];
+      case ShellPage.serviceQuotations:
+        return ['Spares estimation', 'Labor pricing', 'Visit fees', 'Customer approval flow'];
+      case ShellPage.serviceVisits:
+        return ['Engineer assignment', 'Travel logs', 'Spare requirements', 'Site readiness'];
+      case ShellPage.serviceInstallationCommissioning:
+        return ['Installation checklist', 'Commissioning reports', 'Trial run sign-off', 'Calibration details'];
+      case ShellPage.serviceTechnicians:
+        return ['Technician availability', 'Skill mapping', 'Workload dashboard', 'Territory assignment'];
+      case ShellPage.serviceEquipmentHistory:
+        return ['Serial number tracking', 'Component replacement history', 'Warranty claims summary', 'Performance logs'];
+
       default:
         return [
           'Summary card',
