@@ -1,3 +1,5 @@
+// ignore_for_file: avoid_web_libraries_in_flutter, deprecated_member_use
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
@@ -21,6 +23,16 @@ class _ScreensProductListState extends State<ScreensProductList> {
   String _stockFilter = 'all';
   String _categoryFilter = 'all';
   String _subcategoryFilter = 'all';
+
+  // INDUSTRIAL ERP FILTERS
+  String _natureFilter = 'all';
+  String _machineTypeFilter = 'all';
+  String _familyFilter = 'all';
+  String _brandFilter = 'all';
+  String _accessoryGroupFilter = 'all';
+  String _spareGroupFilter = 'all';
+  String _compatibilityFilter = 'all';
+
   bool _showTableView = true;
 
   // Cached Futures & Streams to prevent rebuilds
@@ -51,7 +63,357 @@ class _ScreensProductListState extends State<ScreensProductList> {
     super.dispose();
   }
 
-  // Reloads Category Master Data for the main UI
+  // ---------------------------------------------------------
+  // HELPER METHODS: INDUSTRIAL ERP HIERARCHY & DISPLAY
+  // ---------------------------------------------------------
+
+  String _normalizedNature(dynamic value) {
+    return value?.toString().trim().toLowerCase() ?? '';
+  }
+
+  String _natureLabel(dynamic value) {
+    final nature = _normalizedNature(value);
+    if (nature.isEmpty) return 'Standard';
+    if (nature == 'raw material') return 'Raw Material';
+    return nature[0].toUpperCase() + nature.substring(1);
+  }
+
+  Color _natureColor(dynamic value) {
+    final nature = _normalizedNature(value);
+    switch (nature) {
+      case 'machine':
+        return Colors.blue.shade700;
+      case 'accessory':
+        return Colors.purple.shade700;
+      case 'spare':
+        return Colors.orange.shade800;
+      case 'service':
+        return Colors.teal.shade700;
+      case 'consumable':
+        return Colors.green.shade700;
+      case 'raw material':
+        return Colors.brown.shade700;
+      default:
+        return Colors.blueGrey.shade700;
+    }
+  }
+
+  Widget _buildNatureBadge(String natureLabel) {
+    final color = _natureColor(natureLabel);
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(6),
+        border: Border.all(color: color.withOpacity(0.3)),
+      ),
+      child: Text(
+        natureLabel.toUpperCase(),
+        style: TextStyle(
+          fontSize: 10,
+          fontWeight: FontWeight.w800,
+          color: color,
+        ),
+      ),
+    );
+  }
+
+  String _machineHierarchy(Map<String, dynamic> data, int compatCount) {
+    final nature = _normalizedNature(data['productNatureLower'] ?? data['productNature'] ?? data['nature']);
+
+    if (nature == 'machine') {
+      final cat = (data['category'] ?? '').toString().trim();
+      final sub = (data['subcategory'] ?? '').toString().trim();
+      final type = (data['machineType'] ?? data['type'] ?? '').toString().trim();
+      final parts = [cat, sub, type].where((e) => e.isNotEmpty).toList();
+      return parts.isEmpty ? '—' : parts.join('\n↳ ');
+    } else if (nature == 'accessory') {
+      final group = (data['accessoryGroupName'] ?? data['accessoryGroup'] ?? '').toString().trim();
+      final main = group.isEmpty ? 'Accessory' : group;
+      return compatCount > 0 ? '$main\n↳ Compatible: $compatCount Machines' : main;
+    } else if (nature == 'spare') {
+      final group = (data['spareGroupName'] ?? data['spareGroup'] ?? '').toString().trim();
+      final main = group.isEmpty ? 'Spare Part' : group;
+      return compatCount > 0 ? '$main\n↳ Compatible: $compatCount Machines' : main;
+    }
+    return '—';
+  }
+
+  List<String> _compatibleMachineNames(Map<String, dynamic> data) {
+    final compat = data['compatibleProductNames'] ?? data['compatibleModels'];
+    if (compat is! List) return [];
+    return compat.map((e) {
+      if (e is String) return e.trim();
+      if (e is Map) return (e['name'] ?? e['id'] ?? '').toString().trim();
+      return '';
+    }).where((e) => e.isNotEmpty).toList();
+  }
+
+  String _compatiblePreview(List<Map<String, String>> models) {
+    if (models.isEmpty) return '';
+    if (models.length <= 2) return models.map((e) => e['name']).join(', ');
+    return '${models[0]['name']}, ${models[1]['name']} +${models.length - 2} more';
+  }
+
+  List<Map<String, String>> _resolveCompatibleMachines(
+      Map<String, dynamic> data,
+      Map<String, QueryDocumentSnapshot<Map<String, dynamic>>> productMapById,
+      Map<String, QueryDocumentSnapshot<Map<String, dynamic>>> productMapByName,
+      ) {
+    final List<Map<String, String>> result = [];
+
+    final ids = data['compatibleProductIds'];
+    final names = data['compatibleProductNames'] ?? data['compatibleModels'];
+
+    List<String> parsedIds = [];
+    if (ids is List) {
+      parsedIds = ids.map((e) => e.toString().trim()).where((e) => e.isNotEmpty).toList();
+    }
+
+    List<dynamic> parsedNamesOrMaps = [];
+    if (names is List) {
+      parsedNamesOrMaps = names;
+    }
+
+    // 1. Resolve by IDs if available (O(1) Hash Lookup)
+    if (parsedIds.isNotEmpty) {
+      for (int i = 0; i < parsedIds.length; i++) {
+        final id = parsedIds[i];
+        final doc = productMapById[id];
+
+        if (doc != null) {
+          final dData = doc.data();
+          result.add({
+            'name': (dData['name'] ?? '').toString(),
+            'category': (dData['category'] ?? '').toString(),
+            'subcategory': (dData['subcategory'] ?? '').toString(),
+            'machineType': (dData['machineType'] ?? dData['type'] ?? '').toString(),
+          });
+        } else {
+          // Safe Fallback using available legacy names if document is missing
+          String fallbackName = 'Unknown Machine ($id)';
+          if (i < parsedNamesOrMaps.length) {
+            final fallbackItem = parsedNamesOrMaps[i];
+            if (fallbackItem is String && fallbackItem.trim().isNotEmpty) {
+              fallbackName = fallbackItem.trim();
+            } else if (fallbackItem is Map) {
+              fallbackName = (fallbackItem['name'] ?? fallbackItem['id'] ?? fallbackName).toString().trim();
+            }
+          }
+          result.add({
+            'name': fallbackName,
+            'category': '',
+            'subcategory': '',
+            'machineType': ''
+          });
+        }
+      }
+      return result;
+    }
+
+    // 2. Fallback to Legacy Name/Map Structure (O(1) Hash Lookup)
+    if (parsedNamesOrMaps.isNotEmpty) {
+      for (final e in parsedNamesOrMaps) {
+        if (e is String && e.trim().isNotEmpty) {
+          final searchName = e.trim().toLowerCase();
+          final doc = productMapByName[searchName];
+
+          if (doc != null) {
+            final dData = doc.data();
+            result.add({
+              'name': (dData['name'] ?? '').toString(),
+              'category': (dData['category'] ?? '').toString(),
+              'subcategory': (dData['subcategory'] ?? '').toString(),
+              'machineType': (dData['machineType'] ?? dData['type'] ?? '').toString(),
+            });
+          } else {
+            result.add({'name': e.trim(), 'category': '', 'subcategory': '', 'machineType': ''});
+          }
+        } else if (e is Map) {
+          final nameStr = (e['name'] ?? e['id'] ?? '').toString().trim();
+          final doc = productMapByName[nameStr.toLowerCase()];
+
+          if (doc != null) {
+            final dData = doc.data();
+            result.add({
+              'name': (dData['name'] ?? '').toString(),
+              'category': (dData['category'] ?? '').toString(),
+              'subcategory': (dData['subcategory'] ?? '').toString(),
+              'machineType': (dData['machineType'] ?? dData['type'] ?? '').toString(),
+            });
+          } else {
+            result.add({
+              'name': nameStr,
+              'category': (e['category'] ?? '').toString().trim(),
+              'subcategory': (e['subcategory'] ?? '').toString().trim(),
+              'machineType': (e['machineType'] ?? e['type'] ?? '').toString().trim(),
+            });
+          }
+        }
+      }
+    }
+    return result;
+  }
+
+  bool _matchesNature(Map<String, dynamic> data, String selectedNature) {
+    if (selectedNature == 'all') return true;
+    final docNature = _natureLabel(data['productNatureLower'] ?? data['productNature'] ?? data['nature']);
+    return docNature.toLowerCase() == selectedNature.toLowerCase();
+  }
+
+  void _showCompatibleModelsDialog(String productName, List<Map<String, String>> models) {
+    String dialogSearch = '';
+
+    // Performance Optimization: Cache lowercase strings once
+    final List<Map<String, dynamic>> cachedModels = models.map((m) {
+      final combined = '${m['name']} ${m['category']} ${m['subcategory']} ${m['machineType']}'.toLowerCase();
+      return {
+        'data': m,
+        'searchKey': combined,
+      };
+    }).toList();
+
+    showDialog(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialogState) {
+          final filtered = cachedModels.where((m) {
+            if (dialogSearch.isEmpty) return true;
+            return (m['searchKey'] as String).contains(dialogSearch);
+          }).map((m) => m['data'] as Map<String, String>).toList();
+
+          return AlertDialog(
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+            title: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Row(
+                  children: [
+                    const Icon(Icons.precision_manufacturing_outlined, color: Colors.blueGrey),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Text(
+                        'Compatible Machines (${models.length})',
+                        style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 4),
+                Text(productName, style: const TextStyle(fontSize: 13, color: Colors.blueGrey, fontWeight: FontWeight.normal)),
+                const SizedBox(height: 16),
+                TextField(
+                  decoration: InputDecoration(
+                    hintText: 'Search machines...',
+                    prefixIcon: const Icon(Icons.search, size: 18),
+                    isDense: true,
+                    filled: true,
+                    fillColor: const Color(0xFFF8FAFC),
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: const BorderSide(color: Color(0xFFE4E7EC))),
+                    enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: const BorderSide(color: Color(0xFFE4E7EC))),
+                    focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: const BorderSide(color: Colors.blue)),
+                  ),
+                  onChanged: (val) => setDialogState(() => dialogSearch = val.toLowerCase()),
+                ),
+              ],
+            ),
+            content: SizedBox(
+              width: 480,
+              height: 400,
+              child: filtered.isEmpty
+                  ? const Center(child: Text('No compatible machines found', style: TextStyle(color: Colors.grey)))
+                  : ListView.separated(
+                itemCount: filtered.length,
+                separatorBuilder: (_, __) => const Divider(height: 1, color: Color(0xFFE2E8F0)),
+                itemBuilder: (context, index) {
+                  final m = filtered[index];
+                  final mName = m['name'] ?? 'Unknown';
+                  final mCat = m['category'] ?? '';
+                  final mSub = m['subcategory'] ?? '';
+                  final mType = m['machineType'] ?? '';
+
+                  final hierarchyParts = [mCat, mSub, mType].where((e) => e.isNotEmpty).toList();
+                  final hierarchyStr = hierarchyParts.join(' → ');
+
+                  return ListTile(
+                    dense: true,
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    leading: const CircleAvatar(
+                      backgroundColor: Color(0xFFF1F5F9),
+                      radius: 16,
+                      child: Icon(Icons.precision_manufacturing, size: 16, color: Color(0xFF64748B)),
+                    ),
+                    title: Text(mName, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
+                    subtitle: hierarchyStr.isNotEmpty ? Text(hierarchyStr, style: const TextStyle(fontSize: 11, color: Colors.blueGrey)) : null,
+                  );
+                },
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx),
+                child: const Text('Close'),
+              )
+            ],
+          );
+        },
+      ),
+    );
+  }
+
+  // ---------------------------------------------------------
+  // CORE APP LOGIC
+  // ---------------------------------------------------------
+
+  void _sanitizeActiveFilters({
+    required List<String> categoryOptions,
+    required List<String> validSubOptions,
+    required List<String> natureOptions,
+    required List<String> machineTypeOptions,
+    required List<String> familyOptions,
+    required List<String> brandOptions,
+    required List<String> accessoryGroupOptions,
+    required List<String> spareGroupOptions,
+  }) {
+    bool needsUpdate = false;
+    String newCat = _categoryFilter;
+    String newSub = _subcategoryFilter;
+    String newNature = _natureFilter;
+    String newMachine = _machineTypeFilter;
+    String newFamily = _familyFilter;
+    String newBrand = _brandFilter;
+    String newAcc = _accessoryGroupFilter;
+    String newSpare = _spareGroupFilter;
+
+    if (newCat != 'all' && !categoryOptions.contains(newCat)) { newCat = 'all'; newSub = 'all'; needsUpdate = true; }
+    if (newSub != 'all' && !validSubOptions.contains(newSub)) { newSub = 'all'; needsUpdate = true; }
+    if (newNature != 'all' && !natureOptions.contains(newNature)) { newNature = 'all'; needsUpdate = true; }
+    if (newMachine != 'all' && !machineTypeOptions.contains(newMachine)) { newMachine = 'all'; needsUpdate = true; }
+    if (newFamily != 'all' && !familyOptions.contains(newFamily)) { newFamily = 'all'; needsUpdate = true; }
+    if (newBrand != 'all' && !brandOptions.contains(newBrand)) { newBrand = 'all'; needsUpdate = true; }
+    if (newAcc != 'all' && !accessoryGroupOptions.contains(newAcc)) { newAcc = 'all'; needsUpdate = true; }
+    if (newSpare != 'all' && !spareGroupOptions.contains(newSpare)) { newSpare = 'all'; needsUpdate = true; }
+
+    if (needsUpdate) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          setState(() {
+            _categoryFilter = newCat;
+            _subcategoryFilter = newSub;
+            _natureFilter = newNature;
+            _machineTypeFilter = newMachine;
+            _familyFilter = newFamily;
+            _brandFilter = newBrand;
+            _accessoryGroupFilter = newAcc;
+            _spareGroupFilter = newSpare;
+          });
+        }
+      });
+    }
+  }
+
   void _refreshCategoryMaster() {
     if (!mounted || _currentCompanyId == null || _currentCompanyId!.isEmpty) return;
     setState(() {
@@ -214,19 +576,13 @@ class _ScreensProductListState extends State<ScreensProductList> {
   }
 
   double _reorderLevel(Map<String, dynamic> data) {
-    if (data.containsKey('reorderLevel')) {
-      return _toDouble(data['reorderLevel']);
-    }
-    if (data.containsKey('minStockLevel')) {
-      return _toDouble(data['minStockLevel']);
-    }
+    if (data.containsKey('reorderLevel')) return _toDouble(data['reorderLevel']);
+    if (data.containsKey('minStockLevel')) return _toDouble(data['minStockLevel']);
     return 0;
   }
 
   double _minStockLevel(Map<String, dynamic> data) {
-    if (data.containsKey('minStockLevel')) {
-      return _toDouble(data['minStockLevel']);
-    }
+    if (data.containsKey('minStockLevel')) return _toDouble(data['minStockLevel']);
     return _reorderLevel(data);
   }
 
@@ -238,39 +594,19 @@ class _ScreensProductListState extends State<ScreensProductList> {
     return (data['subcategory'] ?? '').toString().trim();
   }
 
-  String _productTypeName(Map<String, dynamic> data) {
-    final type = (data['type'] ?? '').toString().trim();
-    switch (type) {
-      case 'stock':
-        return 'Stock';
-      case 'non_stock':
-        return 'Non-Stock';
-      case 'service':
-        return 'Service';
-      case 'raw_material':
-        return 'Raw Material';
-      case 'finished_good':
-        return 'Finished Good';
-      default:
-        return type.isEmpty ? '—' : type;
-    }
-  }
-
-  bool _matchesSearch(Map<String, dynamic> data) {
+  bool _matchesSearch(Map<String, dynamic> data, List<Map<String, String>> cachedCompatDetails, String cachedHierarchy, String cachedNatureLabel) {
     if (_searchText.isEmpty) return true;
 
     final fields = [
       data['name'],
       data['itemCode'],
-      data['hsnCode'],
-      data['description'],
-      data['uom'],
       data['sku'],
-      data['barcode'],
+      data['brand'],
       data['category'],
       data['subcategory'],
-      data['brand'],
-      data['type'],
+      cachedNatureLabel,
+      cachedHierarchy,
+      ...cachedCompatDetails.map((e) => e['name']!),
     ];
 
     return fields.any(
@@ -313,8 +649,22 @@ class _ScreensProductListState extends State<ScreensProductList> {
 
   bool _matchesSubcategoryFilter(Map<String, dynamic> data) {
     if (_subcategoryFilter == 'all') return true;
-    return _subcategoryName(data).toLowerCase() ==
-        _subcategoryFilter.toLowerCase();
+    return _subcategoryName(data).toLowerCase() == _subcategoryFilter.toLowerCase();
+  }
+
+  bool _matchesIndustrialFilters(Map<String, dynamic> data, int compatCount) {
+    if (!_matchesNature(data, _natureFilter)) return false;
+
+    if (_familyFilter != 'all' && (data['family'] ?? '').toString().trim() != _familyFilter) return false;
+    if (_machineTypeFilter != 'all' && (data['machineType'] ?? data['type'] ?? '').toString().trim() != _machineTypeFilter) return false;
+    if (_brandFilter != 'all' && (data['brand'] ?? '').toString().trim() != _brandFilter) return false;
+    if (_accessoryGroupFilter != 'all' && (data['accessoryGroupName'] ?? data['accessoryGroup'] ?? '').toString().trim() != _accessoryGroupFilter) return false;
+    if (_spareGroupFilter != 'all' && (data['spareGroupName'] ?? data['spareGroup'] ?? '').toString().trim() != _spareGroupFilter) return false;
+
+    if (_compatibilityFilter == 'has_compatibility') return compatCount > 0;
+    if (_compatibilityFilter == 'no_compatibility') return compatCount == 0;
+
+    return true;
   }
 
   String _stockStatus(Map<String, dynamic> data) {
@@ -549,14 +899,28 @@ class _ScreensProductListState extends State<ScreensProductList> {
     required List<String> categoryOptions,
     required List<String> subcategoryOptions,
     required Map<String, List<String>> subcategoryMap,
+    required List<String> natureOptions,
+    required List<String> familyOptions,
+    required List<String> machineTypeOptions,
+    required List<String> brandOptions,
+    required List<String> accessoryGroupOptions,
+    required List<String> spareGroupOptions,
   }) {
     String tempStatus = _statusFilter;
     String tempStock = _stockFilter;
     String tempCategory = _categoryFilter;
     String tempSubcategory = _subcategoryFilter;
+    String tempNature = _natureFilter;
+    String tempFamily = _familyFilter;
+    String tempMachineType = _machineTypeFilter;
+    String tempBrand = _brandFilter;
+    String tempAccessoryGroup = _accessoryGroupFilter;
+    String tempSpareGroup = _spareGroupFilter;
+    String tempCompatibility = _compatibilityFilter;
 
     showModalBottomSheet(
       context: context,
+      isScrollControlled: true,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(18)),
       ),
@@ -568,160 +932,251 @@ class _ScreensProductListState extends State<ScreensProductList> {
                 : (subcategoryMap[tempCategory] ?? []);
 
             return SafeArea(
-              child: Padding(
+              child: Container(
+                constraints: BoxConstraints(maxHeight: MediaQuery.of(context).size.height * 0.85),
                 padding: const EdgeInsets.fromLTRB(18, 18, 18, 22),
-                child: SingleChildScrollView(
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      DropdownButtonFormField<String>(
-                        initialValue: tempStatus,
-                        decoration: InputDecoration(
-                          labelText: 'Status',
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(12),
+                child: Column(
+                  children: [
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        const Text('Advanced Filters', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                        IconButton(onPressed: () => Navigator.pop(context), icon: const Icon(Icons.close)),
+                      ],
+                    ),
+                    const Divider(),
+                    Expanded(
+                      child: SingleChildScrollView(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text('Basic Status', style: TextStyle(fontWeight: FontWeight.w600, color: Colors.blueGrey)),
+                            const SizedBox(height: 8),
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: DropdownButtonFormField<String>(
+                                    value: tempStatus,
+                                    decoration: InputDecoration(labelText: 'Status', border: OutlineInputBorder(borderRadius: BorderRadius.circular(12))),
+                                    items: const [
+                                      DropdownMenuItem(value: 'all', child: Text('All Status')),
+                                      DropdownMenuItem(value: 'active', child: Text('Active')),
+                                      DropdownMenuItem(value: 'inactive', child: Text('Inactive')),
+                                    ],
+                                    onChanged: (value) => modalSetState(() => tempStatus = value ?? 'all'),
+                                  ),
+                                ),
+                                const SizedBox(width: 10),
+                                Expanded(
+                                  child: DropdownButtonFormField<String>(
+                                    value: tempStock,
+                                    decoration: InputDecoration(labelText: 'Stock', border: OutlineInputBorder(borderRadius: BorderRadius.circular(12))),
+                                    items: const [
+                                      DropdownMenuItem(value: 'all', child: Text('All Stock')),
+                                      DropdownMenuItem(value: 'in_stock', child: Text('In Stock')),
+                                      DropdownMenuItem(value: 'low_stock', child: Text('Low Stock')),
+                                      DropdownMenuItem(value: 'out_of_stock', child: Text('Out of Stock')),
+                                    ],
+                                    onChanged: (value) => modalSetState(() => tempStock = value ?? 'all'),
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 16),
+
+                            const Text('ERP Hierarchy', style: TextStyle(fontWeight: FontWeight.w600, color: Colors.blueGrey)),
+                            const SizedBox(height: 8),
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: DropdownButtonFormField<String>(
+                                    value: tempNature,
+                                    decoration: InputDecoration(labelText: 'Nature', border: OutlineInputBorder(borderRadius: BorderRadius.circular(12))),
+                                    items: [
+                                      const DropdownMenuItem(value: 'all', child: Text('All Natures')),
+                                      ...natureOptions.map((e) => DropdownMenuItem(value: e, child: Text(e))),
+                                    ],
+                                    onChanged: (value) => modalSetState(() => tempNature = value ?? 'all'),
+                                  ),
+                                ),
+                                const SizedBox(width: 10),
+                                Expanded(
+                                  child: DropdownButtonFormField<String>(
+                                    value: tempFamily,
+                                    decoration: InputDecoration(labelText: 'Product Family', border: OutlineInputBorder(borderRadius: BorderRadius.circular(12))),
+                                    items: [
+                                      const DropdownMenuItem(value: 'all', child: Text('All Families')),
+                                      ...familyOptions.map((e) => DropdownMenuItem(value: e, child: Text(e))),
+                                    ],
+                                    onChanged: (value) => modalSetState(() => tempFamily = value ?? 'all'),
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 12),
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: DropdownButtonFormField<String>(
+                                    value: tempMachineType,
+                                    decoration: InputDecoration(labelText: 'Machine Type', border: OutlineInputBorder(borderRadius: BorderRadius.circular(12))),
+                                    items: [
+                                      const DropdownMenuItem(value: 'all', child: Text('All Types')),
+                                      ...machineTypeOptions.map((e) => DropdownMenuItem(value: e, child: Text(e))),
+                                    ],
+                                    onChanged: (value) => modalSetState(() => tempMachineType = value ?? 'all'),
+                                  ),
+                                ),
+                                const SizedBox(width: 10),
+                                Expanded(
+                                  child: DropdownButtonFormField<String>(
+                                    value: tempBrand,
+                                    decoration: InputDecoration(labelText: 'Brand', border: OutlineInputBorder(borderRadius: BorderRadius.circular(12))),
+                                    items: [
+                                      const DropdownMenuItem(value: 'all', child: Text('All Brands')),
+                                      ...brandOptions.map((e) => DropdownMenuItem(value: e, child: Text(e))),
+                                    ],
+                                    onChanged: (value) => modalSetState(() => tempBrand = value ?? 'all'),
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 16),
+
+                            const Text('Groups & Categorization', style: TextStyle(fontWeight: FontWeight.w600, color: Colors.blueGrey)),
+                            const SizedBox(height: 8),
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: DropdownButtonFormField<String>(
+                                    value: tempAccessoryGroup,
+                                    decoration: InputDecoration(labelText: 'Accessory Group', border: OutlineInputBorder(borderRadius: BorderRadius.circular(12))),
+                                    items: [
+                                      const DropdownMenuItem(value: 'all', child: Text('All Acc. Groups')),
+                                      ...accessoryGroupOptions.map((e) => DropdownMenuItem(value: e, child: Text(e))),
+                                    ],
+                                    onChanged: (value) => modalSetState(() => tempAccessoryGroup = value ?? 'all'),
+                                  ),
+                                ),
+                                const SizedBox(width: 10),
+                                Expanded(
+                                  child: DropdownButtonFormField<String>(
+                                    value: tempSpareGroup,
+                                    decoration: InputDecoration(labelText: 'Spare Group', border: OutlineInputBorder(borderRadius: BorderRadius.circular(12))),
+                                    items: [
+                                      const DropdownMenuItem(value: 'all', child: Text('All Spare Groups')),
+                                      ...spareGroupOptions.map((e) => DropdownMenuItem(value: e, child: Text(e))),
+                                    ],
+                                    onChanged: (value) => modalSetState(() => tempSpareGroup = value ?? 'all'),
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 12),
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: DropdownButtonFormField<String>(
+                                    value: tempCategory,
+                                    decoration: InputDecoration(labelText: 'Category', border: OutlineInputBorder(borderRadius: BorderRadius.circular(12))),
+                                    items: [
+                                      const DropdownMenuItem(value: 'all', child: Text('All Categories')),
+                                      ...categoryOptions.map((e) => DropdownMenuItem(value: e, child: Text(e))),
+                                    ],
+                                    onChanged: (value) {
+                                      modalSetState(() {
+                                        tempCategory = value ?? 'all';
+                                        tempSubcategory = 'all';
+                                      });
+                                    },
+                                  ),
+                                ),
+                                const SizedBox(width: 10),
+                                Expanded(
+                                  child: DropdownButtonFormField<String>(
+                                    value: tempSubcategory,
+                                    decoration: InputDecoration(labelText: 'Subcategory', border: OutlineInputBorder(borderRadius: BorderRadius.circular(12))),
+                                    items: [
+                                      const DropdownMenuItem(value: 'all', child: Text('All Subcategories')),
+                                      ...availableSubs.map((e) => DropdownMenuItem(value: e, child: Text(e))),
+                                    ],
+                                    onChanged: (value) => modalSetState(() => tempSubcategory = value ?? 'all'),
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 12),
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: DropdownButtonFormField<String>(
+                                    value: tempCompatibility,
+                                    decoration: InputDecoration(labelText: 'Compatibility', border: OutlineInputBorder(borderRadius: BorderRadius.circular(12))),
+                                    items: const [
+                                      DropdownMenuItem(value: 'all', child: Text('All')),
+                                      DropdownMenuItem(value: 'has_compatibility', child: Text('Has Compatibility')),
+                                      DropdownMenuItem(value: 'no_compatibility', child: Text('No Compatibility')),
+                                    ],
+                                    onChanged: (value) => modalSetState(() => tempCompatibility = value ?? 'all'),
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 20),
+                          ],
+                        ),
+                      ),
+                    ),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: OutlinedButton(
+                            style: OutlinedButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: 14)),
+                            onPressed: () {
+                              setState(() {
+                                _statusFilter = 'all';
+                                _stockFilter = 'all';
+                                _categoryFilter = 'all';
+                                _subcategoryFilter = 'all';
+                                _natureFilter = 'all';
+                                _familyFilter = 'all';
+                                _machineTypeFilter = 'all';
+                                _brandFilter = 'all';
+                                _accessoryGroupFilter = 'all';
+                                _spareGroupFilter = 'all';
+                                _compatibilityFilter = 'all';
+                              });
+                              Navigator.pop(context);
+                            },
+                            child: const Text('Reset All'),
                           ),
                         ),
-                        items: const [
-                          DropdownMenuItem(
-                            value: 'all',
-                            child: Text('All Status'),
-                          ),
-                          DropdownMenuItem(
-                            value: 'active',
-                            child: Text('Active'),
-                          ),
-                          DropdownMenuItem(
-                            value: 'inactive',
-                            child: Text('Inactive'),
-                          ),
-                        ],
-                        onChanged: (value) {
-                          modalSetState(() => tempStatus = value ?? 'all');
-                        },
-                      ),
-                      const SizedBox(height: 12),
-                      DropdownButtonFormField<String>(
-                        initialValue: tempStock,
-                        decoration: InputDecoration(
-                          labelText: 'Stock',
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(12),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: FilledButton(
+                            style: FilledButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: 14)),
+                            onPressed: () {
+                              setState(() {
+                                _statusFilter = tempStatus;
+                                _stockFilter = tempStock;
+                                _categoryFilter = tempCategory;
+                                _subcategoryFilter = tempSubcategory;
+                                _natureFilter = tempNature;
+                                _familyFilter = tempFamily;
+                                _machineTypeFilter = tempMachineType;
+                                _brandFilter = tempBrand;
+                                _accessoryGroupFilter = tempAccessoryGroup;
+                                _spareGroupFilter = tempSpareGroup;
+                                _compatibilityFilter = tempCompatibility;
+                              });
+                              Navigator.pop(context);
+                            },
+                            child: const Text('Apply Filters'),
                           ),
                         ),
-                        items: const [
-                          DropdownMenuItem(
-                            value: 'all',
-                            child: Text('All Stock'),
-                          ),
-                          DropdownMenuItem(
-                            value: 'in_stock',
-                            child: Text('In Stock'),
-                          ),
-                          DropdownMenuItem(
-                            value: 'low_stock',
-                            child: Text('Low Stock'),
-                          ),
-                          DropdownMenuItem(
-                            value: 'out_of_stock',
-                            child: Text('Out of Stock'),
-                          ),
-                        ],
-                        onChanged: (value) {
-                          modalSetState(() => tempStock = value ?? 'all');
-                        },
-                      ),
-                      const SizedBox(height: 12),
-                      DropdownButtonFormField<String>(
-                        initialValue: tempCategory,
-                        decoration: InputDecoration(
-                          labelText: 'Category',
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                        ),
-                        items: [
-                          const DropdownMenuItem(
-                            value: 'all',
-                            child: Text('All Categories'),
-                          ),
-                          ...categoryOptions.map(
-                                (e) => DropdownMenuItem(
-                              value: e,
-                              child: Text(e),
-                            ),
-                          ),
-                        ],
-                        onChanged: (value) {
-                          modalSetState(() {
-                            tempCategory = value ?? 'all';
-                            tempSubcategory = 'all';
-                          });
-                        },
-                      ),
-                      const SizedBox(height: 12),
-                      DropdownButtonFormField<String>(
-                        initialValue: tempSubcategory,
-                        decoration: InputDecoration(
-                          labelText: 'Subcategory',
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                        ),
-                        items: [
-                          const DropdownMenuItem(
-                            value: 'all',
-                            child: Text('All Subcategories'),
-                          ),
-                          ...availableSubs.map(
-                                (e) => DropdownMenuItem(
-                              value: e,
-                              child: Text(e),
-                            ),
-                          ),
-                        ],
-                        onChanged: (value) {
-                          modalSetState(
-                                () => tempSubcategory = value ?? 'all',
-                          );
-                        },
-                      ),
-                      const SizedBox(height: 14),
-                      Row(
-                        children: [
-                          Expanded(
-                            child: OutlinedButton(
-                              onPressed: () {
-                                setState(() {
-                                  _statusFilter = 'all';
-                                  _stockFilter = 'all';
-                                  _categoryFilter = 'all';
-                                  _subcategoryFilter = 'all';
-                                });
-                                Navigator.pop(context);
-                              },
-                              child: const Text('Reset'),
-                            ),
-                          ),
-                          const SizedBox(width: 10),
-                          Expanded(
-                            child: FilledButton(
-                              onPressed: () {
-                                setState(() {
-                                  _statusFilter = tempStatus;
-                                  _stockFilter = tempStock;
-                                  _categoryFilter = tempCategory;
-                                  _subcategoryFilter = tempSubcategory;
-                                });
-                                Navigator.pop(context);
-                              },
-                              child: const Text('Apply'),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ],
-                  ),
+                      ],
+                    ),
+                  ],
                 ),
               ),
             );
@@ -1587,6 +2042,15 @@ class _ScreensProductListState extends State<ScreensProductList> {
     required List<String> categoryOptions,
     required List<String> subcategoryOptions,
     required Map<String, List<String>> subcategoryMap,
+
+    // INDUSTRIAL ERP FILTERS
+    required List<String> natureOptions,
+    required List<String> familyOptions,
+    required List<String> machineTypeOptions,
+    required List<String> brandOptions,
+    required List<String> accessoryGroupOptions,
+    required List<String> spareGroupOptions,
+
     required int totalProducts,
     required int activeProducts,
     required int lowStockProducts,
@@ -1681,6 +2145,13 @@ class _ScreensProductListState extends State<ScreensProductList> {
               categoryOptions: categoryOptions,
               subcategoryOptions: subcategoryOptions,
               subcategoryMap: subcategoryMap,
+              // INDUSTRIAL ERP FILTERS
+              natureOptions: natureOptions,
+              familyOptions: familyOptions,
+              machineTypeOptions: machineTypeOptions,
+              brandOptions: brandOptions,
+              accessoryGroupOptions: accessoryGroupOptions,
+              spareGroupOptions: spareGroupOptions,
             ),
           ),
         ),
@@ -1775,6 +2246,16 @@ class _ScreensProductListState extends State<ScreensProductList> {
         setState(() => _stockFilter = 'all');
       }));
     }
+    if (_natureFilter != 'all') {
+      chips.add(_filterChip('Nature: $_natureFilter', () {
+        setState(() => _natureFilter = 'all');
+      }));
+    }
+    if (_machineTypeFilter != 'all') {
+      chips.add(_filterChip('Machine Type: $_machineTypeFilter', () {
+        setState(() => _machineTypeFilter = 'all');
+      }));
+    }
     if (_categoryFilter != 'all') {
       chips.add(_filterChip('Category: $_categoryFilter', () {
         setState(() {
@@ -1786,6 +2267,11 @@ class _ScreensProductListState extends State<ScreensProductList> {
     if (_subcategoryFilter != 'all') {
       chips.add(_filterChip('Subcategory: $_subcategoryFilter', () {
         setState(() => _subcategoryFilter = 'all');
+      }));
+    }
+    if (_compatibilityFilter != 'all') {
+      chips.add(_filterChip('Compatibility: ${_compatibilityFilter.replaceAll('_', ' ').toUpperCase()}', () {
+        setState(() => _compatibilityFilter = 'all');
       }));
     }
 
@@ -1834,6 +2320,9 @@ class _ScreensProductListState extends State<ScreensProductList> {
 
   Widget _buildContentCard({
     required List<QueryDocumentSnapshot<Map<String, dynamic>>> docs,
+    required Map<String, List<Map<String, String>>> compatDetailsCache,
+    required Map<String, String> hierarchyCache,
+    required Map<String, String> natureLabelCache,
     required bool canEdit,
     required bool canDelete,
     required String companyId,
@@ -1852,11 +2341,14 @@ class _ScreensProductListState extends State<ScreensProductList> {
       child: docs.isEmpty
           ? const Padding(
         padding: EdgeInsets.symmetric(vertical: 50),
-        child: Center(child: Text('No products found')),
+        child: Center(child: Text('No products found matching filters.')),
       )
           : showTable
           ? _buildTableView(
         docs: docs,
+        compatDetailsCache: compatDetailsCache,
+        hierarchyCache: hierarchyCache,
+        natureLabelCache: natureLabelCache,
         canEdit: canEdit,
         canDelete: canDelete,
         companyId: companyId,
@@ -1865,6 +2357,9 @@ class _ScreensProductListState extends State<ScreensProductList> {
       )
           : _buildCardView(
         docs: docs,
+        compatDetailsCache: compatDetailsCache,
+        hierarchyCache: hierarchyCache,
+        natureLabelCache: natureLabelCache,
         canEdit: canEdit,
         canDelete: canDelete,
         companyId: companyId,
@@ -1876,6 +2371,9 @@ class _ScreensProductListState extends State<ScreensProductList> {
 
   Widget _buildTableView({
     required List<QueryDocumentSnapshot<Map<String, dynamic>>> docs,
+    required Map<String, List<Map<String, String>>> compatDetailsCache,
+    required Map<String, String> hierarchyCache,
+    required Map<String, String> natureLabelCache,
     required bool canEdit,
     required bool canDelete,
     required String companyId,
@@ -1890,9 +2388,10 @@ class _ScreensProductListState extends State<ScreensProductList> {
         headingRowColor: WidgetStateProperty.all(const Color(0xFFF8FAFC)),
         columns: const [
           DataColumn(label: Text('Product')),
-          DataColumn(label: Text('Category')),
-          DataColumn(label: Text('Type')),
-          DataColumn(label: Text('Code')),
+          DataColumn(label: Text('Nature')),
+          DataColumn(label: Text('ERP Hierarchy')),
+          DataColumn(label: Text('Brand')),
+          DataColumn(label: Text('SKU')),
           DataColumn(label: Text('Price')),
           DataColumn(label: Text('Stock')),
           DataColumn(label: Text('Status')),
@@ -1902,14 +2401,18 @@ class _ScreensProductListState extends State<ScreensProductList> {
           final data = doc.data();
           final name = (data['name'] ?? '').toString();
           final description = (data['description'] ?? '').toString();
-          final category = _categoryName(data);
-          final subcategory = _subcategoryName(data);
-          final itemCode = (data['itemCode'] ?? '').toString();
+          final brand = (data['brand'] ?? '').toString();
+          final sku = (data['sku'] ?? data['itemCode'] ?? '').toString();
           final price = data['unitPrice'];
           final isActive = _isProductActive(data);
           final stock = _stockOnHand(data);
-          final productType = _productTypeName(data);
           final imageUrl = data['imageUrl']?.toString();
+
+          final natureName = natureLabelCache[doc.id] ?? 'Standard';
+          final hierarchy = hierarchyCache[doc.id] ?? '—';
+
+          final compatDetails = compatDetailsCache[doc.id] ?? [];
+          final int compatCount = compatDetails.length;
 
           return DataRow(
             cells: [
@@ -1929,19 +2432,14 @@ class _ScreensProductListState extends State<ScreensProductList> {
                               name.isEmpty ? '(No name)' : name,
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(
-                                fontWeight: FontWeight.w600,
-                              ),
+                              style: const TextStyle(fontWeight: FontWeight.w600),
                             ),
                             if (description.isNotEmpty)
                               Text(
                                 description,
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
-                                style: const TextStyle(
-                                  fontSize: 12,
-                                  color: Color(0xFF667085),
-                                ),
+                                style: const TextStyle(fontSize: 12, color: Color(0xFF667085)),
                               ),
                           ],
                         ),
@@ -1950,17 +2448,52 @@ class _ScreensProductListState extends State<ScreensProductList> {
                   ),
                 ),
               ),
+              DataCell(_buildNatureBadge(natureName)),
               DataCell(
-                Text(
-                  category.isEmpty
-                      ? '—'
-                      : subcategory.isEmpty
-                      ? category
-                      : '$category / $subcategory',
+                SizedBox(
+                  width: 220,
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        hierarchy,
+                        style: const TextStyle(fontWeight: FontWeight.w500),
+                        maxLines: 3,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      if (compatCount > 0)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 4),
+                          child: InkWell(
+                            onTap: () => _showCompatibleModelsDialog(name, compatDetails),
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                              decoration: BoxDecoration(color: Colors.blue.shade50, borderRadius: BorderRadius.circular(4), border: Border.all(color: Colors.blue.shade200)),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(Icons.link_outlined, size: 12, color: Colors.blue.shade700),
+                                  const SizedBox(width: 4),
+                                  Flexible(
+                                    child: Text(
+                                      'Compatible With: $compatCount Machines',
+                                      style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.blue.shade700),
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+                    ],
+                  ),
                 ),
               ),
-              DataCell(Text(productType)),
-              DataCell(Text(itemCode.isEmpty ? '—' : itemCode)),
+              DataCell(Text(brand.isEmpty ? '—' : brand)),
+              DataCell(Text(sku.isEmpty ? '—' : sku)),
               DataCell(Text(_formatCurrency(price))),
               DataCell(Text(_formatNumber(stock))),
               DataCell(_buildStatusChip(isActive ? 'Active' : 'Inactive')),
@@ -2027,151 +2560,177 @@ class _ScreensProductListState extends State<ScreensProductList> {
 
   Widget _buildCardView({
     required List<QueryDocumentSnapshot<Map<String, dynamic>>> docs,
+    required Map<String, List<Map<String, String>>> compatDetailsCache,
+    required Map<String, String> hierarchyCache,
+    required Map<String, String> natureLabelCache,
     required bool canEdit,
     required bool canDelete,
     required String companyId,
     required String firebaseUserUid,
     required String role,
   }) {
-    return Column(
-      children: docs.map((doc) {
+    return ListView.builder(
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      itemCount: docs.length,
+      itemBuilder: (context, index) {
+        final doc = docs[index];
         final data = doc.data();
         final name = (data['name'] ?? '').toString();
         final description = (data['description'] ?? '').toString();
-        final category = _categoryName(data);
-        final subcategory = _subcategoryName(data);
-        final itemCode = (data['itemCode'] ?? '').toString();
+        final brand = (data['brand'] ?? '').toString();
+        final sku = (data['sku'] ?? data['itemCode'] ?? '').toString();
         final price = data['unitPrice'];
         final isActive = _isProductActive(data);
         final stock = _stockOnHand(data);
         final stockStatus = _stockStatus(data);
-        final productType = _productTypeName(data);
         final imageUrl = data['imageUrl']?.toString();
 
+        final natureName = natureLabelCache[doc.id] ?? 'Standard';
+        final hierarchy = hierarchyCache[doc.id] ?? '—';
+        final compatDetails = compatDetailsCache[doc.id] ?? [];
+        final int compatCount = compatDetails.length;
+
         return Container(
-          margin: const EdgeInsets.only(bottom: 10),
+          margin: const EdgeInsets.only(bottom: 12),
+          padding: const EdgeInsets.all(14),
           decoration: BoxDecoration(
             color: const Color(0xFFFBFCFE),
             borderRadius: BorderRadius.circular(14),
             border: Border.all(color: const Color(0xFFE6EAF0)),
           ),
-          child: ListTile(
-            contentPadding: const EdgeInsets.all(14),
-            leading: _buildProductAvatar(imageUrl, name, 44),
-            title: Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    name.isEmpty ? '(No name)' : name,
-                    style: const TextStyle(fontWeight: FontWeight.w700),
-                  ),
-                ),
-                _buildStatusChip(isActive ? 'Active' : 'Inactive'),
-              ],
-            ),
-            subtitle: Padding(
-              padding: const EdgeInsets.only(top: 8),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  if (description.isNotEmpty)
-                    Text(
-                      description,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(color: Color(0xFF667085)),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _buildProductAvatar(imageUrl, name, 60),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            name.isEmpty ? '(No name)' : name,
+                            style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15, color: Color(0xFF111827)),
+                          ),
+                        ),
+                        Text(
+                          _formatCurrency(price),
+                          style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16, color: Color(0xFF111827)),
+                        ),
+                        if (canEdit || canDelete) ...[
+                          const SizedBox(width: 8),
+                          SizedBox(
+                            height: 24,
+                            width: 24,
+                            child: PopupMenuButton<String>(
+                              padding: EdgeInsets.zero,
+                              iconSize: 20,
+                              onSelected: (value) async {
+                                if (value == 'edit' && canEdit) {
+                                  _openEditProduct(
+                                    productId: doc.id,
+                                    initialData: data,
+                                    companyId: companyId,
+                                    currentUserUid: firebaseUserUid,
+                                    currentUserRole: role,
+                                  );
+                                } else if (value == 'delete' && canDelete) {
+                                  await _deleteProduct(
+                                    companyId: companyId,
+                                    productId: doc.id,
+                                    productName: name.isEmpty ? 'Product' : name,
+                                    currentUserUid: firebaseUserUid,
+                                  );
+                                }
+                              },
+                              itemBuilder: (context) => [
+                                if (canEdit) const PopupMenuItem(value: 'edit', child: Text('Edit')),
+                                if (canDelete) const PopupMenuItem(value: 'delete', child: Text('Delete', style: TextStyle(color: Colors.red))),
+                              ],
+                            ),
+                          ),
+                        ]
+                      ],
                     ),
-                  const SizedBox(height: 8),
-                  Wrap(
-                    spacing: 8,
-                    runSpacing: 8,
-                    children: [
-                      _pill('Type', productType),
-                      _pill('Category', category.isEmpty ? '—' : category),
-                      _pill(
-                        'Subcategory',
-                        subcategory.isEmpty ? '—' : subcategory,
+                    if (description.isNotEmpty) ...[
+                      const SizedBox(height: 4),
+                      Text(
+                        description,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(color: Color(0xFF667085), fontSize: 12),
                       ),
-                      _pill('Code', itemCode.isEmpty ? '—' : itemCode),
-                      _pill('Price', _formatCurrency(price)),
-                      _pill('Stock', _formatNumber(stock)),
                     ],
-                  ),
-                  const SizedBox(height: 8),
-                  _buildStockChip(stockStatus),
-                ],
+                    const SizedBox(height: 10),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      crossAxisAlignment: WrapCrossAlignment.center,
+                      children: [
+                        _buildNatureBadge(natureName),
+                        _buildStatusChip(isActive ? 'Active' : 'Inactive'),
+                        _buildStockChip(stockStatus),
+                        if (stock > 0 || stockStatus == 'Low Stock')
+                          Text('${_formatNumber(stock)} in stock', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Color(0xFF475467))),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    Container(
+                      padding: const EdgeInsets.all(10),
+                      width: double.infinity,
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(color: const Color(0xFFE4E7EC)),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Padding(
+                                padding: EdgeInsets.only(top: 2),
+                                child: Icon(Icons.account_tree_outlined, size: 14, color: Colors.blueGrey),
+                              ),
+                              const SizedBox(width: 6),
+                              Expanded(
+                                child: Text(
+                                  hierarchy,
+                                  style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Color(0xFF344054)),
+                                  maxLines: 3,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 8),
+                          Wrap(
+                            spacing: 8,
+                            runSpacing: 8,
+                            children: [
+                              _pill('Brand', brand.isEmpty ? '—' : brand),
+                              _pill('SKU', sku.isEmpty ? '—' : sku),
+                              if (compatCount > 0)
+                                InkWell(
+                                  onTap: () => _showCompatibleModelsDialog(name, compatDetails),
+                                  child: _pill('Compatible With', '$compatCount Machines', isLink: true),
+                                ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
               ),
-            ),
-            trailing: (canEdit || canDelete)
-                ? PopupMenuButton<String>(
-              tooltip: 'Actions',
-              onSelected: (value) async {
-                if (value == 'edit' && canEdit) {
-                  _openEditProduct(
-                    productId: doc.id,
-                    initialData: data,
-                    companyId: companyId,
-                    currentUserUid: firebaseUserUid,
-                    currentUserRole: role,
-                  );
-                } else if (value == 'delete' && canDelete) {
-                  await _deleteProduct(
-                    companyId: companyId,
-                    productId: doc.id,
-                    productName: name.isEmpty ? 'Product' : name,
-                    currentUserUid: firebaseUserUid,
-                  );
-                }
-              },
-              itemBuilder: (context) => [
-                if (canEdit)
-                  const PopupMenuItem(
-                    value: 'edit',
-                    child: ListTile(
-                      dense: true,
-                      contentPadding: EdgeInsets.zero,
-                      leading: Icon(Icons.edit_outlined),
-                      title: Text('Edit'),
-                    ),
-                  ),
-                if (canDelete) const PopupMenuDivider(),
-                if (canDelete)
-                  const PopupMenuItem(
-                    value: 'delete',
-                    child: ListTile(
-                      dense: true,
-                      contentPadding: EdgeInsets.zero,
-                      leading: Icon(
-                        Icons.delete_outline,
-                        color: Colors.red,
-                      ),
-                      title: Text(
-                        'Delete',
-                        style: TextStyle(color: Colors.red),
-                      ),
-                    ),
-                  ),
-              ],
-            )
-                : null,
-            onTap: () {
-              if (!canEdit) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('You do not have permission to edit this product.')),
-                );
-                return;
-              }
-              _openEditProduct(
-                productId: doc.id,
-                initialData: data,
-                companyId: companyId,
-                currentUserUid: firebaseUserUid,
-                currentUserRole: role,
-              );
-            },
+            ],
           ),
         );
-      }).toList(),
+      },
     );
   }
 
@@ -2181,8 +2740,8 @@ class _ScreensProductListState extends State<ScreensProductList> {
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
       decoration: BoxDecoration(
         color: isActive
-            ? Colors.green.withValues(alpha: 0.10)
-            : Colors.grey.withValues(alpha: 0.12),
+            ? Colors.green.withOpacity(0.10)
+            : Colors.grey.withOpacity(0.12),
         borderRadius: BorderRadius.circular(30),
       ),
       child: Text(
@@ -2190,7 +2749,7 @@ class _ScreensProductListState extends State<ScreensProductList> {
         style: TextStyle(
           color: isActive ? Colors.green[800] : Colors.grey[700],
           fontWeight: FontWeight.w600,
-          fontSize: 12,
+          fontSize: 11,
         ),
       ),
     );
@@ -2201,7 +2760,7 @@ class _ScreensProductListState extends State<ScreensProductList> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
       decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.10),
+        color: color.withOpacity(0.10),
         borderRadius: BorderRadius.circular(30),
       ),
       child: Text(
@@ -2209,23 +2768,40 @@ class _ScreensProductListState extends State<ScreensProductList> {
         style: TextStyle(
           color: color,
           fontWeight: FontWeight.w600,
-          fontSize: 12,
+          fontSize: 11,
         ),
       ),
     );
   }
 
-  Widget _pill(String label, String value) {
+  Widget _pill(String label, String value, {bool isLink = false}) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: const Color(0xFFE4E7EC)),
+        color: isLink ? Colors.blue.shade50 : const Color(0xFFF9FAFB),
+        borderRadius: BorderRadius.circular(6),
+        border: Border.all(color: isLink ? Colors.blue.shade200 : const Color(0xFFE4E7EC)),
       ),
-      child: Text(
-        '$label: $value',
-        style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w500),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            '$label: ',
+            style: const TextStyle(fontSize: 11, color: Color(0xFF667085)),
+          ),
+          Flexible(
+            child: Text(
+              value,
+              style: TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.w600,
+                color: isLink ? Colors.blue.shade700 : const Color(0xFF344054),
+              ),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -2289,6 +2865,8 @@ class _ScreensProductListState extends State<ScreensProductList> {
         if (_currentCompanyId != companyId && companyId.isNotEmpty) {
           _currentCompanyId = companyId;
           _categoryMasterFuture = _loadCategoryMaster(companyId);
+          // Safely using local filtering because Firestore .where('isDeleted', isEqualTo: false)
+          // will drop legacy documents that do not have the 'isDeleted' field.
           _productsStream = FirebaseFirestore.instance
               .collection('companies')
               .doc(companyId)
@@ -2339,7 +2917,7 @@ class _ScreensProductListState extends State<ScreensProductList> {
                   .where((e) => e.name.trim().isNotEmpty)
                   .map((e) => e.name)
                   .toList()
-                ..sort();
+                ..sort((a, b) => a.toLowerCase().compareTo(b.toLowerCase()));
 
               final Map<String, List<String>> subcategoryMap = {
                 for (final cat in categoryMasters)
@@ -2360,38 +2938,13 @@ class _ScreensProductListState extends State<ScreensProductList> {
                   .where((e) => e.trim().isNotEmpty)
                   .toSet()
                   .toList()
-                ..sort();
+                ..sort((a, b) => a.toLowerCase().compareTo(b.toLowerCase()));
 
               final totalCategories = categoryMasters.length;
               final totalSubcategories = categoryMasters.fold<int>(
                 0,
                     (total, e) => total + e.subcategories.length,
               );
-
-              if (_categoryFilter != 'all' &&
-                  !categoryOptions.contains(_categoryFilter)) {
-                WidgetsBinding.instance.addPostFrameCallback((_) {
-                  if (!mounted) return;
-                  setState(() {
-                    _categoryFilter = 'all';
-                    _subcategoryFilter = 'all';
-                  });
-                });
-              }
-
-              final validSubOptions = _categoryFilter == 'all'
-                  ? subcategoryOptions
-                  : (subcategoryMap[_categoryFilter] ?? []);
-
-              if (_subcategoryFilter != 'all' &&
-                  !validSubOptions.contains(_subcategoryFilter)) {
-                WidgetsBinding.instance.addPostFrameCallback((_) {
-                  if (!mounted) return;
-                  setState(() {
-                    _subcategoryFilter = 'all';
-                  });
-                });
-              }
 
               return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
                 stream: _productsStream,
@@ -2424,28 +2977,86 @@ class _ScreensProductListState extends State<ScreensProductList> {
                     return bDate.compareTo(aDate);
                   });
 
+                  // ---------------------------------------------------------
+                  // HIGH PERFORMANCE LOOKUP MAPS & LOCAL DATA CACHE
+                  // ---------------------------------------------------------
+                  final Map<String, Map<String, dynamic>> dataCache = {};
+                  final Map<String, QueryDocumentSnapshot<Map<String, dynamic>>> productMapById = {};
+                  final Map<String, QueryDocumentSnapshot<Map<String, dynamic>>> productMapByName = {};
+
+                  for (final d in allDocs) {
+                    final data = d.data();
+                    dataCache[d.id] = data;
+                    productMapById[d.id] = d;
+
+                    final name = (data['name'] ?? '').toString().trim().toLowerCase();
+                    if (name.isNotEmpty) {
+                      productMapByName[name] = d;
+                    }
+                  }
+
+                  // EXTRACT DYNAMIC OPTIONS FOR INDUSTRIAL FILTERS (Auto Sorted Case-Insensitive)
+                  final natureOptions = allDocs.map((d) => _natureLabel(dataCache[d.id]!['productNatureLower'] ?? dataCache[d.id]!['productNature'] ?? dataCache[d.id]!['nature'])).where((e) => e.isNotEmpty && e != 'Standard').toSet().toList()..sort((a, b) => a.toLowerCase().compareTo(b.toLowerCase()));
+                  final familyOptions = allDocs.map((d) => (dataCache[d.id]!['family'] ?? '').toString().trim()).where((e) => e.isNotEmpty).toSet().toList()..sort((a, b) => a.toLowerCase().compareTo(b.toLowerCase()));
+                  final machineTypeOptions = allDocs.map((d) => (dataCache[d.id]!['machineType'] ?? dataCache[d.id]!['type'] ?? '').toString().trim()).where((e) => e.isNotEmpty).toSet().toList()..sort((a, b) => a.toLowerCase().compareTo(b.toLowerCase()));
+                  final brandOptions = allDocs.map((d) => (dataCache[d.id]!['brand'] ?? '').toString().trim()).where((e) => e.isNotEmpty).toSet().toList()..sort((a, b) => a.toLowerCase().compareTo(b.toLowerCase()));
+                  final accessoryGroupOptions = allDocs.map((d) => (dataCache[d.id]!['accessoryGroupName'] ?? dataCache[d.id]!['accessoryGroup'] ?? '').toString().trim()).where((e) => e.isNotEmpty).toSet().toList()..sort((a, b) => a.toLowerCase().compareTo(b.toLowerCase()));
+                  final spareGroupOptions = allDocs.map((d) => (dataCache[d.id]!['spareGroupName'] ?? dataCache[d.id]!['spareGroup'] ?? '').toString().trim()).where((e) => e.isNotEmpty).toSet().toList()..sort((a, b) => a.toLowerCase().compareTo(b.toLowerCase()));
+
+                  // ---------------------------------------------------------
+                  // SANITIZE ACTIVE FILTERS (CENTRALIZED)
+                  // ---------------------------------------------------------
+                  final validSubOptions = _categoryFilter == 'all' ? subcategoryOptions : (subcategoryMap[_categoryFilter] ?? []);
+                  _sanitizeActiveFilters(
+                    categoryOptions: categoryOptions,
+                    validSubOptions: validSubOptions,
+                    natureOptions: natureOptions,
+                    machineTypeOptions: machineTypeOptions,
+                    familyOptions: familyOptions,
+                    brandOptions: brandOptions,
+                    accessoryGroupOptions: accessoryGroupOptions,
+                    spareGroupOptions: spareGroupOptions,
+                  );
+
+                  // CACHED COLLECTIONS TO AVOID REPEATED PARSING
+                  final Map<String, List<Map<String, String>>> compatDetailsCache = {};
+                  final Map<String, String> hierarchyCache = {};
+                  final Map<String, String> natureLabelCache = {};
+
                   final filteredDocs = allDocs.where((doc) {
-                    final data = doc.data();
-                    return _matchesSearch(data) &&
+                    final data = dataCache[doc.id]!;
+
+                    final compatDetails = _resolveCompatibleMachines(data, productMapById, productMapByName);
+                    final compatCount = compatDetails.length;
+
+                    final hierarchy = _machineHierarchy(data, compatCount);
+                    final natureLabel = _natureLabel(data['productNatureLower'] ?? data['productNature'] ?? data['nature']);
+
+                    compatDetailsCache[doc.id] = compatDetails;
+                    hierarchyCache[doc.id] = hierarchy;
+                    natureLabelCache[doc.id] = natureLabel;
+
+                    return _matchesSearch(data, compatDetails, hierarchy, natureLabel) &&
                         _matchesStatusFilter(data) &&
                         _matchesStockFilter(data) &&
                         _matchesCategoryFilter(data) &&
-                        _matchesSubcategoryFilter(data);
+                        _matchesSubcategoryFilter(data) &&
+                        _matchesIndustrialFilters(data, compatCount);
                   }).toList();
 
                   final totalProducts = allDocs.length;
                   final activeProducts =
-                      allDocs.where((e) => _isProductActive(e.data())).length;
+                      allDocs.where((e) => _isProductActive(dataCache[e.id]!)).length;
 
                   final lowStockProducts = allDocs.where((e) {
-                    final data = e.data();
+                    final data = dataCache[e.id]!;
                     final stock = _stockOnHand(data);
                     final threshold = _minStockLevel(data) > 0 ? _minStockLevel(data) : _reorderLevel(data);
                     return stock > 0 && threshold > 0 && stock <= threshold;
                   }).length;
 
                   final outOfStockProducts =
-                      allDocs.where((e) => _stockOnHand(e.data()) <= 0).length;
+                      allDocs.where((e) => _stockOnHand(dataCache[e.id]!) <= 0).length;
 
                   return LayoutBuilder(
                     builder: (context, constraints) {
@@ -2466,6 +3077,12 @@ class _ScreensProductListState extends State<ScreensProductList> {
                               categoryOptions: categoryOptions,
                               subcategoryOptions: subcategoryOptions,
                               subcategoryMap: subcategoryMap,
+                              natureOptions: natureOptions,
+                              familyOptions: familyOptions,
+                              machineTypeOptions: machineTypeOptions,
+                              brandOptions: brandOptions,
+                              accessoryGroupOptions: accessoryGroupOptions,
+                              spareGroupOptions: spareGroupOptions,
                               totalProducts: totalProducts,
                               activeProducts: activeProducts,
                               lowStockProducts: lowStockProducts,
@@ -2480,6 +3097,9 @@ class _ScreensProductListState extends State<ScreensProductList> {
                             const SizedBox(height: 10),
                             _buildContentCard(
                               docs: filteredDocs,
+                              compatDetailsCache: compatDetailsCache,
+                              hierarchyCache: hierarchyCache,
+                              natureLabelCache: natureLabelCache,
                               canEdit: canEdit,
                               canDelete: canDelete,
                               companyId: companyId,

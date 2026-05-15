@@ -1,11 +1,10 @@
-// ignore_for_file: avoid_web_libraries_in_flutter, deprecated_member_use
-
-import 'dart:html' as html; // NATIVE WEB FILE LAUNCHER (NO PLUGINS REQUIRED)
+// ignore_for_file: deprecated_member_use
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/material.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 class ScreensAddProduct extends StatefulWidget {
   final String companyId;
@@ -33,6 +32,19 @@ class _ScreensAddProductState extends State<ScreensAddProduct> {
   bool _isSaving = false;
   bool _isUploadingImage = false;
   bool _isUploadingCatalog = false;
+
+  // --- NEW: Product Nature & Machine Type Logic ---
+  String _productNature = 'Machine';
+  String? _machineType;
+  List<String> _machineTypeOptions = [
+    'Arc Welding Machine',
+    'MIG Welding Machine',
+    'TIG Welding Machine',
+    'Plasma Cutting Machine'
+  ];
+  List<String> _compatibleProductIds = [];
+  List<String> _compatibleProductNames = [];
+  // ------------------------------------------------
 
   final _nameController = TextEditingController();
   final _descriptionController = TextEditingController();
@@ -106,6 +118,28 @@ class _ScreensAddProductState extends State<ScreensAddProduct> {
       ) =>
       _categoriesRef.doc(categoryId).collection('subcategories');
 
+  // --- CENTRALIZED HELPERS ---
+  String _normalizedNature(dynamic value) {
+    final natureRaw = (value ?? 'machine').toString().toLowerCase();
+    if (natureRaw == 'accessory') return 'Accessory';
+    if (natureRaw == 'spare') return 'Spare';
+    if (natureRaw == 'consumable') return 'Consumable';
+    if (natureRaw == 'raw material' || natureRaw == 'raw_material') return 'Raw Material';
+    return 'Machine';
+  }
+
+  String _natureLabel(dynamic value) => _normalizedNature(value);
+
+  bool _containsMachineType(String value) {
+    return _machineTypeOptions.any(
+          (e) => e.trim().toLowerCase() == value.trim().toLowerCase(),
+    );
+  }
+
+  void _sortMachineTypes() {
+    _machineTypeOptions.sort((a, b) => a.toLowerCase().compareTo(b.toLowerCase()));
+  }
+
   @override
   void initState() {
     super.initState();
@@ -124,6 +158,22 @@ class _ScreensAddProductState extends State<ScreensAddProduct> {
 
       _brandController.text = (data['brand'] ?? '').toString();
       _notesController.text = (data['notes'] ?? '').toString();
+
+      // Load Product Nature Safely
+      _productNature = _normalizedNature(data['productNatureLower'] ?? data['productNature'] ?? data['nature']);
+
+      _machineType = data['machineType']?.toString();
+      if (_machineType != null && _machineType!.trim().isNotEmpty && !_containsMachineType(_machineType!)) {
+        _machineTypeOptions.add(_machineType!);
+      }
+      _sortMachineTypes();
+
+      if (data['compatibleProductIds'] is List) {
+        _compatibleProductIds = List<String>.from(data['compatibleProductIds']);
+      }
+      if (data['compatibleProductNames'] is List) {
+        _compatibleProductNames = List<String>.from(data['compatibleProductNames']);
+      }
 
       // Safely migrate legacy single image OR load new multi-image list
       final existingImages = data['images'];
@@ -357,7 +407,7 @@ class _ScreensAddProductState extends State<ScreensAddProduct> {
 
         final ext = _safeExt(file.extension, fallback: 'jpg');
         final contentType = _detectContentTypeFromExtension(ext);
-        final fileName = 'product_photo_${DateTime.now().millisecondsSinceEpoch}_${widget.currentUserUid}_${file.name}.$ext';
+        final fileName = 'product_photo_${DateTime.now().millisecondsSinceEpoch}_${widget.currentUserUid}_${file.name}';
 
         final ref = FirebaseStorage.instance
             .ref()
@@ -425,7 +475,7 @@ class _ScreensAddProductState extends State<ScreensAddProduct> {
 
         final ext = _safeExt(file.extension, fallback: 'bin');
         final contentType = _detectContentTypeFromExtension(ext);
-        final fileName = 'product_catalog_${DateTime.now().millisecondsSinceEpoch}_${widget.currentUserUid}_${file.name}.$ext';
+        final fileName = 'product_catalog_${DateTime.now().millisecondsSinceEpoch}_${widget.currentUserUid}_${file.name}';
 
         final ref = FirebaseStorage.instance
             .ref()
@@ -494,7 +544,7 @@ class _ScreensAddProductState extends State<ScreensAddProduct> {
   // SECURE NATIVE URL LAUNCHER (BYPASS CORS)
   // ---------------------------------------------------------
 
-  void _launchSafeUrl(String? urlString) {
+  Future<void> _launchSafeUrl(String? urlString) async {
     if (urlString == null || urlString.trim().isEmpty) return;
 
     final url = urlString.trim();
@@ -503,7 +553,9 @@ class _ScreensAddProductState extends State<ScreensAddProduct> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('Cannot open gs:// URLs directly. Ensure file is uploaded via HTTPS.'),
+            content: Text(
+              'Cannot open gs:// URLs directly.',
+            ),
             backgroundColor: Colors.red,
           ),
         );
@@ -512,17 +564,237 @@ class _ScreensAddProductState extends State<ScreensAddProduct> {
     }
 
     try {
-      html.window.open(url, '_blank');
+      final uri = Uri.parse(url);
+
+      final success = await launchUrl(
+        uri,
+        mode: LaunchMode.externalApplication,
+      );
+
+      if (!success && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Could not open file'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error opening file: $e'), backgroundColor: Colors.red),
+          SnackBar(
+            content: Text('Error opening file: $e'),
+            backgroundColor: Colors.red,
+          ),
         );
       }
     }
   }
 
   // ---------------------------------------------------------
+
+  // --- Add Machine Type Dialog ---
+  Future<void> _showAddMachineTypeDialog() async {
+    final ctrl = TextEditingController();
+    final result = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Add Machine Type'),
+        content: TextField(
+          controller: ctrl,
+          decoration: const InputDecoration(
+            labelText: 'Machine Type Name',
+            hintText: 'e.g. Laser Welding Machine',
+          ),
+          autofocus: true,
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () {
+              Navigator.pop(ctx, ctrl.text.trim());
+            },
+            child: const Text('Add'),
+          ),
+        ],
+      ),
+    );
+
+    if (result != null && result.isNotEmpty) {
+      setState(() {
+        if (!_containsMachineType(result)) {
+          _machineTypeOptions.add(result);
+        }
+        _sortMachineTypes();
+        _machineType = _machineTypeOptions.firstWhere((e) => e.trim().toLowerCase() == result.toLowerCase(), orElse: () => result);
+      });
+    }
+  }
+
+  Widget _buildMachineTypeField() {
+    final items = _machineTypeOptions.map((e) => DropdownMenuItem(value: e, child: Text(e))).toList();
+    items.add(const DropdownMenuItem(
+      value: 'ADD_NEW',
+      child: Text('+ Add New Machine Type...', style: TextStyle(color: Colors.blue, fontWeight: FontWeight.bold)),
+    ));
+
+    return DropdownButtonFormField<String?>(
+      value: _machineType,
+      decoration: _inputDecoration(label: 'Machine Type *', icon: Icons.precision_manufacturing_outlined),
+      items: [
+        const DropdownMenuItem(value: null, child: Text('Select Machine Type')),
+        ...items,
+      ],
+      validator: (val) {
+        if (_productNature == 'Machine' && (val == null || val.trim().isEmpty)) {
+          return 'Please select machine type';
+        }
+        return null;
+      },
+      onChanged: (val) {
+        if (val == 'ADD_NEW') {
+          _showAddMachineTypeDialog();
+        } else {
+          setState(() {
+            _machineType = val;
+          });
+        }
+      },
+    );
+  }
+
+  Widget _buildCompatibleMachines() {
+    if (_selectedCategoryId == null || _selectedCategoryId!.trim().isEmpty) {
+      return Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: const Color(0xFFF8FAFC),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: const Color(0xFFE4E7EC)),
+        ),
+        child: const Text('Please select category first', style: TextStyle(color: Colors.grey)),
+      );
+    }
+
+    if (_selectedSubcategoryId == null || _selectedSubcategoryId!.trim().isEmpty) {
+      return Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: const Color(0xFFF8FAFC),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: const Color(0xFFE4E7EC)),
+        ),
+        child: const Text('Please select subcategory first', style: TextStyle(color: Colors.grey)),
+      );
+    }
+
+    return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+      stream: _productsRef
+          .where('isActive', isEqualTo: true)
+          .where('productNatureLower', isEqualTo: 'machine') // Case-insensitive Machine matching
+          .snapshots(),
+      builder: (context, snap) {
+        if (snap.connectionState == ConnectionState.waiting && !snap.hasData) {
+          return const Padding(
+            padding: EdgeInsets.all(12),
+            child: LinearProgressIndicator(),
+          );
+        }
+        if (snap.hasError) return Text('Error loading machines: ${snap.error}');
+
+        var docs = snap.data?.docs ?? [];
+
+        // STRICT FILTERING BY CATEGORY AND SUBCATEGORY
+        docs = docs.where((doc) {
+          final data = doc.data();
+          final catId = (data['categoryId'] ?? '').toString().trim();
+          final subId = (data['subcategoryId'] ?? '').toString().trim();
+          return catId == _selectedCategoryId && subId == _selectedSubcategoryId;
+        }).toList();
+
+        // Prevent product from being self-compatible
+        if (widget.productId != null) {
+          docs = docs.where((e) => e.id != widget.productId).toList();
+        }
+
+        docs.sort((a, b) => (a.data()['name'] ?? '').toString().toLowerCase().compareTo((b.data()['name'] ?? '').toString().toLowerCase()));
+
+        if (docs.isEmpty) {
+          return Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: const Color(0xFFF8FAFC),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: const Color(0xFFE4E7EC)),
+            ),
+            child: const Text('No machine products found in selected subcategory', style: TextStyle(color: Colors.grey)),
+          );
+        }
+
+        return Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: const Color(0xFFE4E7EC)),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text('Compatible Machines', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
+              const SizedBox(height: 4),
+              const Text('Showing only machines from selected category & subcategory', style: TextStyle(fontSize: 12, color: Color(0xFF667085))),
+              const SizedBox(height: 12),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: docs.map((doc) {
+                  final data = doc.data();
+                  final name = (data['name'] ?? '').toString();
+                  final isSelected = _compatibleProductIds.contains(doc.id);
+
+                  return FilterChip(
+                    label: Text(name, style: TextStyle(fontSize: 12, color: isSelected ? Colors.blue[700] : Colors.black87)),
+                    selected: isSelected,
+                    selectedColor: Colors.blue[50],
+                    checkmarkColor: Colors.blue[700],
+                    backgroundColor: const Color(0xFFF9FAFB),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(8),
+                      side: BorderSide(color: isSelected ? Colors.blue.shade200 : const Color(0xFFE4E7EC)),
+                    ),
+                    onSelected: (selected) {
+                      setState(() {
+                        if (selected) {
+                          if (!_compatibleProductIds.contains(doc.id)) {
+                            _compatibleProductIds.add(doc.id);
+                          }
+                          if (!_compatibleProductNames.contains(name)) {
+                            _compatibleProductNames.add(name);
+                          }
+                        } else {
+                          // Safe mapping removal
+                          _compatibleProductIds.remove(doc.id);
+                          _compatibleProductNames.remove(name);
+                        }
+                      });
+                    },
+                  );
+                }).toList(),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
 
   Widget _buildImagesPreview() {
     if (_imageUrls.isEmpty) return const SizedBox.shrink();
@@ -759,6 +1031,26 @@ class _ScreensAddProductState extends State<ScreensAddProduct> {
     final state = _formKey.currentState;
     if (state == null || !state.validate()) return;
 
+    if (_productNature == 'Machine' && (_machineType == null || _machineType!.trim().isEmpty)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Please select machine type'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
+    if ((_productNature == 'Accessory' || _productNature == 'Spare') && _compatibleProductIds.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Please select at least one compatible machine'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
     final assigned = _assignedToUid;
     if (assigned == null || assigned.trim().isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -818,6 +1110,12 @@ class _ScreensAddProductState extends State<ScreensAddProduct> {
 
       final data = <String, dynamic>{
         'companyId': widget.companyId,
+        'productNature': _productNature, // Saved for backward compat
+        'productNatureLower': _productNature.toLowerCase(),
+        if (_productNature == 'Machine') 'machineType': _machineType ?? '',
+        if (_productNature == 'Machine') 'machineTypeLower': (_machineType ?? '').toLowerCase(),
+        if (_productNature == 'Accessory' || _productNature == 'Spare') 'compatibleProductIds': _compatibleProductIds,
+        if (_productNature == 'Accessory' || _productNature == 'Spare') 'compatibleProductNames': _compatibleProductNames,
         'name': cleanName,
         'nameLower': cleanName.toLowerCase(),
         'description': cleanDescription,
@@ -861,6 +1159,16 @@ class _ScreensAddProductState extends State<ScreensAddProduct> {
       };
 
       if (isEditMode) {
+        // Clean stale fields using FieldValue.delete() to avoid leftover data
+        if (_productNature != 'Machine') {
+          data['machineType'] = FieldValue.delete();
+          data['machineTypeLower'] = FieldValue.delete();
+        }
+        if (_productNature != 'Accessory' && _productNature != 'Spare') {
+          data['compatibleProductIds'] = FieldValue.delete();
+          data['compatibleProductNames'] = FieldValue.delete();
+        }
+
         await _productsRef.doc(widget.productId).update({
           ...data,
           'stockOnHand':
@@ -968,7 +1276,7 @@ class _ScreensAddProductState extends State<ScreensAddProduct> {
     required void Function(String?) onChanged,
   }) {
     return DropdownButtonFormField<String>(
-      initialValue: value,
+      value: value,
       decoration: _inputDecoration(label: label, icon: icon),
       items: items,
       onChanged: onChanged,
@@ -1010,7 +1318,7 @@ class _ScreensAddProductState extends State<ScreensAddProduct> {
         }
 
         return DropdownButtonFormField<String>(
-          initialValue: _assignedToUid,
+          value: _assignedToUid,
           decoration: _inputDecoration(
             label: 'Assign To',
             icon: Icons.person_outline,
@@ -1114,12 +1422,15 @@ class _ScreensAddProductState extends State<ScreensAddProduct> {
               _selectedCategoryName = null;
               _selectedSubcategoryId = null;
               _selectedSubcategoryName = null;
+              _machineType = null;
+              _compatibleProductIds.clear();
+              _compatibleProductNames.clear();
             });
           });
         }
 
         return DropdownButtonFormField<String?>(
-          initialValue: _selectedCategoryId,
+          value: _selectedCategoryId,
           decoration: _inputDecoration(
             label: 'Category *',
             icon: Icons.folder_outlined,
@@ -1147,6 +1458,9 @@ class _ScreensAddProductState extends State<ScreensAddProduct> {
                 _selectedCategoryName = null;
                 _selectedSubcategoryId = null;
                 _selectedSubcategoryName = null;
+                _machineType = null;
+                _compatibleProductIds.clear();
+                _compatibleProductNames.clear();
               });
               return;
             }
@@ -1158,6 +1472,9 @@ class _ScreensAddProductState extends State<ScreensAddProduct> {
                   (selectedDoc.data()['name'] ?? '').toString();
               _selectedSubcategoryId = null;
               _selectedSubcategoryName = null;
+              _machineType = null;
+              _compatibleProductIds.clear();
+              _compatibleProductNames.clear();
             });
           },
         );
@@ -1169,7 +1486,7 @@ class _ScreensAddProductState extends State<ScreensAddProduct> {
     final catId = _selectedCategoryId;
     if (catId == null) {
       return DropdownButtonFormField<String?>(
-        initialValue: null,
+        value: null,
         decoration: _inputDecoration(
           label: 'Subcategory',
           icon: Icons.folder_open_outlined,
@@ -1216,12 +1533,14 @@ class _ScreensAddProductState extends State<ScreensAddProduct> {
             setState(() {
               _selectedSubcategoryId = null;
               _selectedSubcategoryName = null;
+              _compatibleProductIds.clear();
+              _compatibleProductNames.clear();
             });
           });
         }
 
         return DropdownButtonFormField<String?>(
-          initialValue: _selectedSubcategoryId,
+          value: _selectedSubcategoryId,
           decoration: _inputDecoration(
             label: 'Subcategory',
             icon: Icons.folder_open_outlined,
@@ -1246,6 +1565,8 @@ class _ScreensAddProductState extends State<ScreensAddProduct> {
               setState(() {
                 _selectedSubcategoryId = null;
                 _selectedSubcategoryName = null;
+                _compatibleProductIds.clear();
+                _compatibleProductNames.clear();
               });
               return;
             }
@@ -1255,6 +1576,8 @@ class _ScreensAddProductState extends State<ScreensAddProduct> {
               _selectedSubcategoryId = value;
               _selectedSubcategoryName =
                   (selectedDoc.data()['name'] ?? '').toString();
+              _compatibleProductIds.clear();
+              _compatibleProductNames.clear();
             });
           },
         );
@@ -1285,6 +1608,35 @@ class _ScreensAddProductState extends State<ScreensAddProduct> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       _sectionHeader('Basic Information'),
+
+                      _buildDropdownField(
+                        label: 'Product Nature *',
+                        icon: Icons.settings_applications_outlined,
+                        value: _productNature,
+                        items: const [
+                          DropdownMenuItem(value: 'Machine', child: Text('Machine')),
+                          DropdownMenuItem(value: 'Accessory', child: Text('Accessory')),
+                          DropdownMenuItem(value: 'Spare', child: Text('Spare')),
+                          DropdownMenuItem(value: 'Consumable', child: Text('Consumable')),
+                          DropdownMenuItem(value: 'Raw Material', child: Text('Raw Material')),
+                        ],
+                        onChanged: (value) {
+                          if (value != null) {
+                            setState(() {
+                              _productNature = value;
+                              if (_productNature != 'Machine') {
+                                _machineType = null;
+                              }
+                              if (_productNature != 'Accessory' && _productNature != 'Spare') {
+                                _compatibleProductIds.clear();
+                                _compatibleProductNames.clear();
+                              }
+                            });
+                          }
+                        },
+                      ),
+                      const SizedBox(height: 10),
+
                       if (isTablet)
                         Row(
                           children: [
@@ -1396,6 +1748,19 @@ class _ScreensAddProductState extends State<ScreensAddProduct> {
                         const SizedBox(height: 10),
                         _buildSubcategoryDropdown(),
                       ],
+
+                      // --- DYNAMIC FIELDS START ---
+                      if (_productNature == 'Machine') ...[
+                        const SizedBox(height: 10),
+                        _buildMachineTypeField(),
+                      ],
+
+                      if (_productNature == 'Accessory' || _productNature == 'Spare') ...[
+                        const SizedBox(height: 10),
+                        _buildCompatibleMachines(),
+                      ],
+                      // --- DYNAMIC FIELDS END ---
+
                       const SizedBox(height: 10),
                       _buildTextField(
                         controller: _brandController,
