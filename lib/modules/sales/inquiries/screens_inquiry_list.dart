@@ -7,7 +7,6 @@ import 'package:QUIK/modules/sales/inquiries/screens_add_inquiry.dart';
 import 'package:QUIK/modules/sales/quotations/quotation_screen_local.dart';
 
 class ScreensInquiryList extends StatefulWidget {
-  // 🔥 FIX: Added optional companyId so ZohoShell can pass it directly
   final String? companyId;
 
   const ScreensInquiryList({super.key, this.companyId});
@@ -102,10 +101,8 @@ class _ScreensInquiryListState extends State<ScreensInquiryList> {
         userData = globalDoc.data()!;
       }
 
-      // 🔥 FIX: 1. Trust ZohoShell's provided companyId first.
       String resolvedCompanyId = widget.companyId ?? '';
 
-      // 2. Cascading Fallback if Shell didn't provide one
       if (resolvedCompanyId.isEmpty) {
         resolvedCompanyId = _getString(userData, 'activeCompanyId');
         if (resolvedCompanyId.isEmpty) {
@@ -121,7 +118,6 @@ class _ScreensInquiryListState extends State<ScreensInquiryList> {
 
       userData['companyId'] = resolvedCompanyId;
 
-      // 3. Merge Local Company Profile (Wrapped in try/catch to prevent Permission crashes)
       if (resolvedCompanyId.isNotEmpty) {
         try {
           final companyUserDoc = await FirebaseFirestore.instance
@@ -133,11 +129,10 @@ class _ScreensInquiryListState extends State<ScreensInquiryList> {
 
           if (companyUserDoc.exists && companyUserDoc.data() != null) {
             userData.addAll(companyUserDoc.data()!);
-            userData['companyId'] = resolvedCompanyId; // Re-enforce
+            userData['companyId'] = resolvedCompanyId;
           }
         } catch (e) {
           debugPrint("[INQUIRY LIST] Firebase Rules blocked local user fetch. Failing over safely: $e");
-          // Safe failover: use global memberships if local read fails
           if (userData['memberships'] is Map) {
             final membershipsMap = userData['memberships'] as Map;
             if (membershipsMap[resolvedCompanyId] is Map) {
@@ -243,15 +238,16 @@ class _ScreensInquiryListState extends State<ScreensInquiryList> {
           ? _getString(data, 'inquirySubject').toLowerCase()
           : _getString(data, 'subject').toLowerCase();
 
+      // Safe Fallbacks internally without mutating exact doc
       final contactName = _getString(data, 'contactName').isEmpty
           ? _getString(data, 'contactPerson').toLowerCase()
           : _getString(data, 'contactName').toLowerCase();
 
-      final mobile = _getString(data, 'contactMobile').isEmpty
-          ? (_getString(data, 'contactPhone').isEmpty
+      final mobile = _getString(data, 'contactPhone').isEmpty
+          ? (_getString(data, 'contactMobile').isEmpty
           ? _getString(data, 'mobile').toLowerCase()
-          : _getString(data, 'contactPhone').toLowerCase())
-          : _getString(data, 'contactMobile').toLowerCase();
+          : _getString(data, 'contactMobile').toLowerCase())
+          : _getString(data, 'contactPhone').toLowerCase();
 
       final projectName = _getString(data, 'projectName').toLowerCase();
       final source = _getString(data, 'source').toLowerCase();
@@ -517,15 +513,22 @@ class _ScreensInquiryListState extends State<ScreensInquiryList> {
 
     final fallbackCustomerName = _getString(inquiryData, 'customerName');
 
+    // EXPLICIT QUOTATION CONVERSION CONSISTENCY FIX
     final Map<String, dynamic> comprehensiveSeed = {
       'id': doc.id,
       'inquiryId': doc.id,
       'inquiryNumber': _getString(inquiryData, 'inquiryNumber'),
       'customerId': customerId,
       'customerName': customerData['companyName'] ?? customerData['name'] ?? fallbackCustomerName,
-      'contactPerson': customerData['contactPerson'] ?? _getString(inquiryData, 'contactName'),
-      'mobile': customerData['mobile'] ?? customerData['phone'] ?? _getString(inquiryData, 'contactPhone'),
-      'email': customerData['email'] ?? _getString(inquiryData, 'contactEmail'),
+      'contactPerson': _getString(inquiryData, 'contactName').isNotEmpty
+          ? _getString(inquiryData, 'contactName')
+          : (customerData['contactPerson'] ?? ''),
+      'mobile': _getString(inquiryData, 'contactPhone').isNotEmpty
+          ? _getString(inquiryData, 'contactPhone')
+          : (customerData['mobile'] ?? customerData['phone'] ?? ''),
+      'email': _getString(inquiryData, 'contactEmail').isNotEmpty
+          ? _getString(inquiryData, 'contactEmail')
+          : (customerData['email'] ?? ''),
       'address': customerData['address'] ?? customerData['billingAddress'] ?? '',
       'state': customerData['state'] ?? '',
       'gstNo': customerData['gstNo'] ?? customerData['gst'] ?? '',
@@ -562,6 +565,95 @@ class _ScreensInquiryListState extends State<ScreensInquiryList> {
     );
   }
 
+  // --- HARD DELETE IMPLEMENTATION ---
+  Future<void> _deleteInquiry(QueryDocumentSnapshot<Map<String, dynamic>> doc) async {
+    bool isDeleting = false;
+
+    final bool? confirmDelete = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false, // Prevents accidental closing
+      builder: (BuildContext dialogContext) {
+        return StatefulBuilder(
+          builder: (context, setState) {
+            return AlertDialog(
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              title: const Row(
+                children: [
+                  Icon(Icons.warning_amber_rounded, color: Colors.red, size: 28),
+                  SizedBox(width: 10),
+                  Text('Delete Inquiry', style: TextStyle(fontWeight: FontWeight.bold)),
+                ],
+              ),
+              content: const Text(
+                'Are you sure you want to permanently delete this inquiry?\n\nThis action cannot be undone.',
+                style: TextStyle(height: 1.5, fontSize: 14),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: isDeleting ? null : () => Navigator.of(dialogContext).pop(false),
+                  child: const Text('Cancel', style: TextStyle(color: Colors.grey)),
+                ),
+                ElevatedButton(
+                  onPressed: isDeleting
+                      ? null
+                      : () async {
+                    setState(() => isDeleting = true);
+                    try {
+                      // Hard Delete: completely remove from Firestore
+                      await doc.reference.delete();
+                      if (dialogContext.mounted) {
+                        Navigator.of(dialogContext).pop(true);
+                      }
+                    } catch (e) {
+                      setState(() => isDeleting = false);
+                      if (dialogContext.mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text('Failed to delete: $e'),
+                            backgroundColor: Colors.red.shade700,
+                            behavior: SnackBarBehavior.floating,
+                          ),
+                        );
+                      }
+                    }
+                  },
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.red.shade600,
+                    foregroundColor: Colors.white,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                  ),
+                  child: isDeleting
+                      ? const SizedBox(
+                    height: 16,
+                    width: 16,
+                    child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
+                  )
+                      : const Text('Delete'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+
+    if (confirmDelete == true && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: const Row(
+            children: [
+              Icon(Icons.check_circle, color: Colors.white, size: 18),
+              SizedBox(width: 8),
+              Text('Inquiry deleted successfully'),
+            ],
+          ),
+          backgroundColor: Colors.green.shade700,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final firebaseUser = _currentUser;
@@ -582,7 +674,6 @@ class _ScreensInquiryListState extends State<ScreensInquiryList> {
           );
         }
 
-        // 🔥 FIX: Show the exact error if Future fails
         if (userSnap.hasError) {
           return Scaffold(
             backgroundColor: Colors.white,
@@ -873,13 +964,20 @@ class _ScreensInquiryListState extends State<ScreensInquiryList> {
                         final assignedToName = _getString(data, 'assignedToName').isEmpty
                             ? 'Unassigned'
                             : _getString(data, 'assignedToName');
-                        final contactName = _getString(data, 'contactName');
+
+                        // Clean Conditional Rendering - Hides cleanly if missing entirely
+                        final contactName = _getString(data, 'contactName').isEmpty
+                            ? _getString(data, 'contactPerson')
+                            : _getString(data, 'contactName');
+
                         final phone = _getString(data, 'contactPhone').isEmpty
-                            ? 'No Phone'
+                            ? (_getString(data, 'contactMobile').isEmpty
+                            ? _getString(data, 'mobile')
+                            : _getString(data, 'contactMobile'))
                             : _getString(data, 'contactPhone');
 
-                        final expectedValue = _getString(data, 'expectedValue');
-                        final quantityScope = _getString(data, 'quantityScope');
+                        final email = _getString(data, 'contactEmail');
+
                         final source = _getString(data, 'source');
                         final inquiryType = _getString(data, 'inquiryType');
                         final location = _getString(data, 'location');
@@ -969,16 +1067,41 @@ class _ScreensInquiryListState extends State<ScreensInquiryList> {
                                               context: context,
                                               doc: doc,
                                             );
+                                          } else if (value == 'delete') {
+                                            _deleteInquiry(doc);
                                           }
                                         },
                                         itemBuilder: (context) => [
                                           const PopupMenuItem(
                                             value: 'open',
-                                            child: Text('Open Inquiry'),
+                                            child: Row(
+                                              children: [
+                                                Icon(Icons.edit_outlined, size: 18),
+                                                SizedBox(width: 8),
+                                                Text('Open Inquiry'),
+                                              ],
+                                            ),
                                           ),
                                           const PopupMenuItem(
                                             value: 'quote',
-                                            child: Text('Create Quotation'),
+                                            child: Row(
+                                              children: [
+                                                Icon(Icons.request_quote_outlined, size: 18),
+                                                SizedBox(width: 8),
+                                                Text('Create Quotation'),
+                                              ],
+                                            ),
+                                          ),
+                                          const PopupMenuDivider(),
+                                          PopupMenuItem(
+                                            value: 'delete',
+                                            child: Row(
+                                              children: [
+                                                Icon(Icons.delete_outline, size: 18, color: Colors.red.shade700),
+                                                const SizedBox(width: 8),
+                                                Text('Delete Inquiry', style: TextStyle(color: Colors.red.shade700)),
+                                              ],
+                                            ),
                                           ),
                                         ],
                                       ),
@@ -1030,23 +1153,20 @@ class _ScreensInquiryListState extends State<ScreensInquiryList> {
                                       icon: Icons.tag_outlined,
                                       text: inquiryNumber,
                                     ),
-                                    _InlineInfo(
-                                      icon: Icons.person_outline,
-                                      text: contactName.isEmpty ? 'No Contact' : contactName,
-                                    ),
-                                    _InlineInfo(
-                                      icon: Icons.phone_outlined,
-                                      text: phone,
-                                    ),
-                                    if (expectedValue.isNotEmpty)
+                                    if (contactName.isNotEmpty)
                                       _InlineInfo(
-                                        icon: Icons.currency_rupee_outlined,
-                                        text: expectedValue,
+                                        icon: Icons.person_outline,
+                                        text: contactName,
                                       ),
-                                    if (quantityScope.isNotEmpty)
+                                    if (phone.isNotEmpty)
                                       _InlineInfo(
-                                        icon: Icons.numbers_outlined,
-                                        text: quantityScope,
+                                        icon: Icons.phone_outlined,
+                                        text: phone,
+                                      ),
+                                    if (email.isNotEmpty)
+                                      _InlineInfo(
+                                        icon: Icons.email_outlined,
+                                        text: email,
                                       ),
                                     _InlineInfo(
                                       icon: Icons.assignment_ind_outlined,
