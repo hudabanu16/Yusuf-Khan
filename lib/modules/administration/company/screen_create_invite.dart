@@ -4,12 +4,7 @@ import 'package:QUIK/modules/administration/users/helpers/user_management_consta
 import 'package:QUIK/modules/administration/users/helpers/user_management_formatters.dart';
 import 'package:QUIK/modules/administration/users/services/user_management_service.dart';
 
-const Color _invitePrimaryColor = Color(0xFF17324D);
-const Color _inviteAccentColor = Color(0xFF3B82F6);
-const Color _inviteScaffoldBgColor = Color(0xFFF4F7FB);
-const Color _inviteCardBorderColor = Color(0xFFE2E8F0);
-const Color _inviteMutedTextColor = Color(0xFF64748B);
-const Color _inviteHeadingTextColor = Color(0xFF0F172A);
+import 'create_invite/invite_constants.dart';
 
 class ScreenCreateInvite extends StatefulWidget {
   final String companyId;
@@ -45,72 +40,6 @@ class _ScreenCreateInviteState extends State<ScreenCreateInvite> {
 
   bool get isExportImport => widget.industry == 'export_import';
 
-  final List<String> _departmentOptions = const [
-    'Sales',
-    'CRM',
-    'Inventory',
-    'Purchase',
-    'Dispatch',
-    'Finance',
-    'Administration',
-    'Management',
-    'Service',
-  ];
-
-  final Map<String, List<String>> _designationOptionsByDepartment = const {
-    'Sales': [
-      'Sales Executive',
-      'Senior Sales Executive',
-      'Area Sales Manager',
-      'Regional Sales Manager',
-      'Vice President - Business Development',
-    ],
-    'CRM': [
-      'CRM Executive',
-      'CRM Coordinator',
-      'Customer Relationship Manager',
-    ],
-    'Inventory': [
-      'Store Executive',
-      'Inventory Executive',
-      'Warehouse Executive',
-      'Inventory Manager',
-    ],
-    'Purchase': [
-      'Purchase Executive',
-      'Senior Purchase Executive',
-      'Procurement Manager',
-    ],
-    'Dispatch': [
-      'Dispatch Executive',
-      'Logistics Coordinator',
-      'Dispatch Manager',
-    ],
-    'Finance': [
-      'Accounts Executive',
-      'Senior Accountant',
-      'Finance Manager',
-    ],
-    'Administration': [
-      'Admin Executive',
-      'Office Administrator',
-      'HR Executive',
-      'Admin Manager',
-    ],
-    'Management': [
-      'General Manager',
-      'Business Head',
-      'Vice President',
-      'Director',
-    ],
-    'Service': [
-      'Service Engineer',
-      'Service Technician',
-      'Service Coordinator',
-      'Service Manager',
-    ],
-  };
-
   late Map<String, dynamic> permissions;
 
   // 🔥 CHANGED: 'sales' is completely removed from the export_import array
@@ -137,7 +66,7 @@ class _ScreenCreateInviteState extends State<ScreenCreateInvite> {
 
   void _setDefaultDesignationForDepartment(String department) {
     final designations =
-        _designationOptionsByDepartment[department] ?? const <String>[];
+        inviteDesignationOptionsByDepartment[department] ?? const <String>[];
     selectedDesignation = designations.isNotEmpty ? designations.first : '';
   }
 
@@ -166,12 +95,12 @@ class _ScreenCreateInviteState extends State<ScreenCreateInvite> {
             'taxInvoice': true,
             'paymentReceived': true,
             'outstanding': true,
-            'expenseEntries': true
+            'expenseEntries': true,
           },
           'reports': {
             'salesReport': true,
             'customerReport': true,
-            'paymentReport': true
+            'paymentReport': true,
           },
         };
       } else {
@@ -192,7 +121,9 @@ class _ScreenCreateInviteState extends State<ScreenCreateInvite> {
     return mergePermissionsWithCanonicalShape(
       permissions ??
           _getIndustryDefaultPermissions(
-              role: role, isExportImport: isExportImport),
+            role: role,
+            isExportImport: isExportImport,
+          ),
     );
   }
 
@@ -210,9 +141,9 @@ class _ScreenCreateInviteState extends State<ScreenCreateInvite> {
   }
 
   Map<String, dynamic> _readModulePermissions(
-      Map<String, dynamic> permissionsMap,
-      String moduleKey,
-      ) {
+    Map<String, dynamic> permissionsMap,
+    String moduleKey,
+  ) {
     final moduleValue = permissionsMap[moduleKey];
 
     if (moduleKey == PermissionModules.dashboard) {
@@ -243,8 +174,9 @@ class _ScreenCreateInviteState extends State<ScreenCreateInvite> {
     }
 
     final moduleMap = Map<String, dynamic>.from(updated[moduleKey] ?? {});
-    final submoduleMap =
-    Map<String, dynamic>.from(moduleMap[submoduleKey] ?? {});
+    final submoduleMap = Map<String, dynamic>.from(
+      moduleMap[submoduleKey] ?? {},
+    );
     submoduleMap[action] = value;
     moduleMap[submoduleKey] = submoduleMap;
     updated[moduleKey] = moduleMap;
@@ -276,22 +208,27 @@ class _ScreenCreateInviteState extends State<ScreenCreateInvite> {
   // to Firestore. It forces synchronization between singular/plural
   // keys (like 'salesOrder' vs 'salesOrders') because occasionally
   // constants define one, but the ZohoShell checks for the other.
-  Map<String, dynamic> _normalizePermissionsForPayload(Map<String, dynamic> rawPerms) {
+  Map<String, dynamic> _normalizePermissionsForPayload(
+    Map<String, dynamic> rawPerms,
+  ) {
     final payload = _deepCopyPermissions(rawPerms);
 
     // 1. Normalize Sales Modifiers
     if (payload['sales'] is Map) {
       final sales = payload['sales'] as Map<String, dynamic>;
 
-      if (sales.containsKey('salesOrder') && !sales.containsKey('salesOrders')) {
+      if (sales.containsKey('salesOrder') &&
+          !sales.containsKey('salesOrders')) {
         sales['salesOrders'] = sales['salesOrder'];
-      } else if (sales.containsKey('salesOrders') && !sales.containsKey('salesOrder')) {
+      } else if (sales.containsKey('salesOrders') &&
+          !sales.containsKey('salesOrder')) {
         sales['salesOrder'] = sales['salesOrders'];
       }
 
       if (sales.containsKey('followUps') && !sales.containsKey('followUp')) {
         sales['followUp'] = sales['followUps'];
-      } else if (sales.containsKey('followUp') && !sales.containsKey('followUps')) {
+      } else if (sales.containsKey('followUp') &&
+          !sales.containsKey('followUps')) {
         sales['followUps'] = sales['followUp'];
       }
 
@@ -302,9 +239,11 @@ class _ScreenCreateInviteState extends State<ScreenCreateInvite> {
     if (payload['purchase'] is Map) {
       final purchase = payload['purchase'] as Map<String, dynamic>;
 
-      if (purchase.containsKey('purchaseOrder') && !purchase.containsKey('purchaseOrders')) {
+      if (purchase.containsKey('purchaseOrder') &&
+          !purchase.containsKey('purchaseOrders')) {
         purchase['purchaseOrders'] = purchase['purchaseOrder'];
-      } else if (purchase.containsKey('purchaseOrders') && !purchase.containsKey('purchaseOrder')) {
+      } else if (purchase.containsKey('purchaseOrders') &&
+          !purchase.containsKey('purchaseOrder')) {
         purchase['purchaseOrder'] = purchase['purchaseOrders'];
       }
 
@@ -328,7 +267,9 @@ class _ScreenCreateInviteState extends State<ScreenCreateInvite> {
   }
 
   int _selectedPermissionCount(
-      Map<String, dynamic> permissionsMap, List<String> activeMods) {
+    Map<String, dynamic> permissionsMap,
+    List<String> activeMods,
+  ) {
     int count = 0;
 
     for (final moduleKey in activeMods) {
@@ -407,7 +348,9 @@ class _ScreenCreateInviteState extends State<ScreenCreateInvite> {
 
     try {
       // Apply the normalization fix right before API call
-      final normalizedPermissions = _normalizePermissionsForPayload(permissions);
+      final normalizedPermissions = _normalizePermissionsForPayload(
+        permissions,
+      );
 
       final result = await _userManagementService.createInvite(
         companyId: widget.companyId,
@@ -433,11 +376,11 @@ class _ScreenCreateInviteState extends State<ScreenCreateInvite> {
           title: const Text('Invite Created'),
           content: SelectableText(
             'Invite Code: ${result.inviteCode}\n\n'
-                'Valid for 7 days.\n'
-                'Role: ${formatRole(selectedRole)}\n'
-                'Department: $selectedDepartment\n'
-                'Designation: $selectedDesignation\n'
-                'Selected permissions: ${_selectedPermissionCount(permissions, activeModules)}',
+            'Valid for 7 days.\n'
+            'Role: ${formatRole(selectedRole)}\n'
+            'Department: $selectedDepartment\n'
+            'Designation: $selectedDesignation\n'
+            'Selected permissions: ${_selectedPermissionCount(permissions, activeModules)}',
           ),
           actions: [
             TextButton(
@@ -480,22 +423,21 @@ class _ScreenCreateInviteState extends State<ScreenCreateInvite> {
     return InputDecoration(
       labelText: label,
       hintText: hint,
-      prefixIcon:
-      icon == null ? null : Icon(icon, color: _inviteMutedTextColor),
+      prefixIcon: icon == null ? null : Icon(icon, color: inviteMutedTextColor),
       filled: true,
       fillColor: Colors.white,
       contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 18),
       border: OutlineInputBorder(
         borderRadius: BorderRadius.circular(14),
-        borderSide: const BorderSide(color: _inviteCardBorderColor),
+        borderSide: const BorderSide(color: inviteCardBorderColor),
       ),
       enabledBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(14),
-        borderSide: const BorderSide(color: _inviteCardBorderColor),
+        borderSide: const BorderSide(color: inviteCardBorderColor),
       ),
       focusedBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(14),
-        borderSide: const BorderSide(color: _inviteAccentColor, width: 1.3),
+        borderSide: const BorderSide(color: inviteAccentColor, width: 1.3),
       ),
       errorBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(14),
@@ -505,7 +447,7 @@ class _ScreenCreateInviteState extends State<ScreenCreateInvite> {
         borderRadius: BorderRadius.circular(14),
         borderSide: BorderSide(color: Colors.red.shade400),
       ),
-      labelStyle: const TextStyle(color: _inviteMutedTextColor),
+      labelStyle: const TextStyle(color: inviteMutedTextColor),
     );
   }
 
@@ -525,11 +467,7 @@ class _ScreenCreateInviteState extends State<ScreenCreateInvite> {
       keyboardType: keyboardType,
       validator: validator,
       readOnly: readOnly,
-      decoration: _inputDecoration(
-        label: label,
-        hint: hint,
-        icon: icon,
-      ),
+      decoration: _inputDecoration(label: label, hint: hint, icon: icon),
     );
   }
 
@@ -543,17 +481,14 @@ class _ScreenCreateInviteState extends State<ScreenCreateInvite> {
   }) {
     return DropdownButtonFormField<String>(
       initialValue: options.contains(value) ? value : null,
-      decoration: _inputDecoration(
-        label: label,
-        icon: icon,
-      ),
+      decoration: _inputDecoration(label: label, icon: icon),
       items: options
           .map(
             (e) => DropdownMenuItem<String>(
-          value: e,
-          child: Text(labelBuilder != null ? labelBuilder(e) : e),
-        ),
-      )
+              value: e,
+              child: Text(labelBuilder != null ? labelBuilder(e) : e),
+            ),
+          )
           .toList(),
       onChanged: onChanged,
       validator: (value) {
@@ -577,7 +512,7 @@ class _ScreenCreateInviteState extends State<ScreenCreateInvite> {
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: _inviteCardBorderColor),
+        border: Border.all(color: inviteCardBorderColor),
         boxShadow: const [
           BoxShadow(
             color: Color(0x0D0F172A),
@@ -600,7 +535,7 @@ class _ScreenCreateInviteState extends State<ScreenCreateInvite> {
                       style: const TextStyle(
                         fontSize: 20,
                         fontWeight: FontWeight.w700,
-                        color: _inviteHeadingTextColor,
+                        color: inviteHeadingTextColor,
                       ),
                     ),
                     const SizedBox(height: 6),
@@ -608,7 +543,7 @@ class _ScreenCreateInviteState extends State<ScreenCreateInvite> {
                       subtitle,
                       style: const TextStyle(
                         fontSize: 13,
-                        color: _inviteMutedTextColor,
+                        color: inviteMutedTextColor,
                         height: 1.45,
                       ),
                     ),
@@ -630,11 +565,12 @@ class _ScreenCreateInviteState extends State<ScreenCreateInvite> {
     required bool isExportImport,
     required Map<String, dynamic> modulePermissions,
     required void Function(
-        String moduleKey,
-        String? submoduleKey,
-        String action,
-        bool value,
-        ) onActionChanged,
+      String moduleKey,
+      String? submoduleKey,
+      String action,
+      bool value,
+    )
+    onActionChanged,
   }) {
     final moduleLabel = formatModuleLabel(moduleKey);
     final selectedCount = _countEnabledActionsInModule(
@@ -670,13 +606,15 @@ class _ScreenCreateInviteState extends State<ScreenCreateInvite> {
                   style: const TextStyle(
                     fontSize: 15,
                     fontWeight: FontWeight.w700,
-                    color: _inviteHeadingTextColor,
+                    color: inviteHeadingTextColor,
                   ),
                 ),
               ),
               Container(
-                padding:
-                const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 6,
+                ),
                 decoration: BoxDecoration(
                   color: selectedCount == 0
                       ? const Color(0xFFF1F5F9)
@@ -698,64 +636,65 @@ class _ScreenCreateInviteState extends State<ScreenCreateInvite> {
           ),
           children: moduleKey == PermissionModules.dashboard
               ? [
-            _buildActionGroup(
-              title: 'Dashboard',
-              actions: Map<String, bool>.from(modulePermissions),
-              onChanged: (action, value) => onActionChanged(
-                moduleKey,
-                null,
-                action,
-                value,
-              ),
-            ),
-          ]
+                  _buildActionGroup(
+                    title: 'Dashboard',
+                    actions: Map<String, bool>.from(modulePermissions),
+                    onChanged: (action, value) =>
+                        onActionChanged(moduleKey, null, action, value),
+                  ),
+                ]
               : (permissionSubmoduleMap[moduleKey] ?? const <String>[])
-              .where((submoduleKey) {
-            // 🔥 CHANGED: Deep strict filtering for export_import
-            if (isExportImport) {
-              if (moduleKey == 'sales') return false; // Strictly blocked
-              if (moduleKey == 'crm') return submoduleKey == 'customers';
-              if (moduleKey == 'finance') {
-                return [
-                  'taxInvoice',
-                  'paymentReceived',
-                  'outstanding',
-                  'expenseEntries'
-                ].contains(submoduleKey);
-              }
-              if (moduleKey == 'reports') {
-                return [
-                  'salesReport',
-                  'customerReport', // inquiryReport explicitly blocked
-                  'paymentReport'
-                ].contains(submoduleKey);
-              }
-              return false;
-            }
-            return true;
-          }).map((submoduleKey) {
-            final submodulePermissions = Map<String, bool>.from(
-                modulePermissions[submoduleKey] ?? {});
-            return Container(
-              margin: const EdgeInsets.only(bottom: 12),
-              padding: const EdgeInsets.all(14),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: const Color(0xFFE2E8F0)),
-              ),
-              child: _buildActionGroup(
-                title: formatSubmoduleLabel(submoduleKey),
-                actions: submodulePermissions,
-                onChanged: (action, value) => onActionChanged(
-                  moduleKey,
-                  submoduleKey,
-                  action,
-                  value,
-                ),
-              ),
-            );
-          }).toList(),
+                    .where((submoduleKey) {
+                      // 🔥 CHANGED: Deep strict filtering for export_import
+                      if (isExportImport) {
+                        if (moduleKey == 'sales')
+                          return false; // Strictly blocked
+                        if (moduleKey == 'crm')
+                          return submoduleKey == 'customers';
+                        if (moduleKey == 'finance') {
+                          return [
+                            'taxInvoice',
+                            'paymentReceived',
+                            'outstanding',
+                            'expenseEntries',
+                          ].contains(submoduleKey);
+                        }
+                        if (moduleKey == 'reports') {
+                          return [
+                            'salesReport',
+                            'customerReport', // inquiryReport explicitly blocked
+                            'paymentReport',
+                          ].contains(submoduleKey);
+                        }
+                        return false;
+                      }
+                      return true;
+                    })
+                    .map((submoduleKey) {
+                      final submodulePermissions = Map<String, bool>.from(
+                        modulePermissions[submoduleKey] ?? {},
+                      );
+                      return Container(
+                        margin: const EdgeInsets.only(bottom: 12),
+                        padding: const EdgeInsets.all(14),
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(16),
+                          border: Border.all(color: const Color(0xFFE2E8F0)),
+                        ),
+                        child: _buildActionGroup(
+                          title: formatSubmoduleLabel(submoduleKey),
+                          actions: submodulePermissions,
+                          onChanged: (action, value) => onActionChanged(
+                            moduleKey,
+                            submoduleKey,
+                            action,
+                            value,
+                          ),
+                        ),
+                      );
+                    })
+                    .toList(),
         ),
       ),
     );
@@ -780,7 +719,7 @@ class _ScreenCreateInviteState extends State<ScreenCreateInvite> {
                 style: const TextStyle(
                   fontSize: 14,
                   fontWeight: FontWeight.w700,
-                  color: _inviteHeadingTextColor,
+                  color: inviteHeadingTextColor,
                 ),
               ),
             ),
@@ -789,7 +728,7 @@ class _ScreenCreateInviteState extends State<ScreenCreateInvite> {
               style: const TextStyle(
                 fontSize: 12,
                 fontWeight: FontWeight.w600,
-                color: _inviteMutedTextColor,
+                color: inviteMutedTextColor,
               ),
             ),
           ],
@@ -821,7 +760,7 @@ class _ScreenCreateInviteState extends State<ScreenCreateInvite> {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Icon(Icons.verified_user_outlined, color: _invitePrimaryColor),
+          const Icon(Icons.verified_user_outlined, color: invitePrimaryColor),
           const SizedBox(width: 12),
           Expanded(
             child: Column(
@@ -832,7 +771,7 @@ class _ScreenCreateInviteState extends State<ScreenCreateInvite> {
                   style: TextStyle(
                     fontSize: 15,
                     fontWeight: FontWeight.w700,
-                    color: _inviteHeadingTextColor,
+                    color: inviteHeadingTextColor,
                   ),
                 ),
                 const SizedBox(height: 8),
@@ -840,7 +779,7 @@ class _ScreenCreateInviteState extends State<ScreenCreateInvite> {
                   'Role: ${formatRole(selectedRole)} • Department: $selectedDepartment',
                   style: const TextStyle(
                     fontSize: 13,
-                    color: _inviteMutedTextColor,
+                    color: inviteMutedTextColor,
                   ),
                 ),
                 const SizedBox(height: 4),
@@ -848,7 +787,7 @@ class _ScreenCreateInviteState extends State<ScreenCreateInvite> {
                   'Designation: ${selectedDesignation.isEmpty ? 'Not Assigned' : selectedDesignation}',
                   style: const TextStyle(
                     fontSize: 13,
-                    color: _inviteMutedTextColor,
+                    color: inviteMutedTextColor,
                   ),
                 ),
                 const SizedBox(height: 4),
@@ -856,7 +795,7 @@ class _ScreenCreateInviteState extends State<ScreenCreateInvite> {
                   'Access Scope: ${accessScopeLabels[selectedAccessScope] ?? selectedAccessScope}',
                   style: const TextStyle(
                     fontSize: 13,
-                    color: _inviteMutedTextColor,
+                    color: inviteMutedTextColor,
                   ),
                 ),
                 const SizedBox(height: 4),
@@ -864,7 +803,7 @@ class _ScreenCreateInviteState extends State<ScreenCreateInvite> {
                   'Selected permissions: ${_selectedPermissionCount(permissions, activeModules)}',
                   style: const TextStyle(
                     fontSize: 13,
-                    color: _inviteMutedTextColor,
+                    color: inviteMutedTextColor,
                   ),
                 ),
                 const SizedBox(height: 4),
@@ -874,7 +813,7 @@ class _ScreenCreateInviteState extends State<ScreenCreateInvite> {
                       : 'Invite will be created without immediate sending flow.',
                   style: const TextStyle(
                     fontSize: 13,
-                    color: _inviteMutedTextColor,
+                    color: inviteMutedTextColor,
                   ),
                 ),
               ],
@@ -885,20 +824,11 @@ class _ScreenCreateInviteState extends State<ScreenCreateInvite> {
     );
   }
 
-  Widget _buildDesktopTwoColumn({
-    required Widget left,
-    required Widget right,
-  }) {
+  Widget _buildDesktopTwoColumn({required Widget left, required Widget right}) {
     return LayoutBuilder(
       builder: (context, constraints) {
         if (constraints.maxWidth < 860) {
-          return Column(
-            children: [
-              left,
-              const SizedBox(height: 16),
-              right,
-            ],
-          );
+          return Column(children: [left, const SizedBox(height: 16), right]);
         }
         return Row(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -913,33 +843,30 @@ class _ScreenCreateInviteState extends State<ScreenCreateInvite> {
   }
 
   List<String> get _designationOptionsForSelectedDepartment {
-    return _designationOptionsByDepartment[selectedDepartment] ??
+    return inviteDesignationOptionsByDepartment[selectedDepartment] ??
         const <String>[];
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: _inviteScaffoldBgColor,
+      backgroundColor: inviteScaffoldBgColor,
       appBar: AppBar(
         elevation: 0,
         backgroundColor: Colors.white,
-        foregroundColor: _inviteHeadingTextColor,
+        foregroundColor: inviteHeadingTextColor,
         titleSpacing: 0,
         title: const Text(
           'Create Employee Invite',
           style: TextStyle(
             fontSize: 22,
             fontWeight: FontWeight.w700,
-            color: _inviteHeadingTextColor,
+            color: inviteHeadingTextColor,
           ),
         ),
         bottom: PreferredSize(
           preferredSize: const Size.fromHeight(1),
-          child: Container(
-            height: 1,
-            color: const Color(0xFFE2E8F0),
-          ),
+          child: Container(height: 1, color: const Color(0xFFE2E8F0)),
         ),
       ),
       body: SafeArea(
@@ -963,7 +890,7 @@ class _ScreenCreateInviteState extends State<ScreenCreateInvite> {
                                 style: TextStyle(
                                   fontSize: 13,
                                   fontWeight: FontWeight.w600,
-                                  color: _inviteMutedTextColor,
+                                  color: inviteMutedTextColor,
                                 ),
                               ),
                               SizedBox(height: 8),
@@ -971,21 +898,23 @@ class _ScreenCreateInviteState extends State<ScreenCreateInvite> {
                                 'Invite a new employee with structured access and module-based permissions.',
                                 style: TextStyle(
                                   fontSize: 14,
-                                  color: _inviteMutedTextColor,
+                                  color: inviteMutedTextColor,
                                 ),
                               ),
                             ],
                           ),
                         ),
                         OutlinedButton.icon(
-                          onPressed:
-                          isLoading ? null : () => Navigator.pop(context),
+                          onPressed: isLoading
+                              ? null
+                              : () => Navigator.pop(context),
                           icon: const Icon(Icons.arrow_back_rounded),
                           label: const Text('Back'),
                           style: OutlinedButton.styleFrom(
-                            foregroundColor: _inviteHeadingTextColor,
+                            foregroundColor: inviteHeadingTextColor,
                             side: const BorderSide(
-                                color: _inviteCardBorderColor),
+                              color: inviteCardBorderColor,
+                            ),
                             padding: const EdgeInsets.symmetric(
                               horizontal: 18,
                               vertical: 14,
@@ -1001,7 +930,7 @@ class _ScreenCreateInviteState extends State<ScreenCreateInvite> {
                     _buildSectionCard(
                       title: 'Basic Details',
                       subtitle:
-                      'Enter employee identity details for the invitation.',
+                          'Enter employee identity details for the invitation.',
                       child: Column(
                         children: [
                           _buildDesktopTwoColumn(
@@ -1028,8 +957,9 @@ class _ScreenCreateInviteState extends State<ScreenCreateInvite> {
                                 if (value.isEmpty) {
                                   return 'Email is required';
                                 }
-                                final emailRegex =
-                                RegExp(r'^[^@\s]+@[^@\s]+\.[^@\s]+$');
+                                final emailRegex = RegExp(
+                                  r'^[^@\s]+@[^@\s]+\.[^@\s]+$',
+                                );
                                 if (!emailRegex.hasMatch(value)) {
                                   return 'Enter a valid email';
                                 }
@@ -1055,7 +985,7 @@ class _ScreenCreateInviteState extends State<ScreenCreateInvite> {
                     _buildSectionCard(
                       title: 'Department & Role',
                       subtitle:
-                      'Assign the employee to a department and choose the access role.',
+                          'Assign the employee to a department and choose the access role.',
                       trailing: TextButton(
                         onPressed: isLoading
                             ? null
@@ -1080,7 +1010,7 @@ class _ScreenCreateInviteState extends State<ScreenCreateInvite> {
                             right: _buildDropdownField(
                               label: 'Department',
                               value: selectedDepartment,
-                              options: _departmentOptions,
+                              options: inviteDepartmentOptions,
                               icon: Icons.apartment_outlined,
                               onChanged: (value) {
                                 final department = value ?? 'Sales';
@@ -1107,7 +1037,7 @@ class _ScreenCreateInviteState extends State<ScreenCreateInvite> {
                               options: accessScopeList,
                               icon: Icons.lock_open_outlined,
                               labelBuilder: (value) =>
-                              accessScopeLabels[value] ?? value,
+                                  accessScopeLabels[value] ?? value,
                               onChanged: (value) {
                                 setState(() {
                                   selectedAccessScope =
@@ -1128,14 +1058,14 @@ class _ScreenCreateInviteState extends State<ScreenCreateInvite> {
                               'Send Invite Now',
                               style: TextStyle(
                                 fontWeight: FontWeight.w600,
-                                color: _inviteHeadingTextColor,
+                                color: inviteHeadingTextColor,
                               ),
                             ),
                             subtitle: const Text(
                               'Keep this enabled to create a ready-to-share invite immediately.',
-                              style: TextStyle(color: _inviteMutedTextColor),
+                              style: TextStyle(color: inviteMutedTextColor),
                             ),
-                            activeThumbColor: _inviteAccentColor,
+                            activeThumbColor: inviteAccentColor,
                             contentPadding: EdgeInsets.zero,
                           ),
                           const SizedBox(height: 10),
@@ -1147,7 +1077,7 @@ class _ScreenCreateInviteState extends State<ScreenCreateInvite> {
                     _buildSectionCard(
                       title: 'Module Permissions',
                       subtitle:
-                      'Permissions are aligned with your QUIK ERP modules and submodules.',
+                          'Permissions are aligned with your QUIK ERP modules and submodules.',
                       child: Column(
                         children: activeModules.map((moduleKey) {
                           return _buildPermissionModuleCard(
@@ -1157,22 +1087,23 @@ class _ScreenCreateInviteState extends State<ScreenCreateInvite> {
                               permissions,
                               moduleKey,
                             ),
-                            onActionChanged: (
-                                String module,
-                                String? submodule,
-                                String action,
-                                bool value,
+                            onActionChanged:
+                                (
+                                  String module,
+                                  String? submodule,
+                                  String action,
+                                  bool value,
                                 ) {
-                              setState(() {
-                                permissions = _setPermissionValue(
-                                  permissionsMap: permissions,
-                                  moduleKey: module,
-                                  submoduleKey: submodule,
-                                  action: action,
-                                  value: value,
-                                );
-                              });
-                            },
+                                  setState(() {
+                                    permissions = _setPermissionValue(
+                                      permissionsMap: permissions,
+                                      moduleKey: module,
+                                      submoduleKey: submodule,
+                                      action: action,
+                                      value: value,
+                                    );
+                                  });
+                                },
                           );
                         }).toList(),
                       ),
@@ -1184,7 +1115,7 @@ class _ScreenCreateInviteState extends State<ScreenCreateInvite> {
                       decoration: BoxDecoration(
                         color: Colors.white,
                         borderRadius: BorderRadius.circular(22),
-                        border: Border.all(color: _inviteCardBorderColor),
+                        border: Border.all(color: inviteCardBorderColor),
                         boxShadow: const [
                           BoxShadow(
                             color: Color(0x0D0F172A),
@@ -1205,9 +1136,9 @@ class _ScreenCreateInviteState extends State<ScreenCreateInvite> {
                                         ? null
                                         : () => Navigator.pop(context),
                                     style: OutlinedButton.styleFrom(
-                                      foregroundColor: _inviteHeadingTextColor,
+                                      foregroundColor: inviteHeadingTextColor,
                                       side: const BorderSide(
-                                        color: _inviteCardBorderColor,
+                                        color: inviteCardBorderColor,
                                       ),
                                       padding: const EdgeInsets.symmetric(
                                         vertical: 16,
@@ -1225,7 +1156,7 @@ class _ScreenCreateInviteState extends State<ScreenCreateInvite> {
                                   child: ElevatedButton(
                                     onPressed: isLoading ? null : _createInvite,
                                     style: ElevatedButton.styleFrom(
-                                      backgroundColor: _invitePrimaryColor,
+                                      backgroundColor: invitePrimaryColor,
                                       foregroundColor: Colors.white,
                                       padding: const EdgeInsets.symmetric(
                                         vertical: 16,
@@ -1237,19 +1168,19 @@ class _ScreenCreateInviteState extends State<ScreenCreateInvite> {
                                     ),
                                     child: isLoading
                                         ? const SizedBox(
-                                      width: 20,
-                                      height: 20,
-                                      child: CircularProgressIndicator(
-                                        color: Colors.white,
-                                        strokeWidth: 2.4,
-                                      ),
-                                    )
+                                            width: 20,
+                                            height: 20,
+                                            child: CircularProgressIndicator(
+                                              color: Colors.white,
+                                              strokeWidth: 2.4,
+                                            ),
+                                          )
                                         : const Text(
-                                      'Create Invite',
-                                      style: TextStyle(
-                                        fontWeight: FontWeight.w600,
-                                      ),
-                                    ),
+                                            'Create Invite',
+                                            style: TextStyle(
+                                              fontWeight: FontWeight.w600,
+                                            ),
+                                          ),
                                   ),
                                 ),
                               ],
@@ -1263,9 +1194,9 @@ class _ScreenCreateInviteState extends State<ScreenCreateInvite> {
                                     ? null
                                     : () => Navigator.pop(context),
                                 style: OutlinedButton.styleFrom(
-                                  foregroundColor: _inviteHeadingTextColor,
+                                  foregroundColor: inviteHeadingTextColor,
                                   side: const BorderSide(
-                                    color: _inviteCardBorderColor,
+                                    color: inviteCardBorderColor,
                                   ),
                                   padding: const EdgeInsets.symmetric(
                                     horizontal: 22,
@@ -1281,7 +1212,7 @@ class _ScreenCreateInviteState extends State<ScreenCreateInvite> {
                               ElevatedButton(
                                 onPressed: isLoading ? null : _createInvite,
                                 style: ElevatedButton.styleFrom(
-                                  backgroundColor: _invitePrimaryColor,
+                                  backgroundColor: invitePrimaryColor,
                                   foregroundColor: Colors.white,
                                   padding: const EdgeInsets.symmetric(
                                     horizontal: 28,
@@ -1294,19 +1225,19 @@ class _ScreenCreateInviteState extends State<ScreenCreateInvite> {
                                 ),
                                 child: isLoading
                                     ? const SizedBox(
-                                  width: 20,
-                                  height: 20,
-                                  child: CircularProgressIndicator(
-                                    color: Colors.white,
-                                    strokeWidth: 2.4,
-                                  ),
-                                )
+                                        width: 20,
+                                        height: 20,
+                                        child: CircularProgressIndicator(
+                                          color: Colors.white,
+                                          strokeWidth: 2.4,
+                                        ),
+                                      )
                                     : const Text(
-                                  'Create Invite',
-                                  style: TextStyle(
-                                    fontWeight: FontWeight.w600,
-                                  ),
-                                ),
+                                        'Create Invite',
+                                        style: TextStyle(
+                                          fontWeight: FontWeight.w600,
+                                        ),
+                                      ),
                               ),
                             ],
                           );
@@ -1347,7 +1278,7 @@ class _PermissionChip extends StatelessWidget {
           color: value ? const Color(0xFFE0ECFF) : Colors.white,
           borderRadius: BorderRadius.circular(14),
           border: Border.all(
-            color: value ? _inviteAccentColor : const Color(0xFFD6DEE8),
+            color: value ? inviteAccentColor : const Color(0xFFD6DEE8),
           ),
         ),
         child: Row(
@@ -1356,7 +1287,7 @@ class _PermissionChip extends StatelessWidget {
             Icon(
               value ? Icons.check_circle_rounded : Icons.radio_button_unchecked,
               size: 18,
-              color: value ? _inviteAccentColor : _inviteMutedTextColor,
+              color: value ? inviteAccentColor : inviteMutedTextColor,
             ),
             const SizedBox(width: 8),
             Text(
@@ -1364,8 +1295,7 @@ class _PermissionChip extends StatelessWidget {
               style: TextStyle(
                 fontSize: 13,
                 fontWeight: FontWeight.w600,
-                color:
-                value ? const Color(0xFF1E3A8A) : _inviteHeadingTextColor,
+                color: value ? const Color(0xFF1E3A8A) : inviteHeadingTextColor,
               ),
             ),
           ],
