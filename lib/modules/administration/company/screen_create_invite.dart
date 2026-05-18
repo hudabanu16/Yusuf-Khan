@@ -7,6 +7,7 @@ import 'package:QUIK/modules/administration/users/services/user_management_servi
 import 'create_invite/invite_constants.dart';
 import 'create_invite/widgets/permission_chip.dart';
 import 'create_invite/widgets/invite_section_card.dart';
+import 'create_invite/widgets/invite_summary_card.dart';
 
 class ScreenCreateInvite extends StatefulWidget {
   final String companyId;
@@ -691,81 +692,6 @@ class _ScreenCreateInviteState extends State<ScreenCreateInvite> {
     );
   }
 
-  Widget _buildInviteSummary() {
-    return Container(
-      padding: const EdgeInsets.all(18),
-      decoration: BoxDecoration(
-        color: const Color(0xFFF8FAFC),
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: const Color(0xFFE2E8F0)),
-      ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Icon(Icons.verified_user_outlined, color: invitePrimaryColor),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text(
-                  'Invite Summary',
-                  style: TextStyle(
-                    fontSize: 15,
-                    fontWeight: FontWeight.w700,
-                    color: inviteHeadingTextColor,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  'Role: ${formatRole(selectedRole)} • Department: $selectedDepartment',
-                  style: const TextStyle(
-                    fontSize: 13,
-                    color: inviteMutedTextColor,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  'Designation: ${selectedDesignation.isEmpty ? 'Not Assigned' : selectedDesignation}',
-                  style: const TextStyle(
-                    fontSize: 13,
-                    color: inviteMutedTextColor,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  'Access Scope: ${accessScopeLabels[selectedAccessScope] ?? selectedAccessScope}',
-                  style: const TextStyle(
-                    fontSize: 13,
-                    color: inviteMutedTextColor,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  'Selected permissions: ${_selectedPermissionCount(permissions, activeModules)}',
-                  style: const TextStyle(
-                    fontSize: 13,
-                    color: inviteMutedTextColor,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  sendInviteNow
-                      ? 'Invite will be created and ready to share immediately.'
-                      : 'Invite will be created without immediate sending flow.',
-                  style: const TextStyle(
-                    fontSize: 13,
-                    color: inviteMutedTextColor,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
   Widget _buildDesktopTwoColumn({required Widget left, required Widget right}) {
     return LayoutBuilder(
       builder: (context, constraints) {
@@ -1011,7 +937,17 @@ class _ScreenCreateInviteState extends State<ScreenCreateInvite> {
                             contentPadding: EdgeInsets.zero,
                           ),
                           const SizedBox(height: 10),
-                          _buildInviteSummary(),
+                          InviteSummaryCard(
+                            selectedRole: selectedRole,
+                            selectedDepartment: selectedDepartment,
+                            selectedDesignation: selectedDesignation,
+                            selectedAccessScope: selectedAccessScope,
+                            selectedPermissionCount: _selectedPermissionCount(
+                              permissions,
+                              activeModules,
+                            ),
+                            sendInviteNow: sendInviteNow,
+                          ),
                         ],
                       ),
                     ),
