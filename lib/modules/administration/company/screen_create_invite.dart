@@ -8,6 +8,7 @@ import 'create_invite/invite_constants.dart';
 import 'create_invite/widgets/permission_chip.dart';
 import 'create_invite/widgets/invite_section_card.dart';
 import 'create_invite/widgets/invite_summary_card.dart';
+import 'create_invite/widgets/invite_form_fields.dart';
 
 class ScreenCreateInvite extends StatefulWidget {
   final String companyId;
@@ -454,55 +455,6 @@ class _ScreenCreateInviteState extends State<ScreenCreateInvite> {
     );
   }
 
-  Widget _buildTextField({
-    TextEditingController? controller,
-    String? initialValue,
-    required String label,
-    String? hint,
-    IconData? icon,
-    TextInputType? keyboardType,
-    String? Function(String?)? validator,
-    bool readOnly = false,
-  }) {
-    return TextFormField(
-      controller: controller,
-      initialValue: initialValue,
-      keyboardType: keyboardType,
-      validator: validator,
-      readOnly: readOnly,
-      decoration: _inputDecoration(label: label, hint: hint, icon: icon),
-    );
-  }
-
-  Widget _buildDropdownField({
-    required String label,
-    required String value,
-    required List<String> options,
-    required void Function(String?) onChanged,
-    IconData? icon,
-    String Function(String)? labelBuilder,
-  }) {
-    return DropdownButtonFormField<String>(
-      initialValue: options.contains(value) ? value : null,
-      decoration: _inputDecoration(label: label, icon: icon),
-      items: options
-          .map(
-            (e) => DropdownMenuItem<String>(
-              value: e,
-              child: Text(labelBuilder != null ? labelBuilder(e) : e),
-            ),
-          )
-          .toList(),
-      onChanged: onChanged,
-      validator: (value) {
-        if ((value ?? '').trim().isEmpty) {
-          return '$label is required';
-        }
-        return null;
-      },
-    );
-  }
-
   Widget _buildPermissionModuleCard({
     required String moduleKey,
     required bool isExportImport,
@@ -802,7 +754,7 @@ class _ScreenCreateInviteState extends State<ScreenCreateInvite> {
                       child: Column(
                         children: [
                           _buildDesktopTwoColumn(
-                            left: _buildTextField(
+                            left: InviteTextField(
                               controller: nameController,
                               label: 'Employee Name',
                               hint: 'Enter full name',
@@ -814,7 +766,7 @@ class _ScreenCreateInviteState extends State<ScreenCreateInvite> {
                                 return null;
                               },
                             ),
-                            right: _buildTextField(
+                            right: InviteTextField(
                               controller: emailController,
                               label: 'Email Address',
                               hint: 'Enter business email',
@@ -837,7 +789,7 @@ class _ScreenCreateInviteState extends State<ScreenCreateInvite> {
                           ),
                           const SizedBox(height: 16),
                           _buildDesktopTwoColumn(
-                            left: _buildTextField(
+                            left: InviteTextField(
                               controller: phoneController,
                               label: 'Phone Number',
                               hint: 'Enter phone number',
@@ -863,7 +815,7 @@ class _ScreenCreateInviteState extends State<ScreenCreateInvite> {
                       child: Column(
                         children: [
                           _buildDesktopTwoColumn(
-                            left: _buildDropdownField(
+                            left: InviteDropdownField(
                               label: 'Role',
                               value: selectedRole,
                               options: userRolesList,
@@ -875,7 +827,7 @@ class _ScreenCreateInviteState extends State<ScreenCreateInvite> {
                                 _applyRoleDefaults(nextRole);
                               },
                             ),
-                            right: _buildDropdownField(
+                            right: InviteDropdownField(
                               label: 'Department',
                               value: selectedDepartment,
                               options: inviteDepartmentOptions,
@@ -888,7 +840,7 @@ class _ScreenCreateInviteState extends State<ScreenCreateInvite> {
                           ),
                           const SizedBox(height: 16),
                           _buildDesktopTwoColumn(
-                            left: _buildDropdownField(
+                            left: InviteDropdownField(
                               label: 'Designation',
                               value: selectedDesignation,
                               options: _designationOptionsForSelectedDepartment,
@@ -899,7 +851,7 @@ class _ScreenCreateInviteState extends State<ScreenCreateInvite> {
                                 });
                               },
                             ),
-                            right: _buildDropdownField(
+                            right: InviteDropdownField(
                               label: 'Access Scope',
                               value: selectedAccessScope,
                               options: accessScopeList,
