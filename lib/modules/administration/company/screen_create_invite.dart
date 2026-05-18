@@ -6,6 +6,7 @@ import 'package:QUIK/modules/administration/users/services/user_management_servi
 
 import 'create_invite/invite_constants.dart';
 import 'create_invite/widgets/permission_chip.dart';
+import 'create_invite/widgets/invite_section_card.dart';
 
 class ScreenCreateInvite extends StatefulWidget {
   final String companyId;
@@ -501,66 +502,6 @@ class _ScreenCreateInviteState extends State<ScreenCreateInvite> {
     );
   }
 
-  Widget _buildSectionCard({
-    required String title,
-    required String subtitle,
-    required Widget child,
-    Widget? trailing,
-  }) {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(22),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: inviteCardBorderColor),
-        boxShadow: const [
-          BoxShadow(
-            color: Color(0x0D0F172A),
-            blurRadius: 18,
-            offset: Offset(0, 8),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      title,
-                      style: const TextStyle(
-                        fontSize: 20,
-                        fontWeight: FontWeight.w700,
-                        color: inviteHeadingTextColor,
-                      ),
-                    ),
-                    const SizedBox(height: 6),
-                    Text(
-                      subtitle,
-                      style: const TextStyle(
-                        fontSize: 13,
-                        color: inviteMutedTextColor,
-                        height: 1.45,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              if (trailing != null) trailing,
-            ],
-          ),
-          const SizedBox(height: 18),
-          child,
-        ],
-      ),
-    );
-  }
-
   Widget _buildPermissionModuleCard({
     required String moduleKey,
     required bool isExportImport,
@@ -928,7 +869,7 @@ class _ScreenCreateInviteState extends State<ScreenCreateInvite> {
                       ],
                     ),
                     const SizedBox(height: 20),
-                    _buildSectionCard(
+                    InviteSectionCard(
                       title: 'Basic Details',
                       subtitle:
                           'Enter employee identity details for the invitation.',
@@ -983,7 +924,7 @@ class _ScreenCreateInviteState extends State<ScreenCreateInvite> {
                       ),
                     ),
                     const SizedBox(height: 18),
-                    _buildSectionCard(
+                    InviteSectionCard(
                       title: 'Department & Role',
                       subtitle:
                           'Assign the employee to a department and choose the access role.',
@@ -1075,7 +1016,7 @@ class _ScreenCreateInviteState extends State<ScreenCreateInvite> {
                       ),
                     ),
                     const SizedBox(height: 18),
-                    _buildSectionCard(
+                    InviteSectionCard(
                       title: 'Module Permissions',
                       subtitle:
                           'Permissions are aligned with your QUIK ERP modules and submodules.',
