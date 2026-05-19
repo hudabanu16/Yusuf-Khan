@@ -5,10 +5,15 @@ import 'package:QUIK/modules/administration/users/helpers/user_management_format
 import 'package:QUIK/modules/administration/users/services/user_management_service.dart';
 
 import 'create_invite/invite_constants.dart';
-import 'create_invite/widgets/permission_chip.dart';
+import 'create_invite/widgets/invite_form_fields.dart';
 import 'create_invite/widgets/invite_section_card.dart';
 import 'create_invite/widgets/invite_summary_card.dart';
-import 'create_invite/widgets/invite_form_fields.dart';
+import 'create_invite/widgets/permission_chip.dart';
+
+part 'create_invite/invite_page_sections.dart';
+part 'create_invite/invite_footer_buttons.dart';
+part 'create_invite/invite_permission_helpers.dart';
+part 'create_invite/invite_permission_widgets.dart';
 
 class ScreenCreateInvite extends StatefulWidget {
   final String companyId;
@@ -46,11 +51,15 @@ class _ScreenCreateInviteState extends State<ScreenCreateInvite> {
 
   late Map<String, dynamic> permissions;
 
-  // 🔥 CHANGED: 'sales' is completely removed from the export_import array
   List<String> get activeModules {
     return isExportImport
         ? ['dashboard', 'crm', 'finance', 'reports']
         : permissionModuleOrder;
+  }
+
+  List<String> get _designationOptionsForSelectedDepartment {
+    return inviteDesignationOptionsByDepartment[selectedDepartment] ??
+        const <String>[];
   }
 
   @override
@@ -81,54 +90,39 @@ class _ScreenCreateInviteState extends State<ScreenCreateInvite> {
     });
   }
 
-  String _normalizeEmail(String email) {
-    return email.trim().toLowerCase();
+  void _onDesignationChanged(String designation) {
+    setState(() {
+      selectedDesignation = designation;
+    });
   }
 
-  // 🔥 CHANGED: Sales module and inquiryReport completely removed from defaults
-  Map<String, dynamic> _getIndustryDefaultPermissions({
-    required String role,
-    required bool isExportImport,
-  }) {
-    if (isExportImport) {
-      if (role.toLowerCase() == 'admin') {
-        return {
-          'dashboard': {'dashboard': true},
-          'crm': {'customers': true},
-          'finance': {
-            'taxInvoice': true,
-            'paymentReceived': true,
-            'outstanding': true,
-            'expenseEntries': true,
-          },
-          'reports': {
-            'salesReport': true,
-            'customerReport': true,
-            'paymentReport': true,
-          },
-        };
-      } else {
-        return {
-          'dashboard': {'dashboard': true},
-          'crm': {'customers': true},
-        };
-      }
-    }
-    return getDefaultPermissions(role);
+  void _onAccessScopeChanged(String accessScope) {
+    setState(() {
+      selectedAccessScope = accessScope;
+    });
   }
 
-  Map<String, dynamic> _buildUiPermissionState({
-    required String role,
-    required bool isExportImport,
-    required Map<String, dynamic>? permissions,
+  void _onSendInviteNowChanged(bool value) {
+    setState(() {
+      sendInviteNow = value;
+    });
+  }
+
+  void _onPermissionValueChanged({
+    required String moduleKey,
+    required String? submoduleKey,
+    required String action,
+    required bool value,
   }) {
-    return mergePermissionsWithCanonicalShape(
-      permissions ??
-          _getIndustryDefaultPermissions(
-            role: role,
-            isExportImport: isExportImport,
-          ),
-    );
+    setState(() {
+      permissions = _setPermissionValue(
+        permissionsMap: permissions,
+        moduleKey: moduleKey,
+        submoduleKey: submoduleKey,
+        action: action,
+        value: value,
+      );
+    });
   }
 
   void _applyRoleDefaults(String role) {
@@ -144,214 +138,12 @@ class _ScreenCreateInviteState extends State<ScreenCreateInvite> {
     });
   }
 
-  Map<String, dynamic> _readModulePermissions(
-    Map<String, dynamic> permissionsMap,
-    String moduleKey,
-  ) {
-    final moduleValue = permissionsMap[moduleKey];
-
-    if (moduleKey == PermissionModules.dashboard) {
-      return moduleValue is Map<String, dynamic>
-          ? Map<String, dynamic>.from(moduleValue)
-          : <String, dynamic>{};
-    }
-
-    return moduleValue is Map<String, dynamic>
-        ? Map<String, dynamic>.from(moduleValue)
-        : <String, dynamic>{};
-  }
-
-  Map<String, dynamic> _setPermissionValue({
-    required Map<String, dynamic> permissionsMap,
-    required String moduleKey,
-    required String? submoduleKey,
-    required String action,
-    required bool value,
-  }) {
-    final updated = _deepCopyPermissions(permissionsMap);
-
-    if (submoduleKey == null || submoduleKey.isEmpty) {
-      final moduleActions = Map<String, dynamic>.from(updated[moduleKey] ?? {});
-      moduleActions[action] = value;
-      updated[moduleKey] = moduleActions;
-      return updated;
-    }
-
-    final moduleMap = Map<String, dynamic>.from(updated[moduleKey] ?? {});
-    final submoduleMap = Map<String, dynamic>.from(
-      moduleMap[submoduleKey] ?? {},
-    );
-    submoduleMap[action] = value;
-    moduleMap[submoduleKey] = submoduleMap;
-    updated[moduleKey] = moduleMap;
-
-    return updated;
-  }
-
-  Map<String, dynamic> _deepCopyPermissions(Map<String, dynamic> input) {
-    final result = <String, dynamic>{};
-
-    for (final entry in input.entries) {
-      final value = entry.value;
-      if (value is Map) {
-        result[entry.key] = _deepCopyPermissions(
-          Map<String, dynamic>.from(value),
-        );
-      } else {
-        result[entry.key] = value;
-      }
-    }
-
-    return result;
-  }
-
-  // -------------------------------------------------------------
-  // 🔥 CRITICAL FIX: PRE-FLIGHT PERMISSION NORMALIZATION
-  // -------------------------------------------------------------
-  // This safely intercepts the permissions map right before it goes
-  // to Firestore. It forces synchronization between singular/plural
-  // keys (like 'salesOrder' vs 'salesOrders') because occasionally
-  // constants define one, but the ZohoShell checks for the other.
-  Map<String, dynamic> _normalizePermissionsForPayload(
-    Map<String, dynamic> rawPerms,
-  ) {
-    final payload = _deepCopyPermissions(rawPerms);
-
-    // 1. Normalize Sales Modifiers
-    if (payload['sales'] is Map) {
-      final sales = payload['sales'] as Map<String, dynamic>;
-
-      if (sales.containsKey('salesOrder') &&
-          !sales.containsKey('salesOrders')) {
-        sales['salesOrders'] = sales['salesOrder'];
-      } else if (sales.containsKey('salesOrders') &&
-          !sales.containsKey('salesOrder')) {
-        sales['salesOrder'] = sales['salesOrders'];
-      }
-
-      if (sales.containsKey('followUps') && !sales.containsKey('followUp')) {
-        sales['followUp'] = sales['followUps'];
-      } else if (sales.containsKey('followUp') &&
-          !sales.containsKey('followUps')) {
-        sales['followUps'] = sales['followUp'];
-      }
-
-      payload['sales'] = sales;
-    }
-
-    // 2. Normalize Purchase Modifiers
-    if (payload['purchase'] is Map) {
-      final purchase = payload['purchase'] as Map<String, dynamic>;
-
-      if (purchase.containsKey('purchaseOrder') &&
-          !purchase.containsKey('purchaseOrders')) {
-        purchase['purchaseOrders'] = purchase['purchaseOrder'];
-      } else if (purchase.containsKey('purchaseOrders') &&
-          !purchase.containsKey('purchaseOrder')) {
-        purchase['purchaseOrder'] = purchase['purchaseOrders'];
-      }
-
-      payload['purchase'] = purchase;
-    }
-
-    // 3. Normalize CRM Modifiers
-    if (payload['crm'] is Map) {
-      final crm = payload['crm'] as Map<String, dynamic>;
-
-      if (crm.containsKey('customers') && !crm.containsKey('customer')) {
-        crm['customer'] = crm['customers'];
-      } else if (crm.containsKey('customer') && !crm.containsKey('customers')) {
-        crm['customers'] = crm['customer'];
-      }
-
-      payload['crm'] = crm;
-    }
-
-    return payload;
-  }
-
-  int _selectedPermissionCount(
-    Map<String, dynamic> permissionsMap,
-    List<String> activeMods,
-  ) {
-    int count = 0;
-
-    for (final moduleKey in activeMods) {
-      final moduleValue = permissionsMap[moduleKey];
-
-      if (moduleKey == PermissionModules.dashboard) {
-        if (moduleValue is Map) {
-          for (final value in moduleValue.values) {
-            if (value == true) count++;
-          }
-        }
-        continue;
-      }
-
-      if (moduleValue is Map) {
-        for (final submoduleValue in moduleValue.values) {
-          if (submoduleValue is Map) {
-            for (final actionValue in submoduleValue.values) {
-              if (actionValue == true) count++;
-            }
-          }
-        }
-      }
-    }
-
-    return count;
-  }
-
-  int _countEnabledActionsInModule({
-    required String moduleKey,
-    required Map<String, dynamic> modulePermissions,
-  }) {
-    int count = 0;
-
-    if (moduleKey == PermissionModules.dashboard) {
-      for (final value in modulePermissions.values) {
-        if (value == true) count++;
-      }
-      return count;
-    }
-
-    for (final submoduleValue in modulePermissions.values) {
-      if (submoduleValue is Map) {
-        for (final actionValue in submoduleValue.values) {
-          if (actionValue == true) count++;
-        }
-      }
-    }
-
-    return count;
-  }
-
-  int _countTotalActionsInModule({
-    required String moduleKey,
-    required Map<String, dynamic> modulePermissions,
-  }) {
-    int count = 0;
-
-    if (moduleKey == PermissionModules.dashboard) {
-      return modulePermissions.length;
-    }
-
-    for (final submoduleValue in modulePermissions.values) {
-      if (submoduleValue is Map) {
-        count += submoduleValue.length;
-      }
-    }
-
-    return count;
-  }
-
   Future<void> _createInvite() async {
     if (!_formKey.currentState!.validate()) return;
 
     setState(() => isLoading = true);
 
     try {
-      // Apply the normalization fix right before API call
       final normalizedPermissions = _normalizePermissionsForPayload(
         permissions,
       );
@@ -360,7 +152,7 @@ class _ScreenCreateInviteState extends State<ScreenCreateInvite> {
         companyId: widget.companyId,
         email: _normalizeEmail(emailController.text),
         role: selectedRole,
-        permissions: normalizedPermissions, // Used synchronized map
+        permissions: normalizedPermissions,
         invitedByUid: widget.currentUid,
         name: nameController.text.trim(),
         phone: phoneController.text.trim(),
@@ -419,254 +211,6 @@ class _ScreenCreateInviteState extends State<ScreenCreateInvite> {
     }
   }
 
-  InputDecoration _inputDecoration({
-    required String label,
-    String? hint,
-    IconData? icon,
-  }) {
-    return InputDecoration(
-      labelText: label,
-      hintText: hint,
-      prefixIcon: icon == null ? null : Icon(icon, color: inviteMutedTextColor),
-      filled: true,
-      fillColor: Colors.white,
-      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 18),
-      border: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(14),
-        borderSide: const BorderSide(color: inviteCardBorderColor),
-      ),
-      enabledBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(14),
-        borderSide: const BorderSide(color: inviteCardBorderColor),
-      ),
-      focusedBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(14),
-        borderSide: const BorderSide(color: inviteAccentColor, width: 1.3),
-      ),
-      errorBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(14),
-        borderSide: BorderSide(color: Colors.red.shade400),
-      ),
-      focusedErrorBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(14),
-        borderSide: BorderSide(color: Colors.red.shade400),
-      ),
-      labelStyle: const TextStyle(color: inviteMutedTextColor),
-    );
-  }
-
-  Widget _buildPermissionModuleCard({
-    required String moduleKey,
-    required bool isExportImport,
-    required Map<String, dynamic> modulePermissions,
-    required void Function(
-      String moduleKey,
-      String? submoduleKey,
-      String action,
-      bool value,
-    )
-    onActionChanged,
-  }) {
-    final moduleLabel = formatModuleLabel(moduleKey);
-    final selectedCount = _countEnabledActionsInModule(
-      moduleKey: moduleKey,
-      modulePermissions: modulePermissions,
-    );
-    final totalCount = _countTotalActionsInModule(
-      moduleKey: moduleKey,
-      modulePermissions: modulePermissions,
-    );
-
-    return Container(
-      margin: const EdgeInsets.only(bottom: 14),
-      decoration: BoxDecoration(
-        color: const Color(0xFFF8FAFC),
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: const Color(0xFFE5E7EB)),
-      ),
-      child: Theme(
-        data: Theme.of(context).copyWith(
-          dividerColor: Colors.transparent,
-          splashColor: Colors.transparent,
-          highlightColor: Colors.transparent,
-        ),
-        child: ExpansionTile(
-          tilePadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 2),
-          childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 14),
-          title: Row(
-            children: [
-              Expanded(
-                child: Text(
-                  moduleLabel,
-                  style: const TextStyle(
-                    fontSize: 15,
-                    fontWeight: FontWeight.w700,
-                    color: inviteHeadingTextColor,
-                  ),
-                ),
-              ),
-              Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 10,
-                  vertical: 6,
-                ),
-                decoration: BoxDecoration(
-                  color: selectedCount == 0
-                      ? const Color(0xFFF1F5F9)
-                      : const Color(0xFFDBEAFE),
-                  borderRadius: BorderRadius.circular(999),
-                ),
-                child: Text(
-                  '$selectedCount / $totalCount selected',
-                  style: TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w600,
-                    color: selectedCount == 0
-                        ? const Color(0xFF475569)
-                        : const Color(0xFF1D4ED8),
-                  ),
-                ),
-              ),
-            ],
-          ),
-          children: moduleKey == PermissionModules.dashboard
-              ? [
-                  _buildActionGroup(
-                    title: 'Dashboard',
-                    actions: Map<String, bool>.from(modulePermissions),
-                    onChanged: (action, value) =>
-                        onActionChanged(moduleKey, null, action, value),
-                  ),
-                ]
-              : (permissionSubmoduleMap[moduleKey] ?? const <String>[])
-                    .where((submoduleKey) {
-                      // 🔥 CHANGED: Deep strict filtering for export_import
-                      if (isExportImport) {
-                        if (moduleKey == 'sales')
-                          return false; // Strictly blocked
-                        if (moduleKey == 'crm')
-                          return submoduleKey == 'customers';
-                        if (moduleKey == 'finance') {
-                          return [
-                            'taxInvoice',
-                            'paymentReceived',
-                            'outstanding',
-                            'expenseEntries',
-                          ].contains(submoduleKey);
-                        }
-                        if (moduleKey == 'reports') {
-                          return [
-                            'salesReport',
-                            'customerReport', // inquiryReport explicitly blocked
-                            'paymentReport',
-                          ].contains(submoduleKey);
-                        }
-                        return false;
-                      }
-                      return true;
-                    })
-                    .map((submoduleKey) {
-                      final submodulePermissions = Map<String, bool>.from(
-                        modulePermissions[submoduleKey] ?? {},
-                      );
-                      return Container(
-                        margin: const EdgeInsets.only(bottom: 12),
-                        padding: const EdgeInsets.all(14),
-                        decoration: BoxDecoration(
-                          color: Colors.white,
-                          borderRadius: BorderRadius.circular(16),
-                          border: Border.all(color: const Color(0xFFE2E8F0)),
-                        ),
-                        child: _buildActionGroup(
-                          title: formatSubmoduleLabel(submoduleKey),
-                          actions: submodulePermissions,
-                          onChanged: (action, value) => onActionChanged(
-                            moduleKey,
-                            submoduleKey,
-                            action,
-                            value,
-                          ),
-                        ),
-                      );
-                    })
-                    .toList(),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildActionGroup({
-    required String title,
-    required Map<String, bool> actions,
-    required void Function(String action, bool value) onChanged,
-  }) {
-    final selectedCount = actions.values.where((e) => e).length;
-    final totalCount = actions.length;
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          children: [
-            Expanded(
-              child: Text(
-                title,
-                style: const TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w700,
-                  color: inviteHeadingTextColor,
-                ),
-              ),
-            ),
-            Text(
-              '$selectedCount / $totalCount',
-              style: const TextStyle(
-                fontSize: 12,
-                fontWeight: FontWeight.w600,
-                color: inviteMutedTextColor,
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 12),
-        Wrap(
-          spacing: 12,
-          runSpacing: 12,
-          children: actions.entries.map((entry) {
-            return PermissionChip(
-              label: formatPermissionActionLabel(entry.key),
-              value: entry.value,
-              onChanged: (value) => onChanged(entry.key, value),
-            );
-          }).toList(),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildDesktopTwoColumn({required Widget left, required Widget right}) {
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        if (constraints.maxWidth < 860) {
-          return Column(children: [left, const SizedBox(height: 16), right]);
-        }
-        return Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Expanded(child: left),
-            const SizedBox(width: 16),
-            Expanded(child: right),
-          ],
-        );
-      },
-    );
-  }
-
-  List<String> get _designationOptionsForSelectedDepartment {
-    return inviteDesignationOptionsByDepartment[selectedDepartment] ??
-        const <String>[];
-  }
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -699,381 +243,15 @@ class _ScreenCreateInviteState extends State<ScreenCreateInvite> {
                 key: _formKey,
                 child: Column(
                   children: [
-                    Row(
-                      children: [
-                        const Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                'Administration • Users • Invite User',
-                                style: TextStyle(
-                                  fontSize: 13,
-                                  fontWeight: FontWeight.w600,
-                                  color: inviteMutedTextColor,
-                                ),
-                              ),
-                              SizedBox(height: 8),
-                              Text(
-                                'Invite a new employee with structured access and module-based permissions.',
-                                style: TextStyle(
-                                  fontSize: 14,
-                                  color: inviteMutedTextColor,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                        OutlinedButton.icon(
-                          onPressed: isLoading
-                              ? null
-                              : () => Navigator.pop(context),
-                          icon: const Icon(Icons.arrow_back_rounded),
-                          label: const Text('Back'),
-                          style: OutlinedButton.styleFrom(
-                            foregroundColor: inviteHeadingTextColor,
-                            side: const BorderSide(
-                              color: inviteCardBorderColor,
-                            ),
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 18,
-                              vertical: 14,
-                            ),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(14),
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
+                    _buildPageHeader(),
                     const SizedBox(height: 20),
-                    InviteSectionCard(
-                      title: 'Basic Details',
-                      subtitle:
-                          'Enter employee identity details for the invitation.',
-                      child: Column(
-                        children: [
-                          _buildDesktopTwoColumn(
-                            left: InviteTextField(
-                              controller: nameController,
-                              label: 'Employee Name',
-                              hint: 'Enter full name',
-                              icon: Icons.person_outline_rounded,
-                              validator: (v) {
-                                if (v == null || v.trim().isEmpty) {
-                                  return 'Employee name is required';
-                                }
-                                return null;
-                              },
-                            ),
-                            right: InviteTextField(
-                              controller: emailController,
-                              label: 'Email Address',
-                              hint: 'Enter business email',
-                              icon: Icons.mail_outline_rounded,
-                              keyboardType: TextInputType.emailAddress,
-                              validator: (v) {
-                                final value = (v ?? '').trim();
-                                if (value.isEmpty) {
-                                  return 'Email is required';
-                                }
-                                final emailRegex = RegExp(
-                                  r'^[^@\s]+@[^@\s]+\.[^@\s]+$',
-                                );
-                                if (!emailRegex.hasMatch(value)) {
-                                  return 'Enter a valid email';
-                                }
-                                return null;
-                              },
-                            ),
-                          ),
-                          const SizedBox(height: 16),
-                          _buildDesktopTwoColumn(
-                            left: InviteTextField(
-                              controller: phoneController,
-                              label: 'Phone Number',
-                              hint: 'Enter phone number',
-                              icon: Icons.call_outlined,
-                              keyboardType: TextInputType.phone,
-                            ),
-                            right: const SizedBox(),
-                          ),
-                        ],
-                      ),
-                    ),
+                    _buildBasicDetailsSection(),
                     const SizedBox(height: 18),
-                    InviteSectionCard(
-                      title: 'Department & Role',
-                      subtitle:
-                          'Assign the employee to a department and choose the access role.',
-                      trailing: TextButton(
-                        onPressed: isLoading
-                            ? null
-                            : () => _applyRoleDefaults(selectedRole),
-                        child: const Text('Apply Role Defaults'),
-                      ),
-                      child: Column(
-                        children: [
-                          _buildDesktopTwoColumn(
-                            left: InviteDropdownField(
-                              label: 'Role',
-                              value: selectedRole,
-                              options: userRolesList,
-                              icon: Icons.admin_panel_settings_outlined,
-                              labelBuilder: formatRole,
-                              onChanged: (value) {
-                                final nextRole = value ?? UserRoles.sales;
-                                selectedRole = nextRole;
-                                _applyRoleDefaults(nextRole);
-                              },
-                            ),
-                            right: InviteDropdownField(
-                              label: 'Department',
-                              value: selectedDepartment,
-                              options: inviteDepartmentOptions,
-                              icon: Icons.apartment_outlined,
-                              onChanged: (value) {
-                                final department = value ?? 'Sales';
-                                _onDepartmentChanged(department);
-                              },
-                            ),
-                          ),
-                          const SizedBox(height: 16),
-                          _buildDesktopTwoColumn(
-                            left: InviteDropdownField(
-                              label: 'Designation',
-                              value: selectedDesignation,
-                              options: _designationOptionsForSelectedDepartment,
-                              icon: Icons.badge_outlined,
-                              onChanged: (value) {
-                                setState(() {
-                                  selectedDesignation = value ?? '';
-                                });
-                              },
-                            ),
-                            right: InviteDropdownField(
-                              label: 'Access Scope',
-                              value: selectedAccessScope,
-                              options: accessScopeList,
-                              icon: Icons.lock_open_outlined,
-                              labelBuilder: (value) =>
-                                  accessScopeLabels[value] ?? value,
-                              onChanged: (value) {
-                                setState(() {
-                                  selectedAccessScope =
-                                      value ?? AccessScope.company;
-                                });
-                              },
-                            ),
-                          ),
-                          const SizedBox(height: 16),
-                          SwitchListTile.adaptive(
-                            value: sendInviteNow,
-                            onChanged: (value) {
-                              setState(() {
-                                sendInviteNow = value;
-                              });
-                            },
-                            title: const Text(
-                              'Send Invite Now',
-                              style: TextStyle(
-                                fontWeight: FontWeight.w600,
-                                color: inviteHeadingTextColor,
-                              ),
-                            ),
-                            subtitle: const Text(
-                              'Keep this enabled to create a ready-to-share invite immediately.',
-                              style: TextStyle(color: inviteMutedTextColor),
-                            ),
-                            activeThumbColor: inviteAccentColor,
-                            contentPadding: EdgeInsets.zero,
-                          ),
-                          const SizedBox(height: 10),
-                          InviteSummaryCard(
-                            selectedRole: selectedRole,
-                            selectedDepartment: selectedDepartment,
-                            selectedDesignation: selectedDesignation,
-                            selectedAccessScope: selectedAccessScope,
-                            selectedPermissionCount: _selectedPermissionCount(
-                              permissions,
-                              activeModules,
-                            ),
-                            sendInviteNow: sendInviteNow,
-                          ),
-                        ],
-                      ),
-                    ),
+                    _buildDepartmentRoleSection(),
                     const SizedBox(height: 18),
-                    InviteSectionCard(
-                      title: 'Module Permissions',
-                      subtitle:
-                          'Permissions are aligned with your QUIK ERP modules and submodules.',
-                      child: Column(
-                        children: activeModules.map((moduleKey) {
-                          return _buildPermissionModuleCard(
-                            moduleKey: moduleKey,
-                            isExportImport: isExportImport,
-                            modulePermissions: _readModulePermissions(
-                              permissions,
-                              moduleKey,
-                            ),
-                            onActionChanged:
-                                (
-                                  String module,
-                                  String? submodule,
-                                  String action,
-                                  bool value,
-                                ) {
-                                  setState(() {
-                                    permissions = _setPermissionValue(
-                                      permissionsMap: permissions,
-                                      moduleKey: module,
-                                      submoduleKey: submodule,
-                                      action: action,
-                                      value: value,
-                                    );
-                                  });
-                                },
-                          );
-                        }).toList(),
-                      ),
-                    ),
+                    _buildPermissionsSection(),
                     const SizedBox(height: 18),
-                    Container(
-                      width: double.infinity,
-                      padding: const EdgeInsets.all(18),
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(22),
-                        border: Border.all(color: inviteCardBorderColor),
-                        boxShadow: const [
-                          BoxShadow(
-                            color: Color(0x0D0F172A),
-                            blurRadius: 18,
-                            offset: Offset(0, 8),
-                          ),
-                        ],
-                      ),
-                      child: LayoutBuilder(
-                        builder: (context, constraints) {
-                          if (constraints.maxWidth < 700) {
-                            return Column(
-                              children: [
-                                SizedBox(
-                                  width: double.infinity,
-                                  child: OutlinedButton(
-                                    onPressed: isLoading
-                                        ? null
-                                        : () => Navigator.pop(context),
-                                    style: OutlinedButton.styleFrom(
-                                      foregroundColor: inviteHeadingTextColor,
-                                      side: const BorderSide(
-                                        color: inviteCardBorderColor,
-                                      ),
-                                      padding: const EdgeInsets.symmetric(
-                                        vertical: 16,
-                                      ),
-                                      shape: RoundedRectangleBorder(
-                                        borderRadius: BorderRadius.circular(14),
-                                      ),
-                                    ),
-                                    child: const Text('Cancel'),
-                                  ),
-                                ),
-                                const SizedBox(height: 12),
-                                SizedBox(
-                                  width: double.infinity,
-                                  child: ElevatedButton(
-                                    onPressed: isLoading ? null : _createInvite,
-                                    style: ElevatedButton.styleFrom(
-                                      backgroundColor: invitePrimaryColor,
-                                      foregroundColor: Colors.white,
-                                      padding: const EdgeInsets.symmetric(
-                                        vertical: 16,
-                                      ),
-                                      shape: RoundedRectangleBorder(
-                                        borderRadius: BorderRadius.circular(14),
-                                      ),
-                                      elevation: 0,
-                                    ),
-                                    child: isLoading
-                                        ? const SizedBox(
-                                            width: 20,
-                                            height: 20,
-                                            child: CircularProgressIndicator(
-                                              color: Colors.white,
-                                              strokeWidth: 2.4,
-                                            ),
-                                          )
-                                        : const Text(
-                                            'Create Invite',
-                                            style: TextStyle(
-                                              fontWeight: FontWeight.w600,
-                                            ),
-                                          ),
-                                  ),
-                                ),
-                              ],
-                            );
-                          }
-
-                          return Row(
-                            children: [
-                              OutlinedButton(
-                                onPressed: isLoading
-                                    ? null
-                                    : () => Navigator.pop(context),
-                                style: OutlinedButton.styleFrom(
-                                  foregroundColor: inviteHeadingTextColor,
-                                  side: const BorderSide(
-                                    color: inviteCardBorderColor,
-                                  ),
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 22,
-                                    vertical: 16,
-                                  ),
-                                  shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(14),
-                                  ),
-                                ),
-                                child: const Text('Cancel'),
-                              ),
-                              const Spacer(),
-                              ElevatedButton(
-                                onPressed: isLoading ? null : _createInvite,
-                                style: ElevatedButton.styleFrom(
-                                  backgroundColor: invitePrimaryColor,
-                                  foregroundColor: Colors.white,
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 28,
-                                    vertical: 16,
-                                  ),
-                                  shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(14),
-                                  ),
-                                  elevation: 0,
-                                ),
-                                child: isLoading
-                                    ? const SizedBox(
-                                        width: 20,
-                                        height: 20,
-                                        child: CircularProgressIndicator(
-                                          color: Colors.white,
-                                          strokeWidth: 2.4,
-                                        ),
-                                      )
-                                    : const Text(
-                                        'Create Invite',
-                                        style: TextStyle(
-                                          fontWeight: FontWeight.w600,
-                                        ),
-                                      ),
-                              ),
-                            ],
-                          );
-                        },
-                      ),
-                    ),
+                    _buildActionFooter(),
                   ],
                 ),
               ),
