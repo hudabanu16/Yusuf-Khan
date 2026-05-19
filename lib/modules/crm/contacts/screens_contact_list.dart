@@ -37,8 +37,10 @@ class _ScreensContactListState extends State<ScreensContactList> {
   }
 
   Future<Map<String, dynamic>?> _loadCurrentUserProfile(String uid) async {
-    final doc =
-    await FirebaseFirestore.instance.collection('users').doc(uid).get();
+    final doc = await FirebaseFirestore.instance
+        .collection('users')
+        .doc(uid)
+        .get();
     return doc.data();
   }
 
@@ -60,10 +62,14 @@ class _ScreensContactListState extends State<ScreensContactList> {
           cmp = a.phone.toLowerCase().compareTo(b.phone.toLowerCase());
           break;
         case 3:
-          cmp = a.designation.toLowerCase().compareTo(b.designation.toLowerCase());
+          cmp = a.designation.toLowerCase().compareTo(
+            b.designation.toLowerCase(),
+          );
           break;
         case 4:
-          cmp = a.department.toLowerCase().compareTo(b.department.toLowerCase());
+          cmp = a.department.toLowerCase().compareTo(
+            b.department.toLowerCase(),
+          );
           break;
         case 5:
           cmp = (a.isPrimary ? 1 : 0).compareTo(b.isPrimary ? 1 : 0);
@@ -80,9 +86,7 @@ class _ScreensContactListState extends State<ScreensContactList> {
     final currentUser = FirebaseAuth.instance.currentUser;
 
     if (currentUser == null) {
-      return const Scaffold(
-        body: Center(child: Text('Please login again.')),
-      );
+      return const Scaffold(body: Center(child: Text('Please login again.')));
     }
 
     return FutureBuilder<Map<String, dynamic>?>(
@@ -128,15 +132,15 @@ class _ScreensContactListState extends State<ScreensContactList> {
                     padding: const EdgeInsets.only(right: 12),
                     child: c.maxWidth < 700
                         ? IconButton(
-                      tooltip: 'Add Contact',
-                      onPressed: _goAddContact,
-                      icon: const Icon(Icons.add),
-                    )
+                            tooltip: 'Add Contact',
+                            onPressed: _goAddContact,
+                            icon: const Icon(Icons.add),
+                          )
                         : FilledButton.icon(
-                      onPressed: _goAddContact,
-                      icon: const Icon(Icons.add, size: 18),
-                      label: const Text('Add Contact'),
-                    ),
+                            onPressed: _goAddContact,
+                            icon: const Icon(Icons.add, size: 18),
+                            label: const Text('Add Contact'),
+                          ),
                   ),
                 ],
               ),
@@ -149,7 +153,9 @@ class _ScreensContactListState extends State<ScreensContactList> {
 
                   if (customerSnap.hasError) {
                     return Center(
-                      child: Text('Error loading company: ${customerSnap.error}'),
+                      child: Text(
+                        'Error loading company: ${customerSnap.error}',
+                      ),
                     );
                   }
 
@@ -158,11 +164,13 @@ class _ScreensContactListState extends State<ScreensContactList> {
                   }
 
                   final customerData = customerSnap.data!.data() ?? {};
-                  final createdBy = (customerData['createdBy'] ?? '').toString();
-                  final assignedToUid =
-                  (customerData['assignedToUid'] ?? '').toString();
+                  final createdBy = (customerData['createdBy'] ?? '')
+                      .toString();
+                  final assignedToUid = (customerData['assignedToUid'] ?? '')
+                      .toString();
 
-                  final hasAccess = _isAdminOrManager(role) ||
+                  final hasAccess =
+                      _isAdminOrManager(role) ||
                       createdBy == currentUser.uid ||
                       assignedToUid == currentUser.uid;
 
@@ -210,7 +218,9 @@ class _ScreensContactListState extends State<ScreensContactList> {
 
                       if (snapshot.hasError) {
                         return Center(
-                          child: Text('Error loading contacts: ${snapshot.error}'),
+                          child: Text(
+                            'Error loading contacts: ${snapshot.error}',
+                          ),
                         );
                       }
 
@@ -243,21 +253,27 @@ class _ScreensContactListState extends State<ScreensContactList> {
                         filtered = filtered.where((r) => r.isPrimary).toList();
                       }
                       if (_onlyWithEmail) {
-                        filtered =
-                            filtered.where((r) => r.email.trim().isNotEmpty).toList();
+                        filtered = filtered
+                            .where((r) => r.email.trim().isNotEmpty)
+                            .toList();
                       }
                       if (_onlyWithPhone) {
-                        filtered =
-                            filtered.where((r) => r.phone.trim().isNotEmpty).toList();
+                        filtered = filtered
+                            .where((r) => r.phone.trim().isNotEmpty)
+                            .toList();
                       }
 
                       _sortRows(filtered);
 
-                      final primaryCount = rows.where((e) => e.isPrimary).length;
-                      final withEmailCount =
-                          rows.where((e) => e.email.trim().isNotEmpty).length;
-                      final withPhoneCount =
-                          rows.where((e) => e.phone.trim().isNotEmpty).length;
+                      final primaryCount = rows
+                          .where((e) => e.isPrimary)
+                          .length;
+                      final withEmailCount = rows
+                          .where((e) => e.email.trim().isNotEmpty)
+                          .length;
+                      final withPhoneCount = rows
+                          .where((e) => e.phone.trim().isNotEmpty)
+                          .length;
 
                       if (isWide) {
                         return Row(
@@ -273,8 +289,12 @@ class _ScreensContactListState extends State<ScreensContactList> {
                             ),
                             Expanded(
                               child: Padding(
-                                padding:
-                                const EdgeInsets.fromLTRB(10, 10, 14, 14),
+                                padding: const EdgeInsets.fromLTRB(
+                                  10,
+                                  10,
+                                  14,
+                                  14,
+                                ),
                                 child: Column(
                                   children: [
                                     _companySummaryHeader(
@@ -284,8 +304,8 @@ class _ScreensContactListState extends State<ScreensContactList> {
                                       withPhoneCount: withPhoneCount,
                                       onToggleView: allowTableView
                                           ? () => setState(
-                                            () => _tableView = !_tableView,
-                                      )
+                                              () => _tableView = !_tableView,
+                                            )
                                           : null,
                                       showToggle: allowTableView,
                                     ),
@@ -419,30 +439,14 @@ class _ScreensContactListState extends State<ScreensContactList> {
           LayoutBuilder(
             builder: (context, constraints) {
               final cards = [
-                _SummaryPill(
-                  label: 'Visible Contacts',
-                  value: '$total',
-                ),
-                _SummaryPill(
-                  label: 'Primary',
-                  value: '$primaryCount',
-                ),
-                _SummaryPill(
-                  label: 'With Email',
-                  value: '$withEmailCount',
-                ),
-                _SummaryPill(
-                  label: 'With Phone',
-                  value: '$withPhoneCount',
-                ),
+                _SummaryPill(label: 'Visible Contacts', value: '$total'),
+                _SummaryPill(label: 'Primary', value: '$primaryCount'),
+                _SummaryPill(label: 'With Email', value: '$withEmailCount'),
+                _SummaryPill(label: 'With Phone', value: '$withPhoneCount'),
               ];
 
               if (constraints.maxWidth < 640) {
-                return Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
-                  children: cards,
-                );
+                return Wrap(spacing: 8, runSpacing: 8, children: cards);
               }
 
               return Row(
@@ -482,13 +486,13 @@ class _ScreensContactListState extends State<ScreensContactList> {
               suffixIcon: _search.text.trim().isEmpty
                   ? null
                   : IconButton(
-                tooltip: 'Clear',
-                icon: const Icon(Icons.close),
-                onPressed: () {
-                  _search.clear();
-                  setState(() {});
-                },
-              ),
+                      tooltip: 'Clear',
+                      icon: const Icon(Icons.close),
+                      onPressed: () {
+                        _search.clear();
+                        setState(() {});
+                      },
+                    ),
               isDense: true,
               filled: true,
               fillColor: const Color(0xFFF7F8FB),
@@ -541,7 +545,8 @@ class _ScreensContactListState extends State<ScreensContactList> {
   }
 
   Widget _emptyState() {
-    final hasFilters = _search.text.trim().isNotEmpty ||
+    final hasFilters =
+        _search.text.trim().isNotEmpty ||
         _onlyPrimary ||
         _onlyWithEmail ||
         _onlyWithPhone;
@@ -570,10 +575,7 @@ class _ScreensContactListState extends State<ScreensContactList> {
             const SizedBox(height: 14),
             Text(
               hasFilters ? 'No matching contacts found' : 'No contacts found',
-              style: const TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.w800,
-              ),
+              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
             ),
             const SizedBox(height: 6),
             Text(
@@ -646,13 +648,13 @@ class _ScreensContactListState extends State<ScreensContactList> {
                   suffixIcon: _search.text.trim().isEmpty
                       ? null
                       : IconButton(
-                    tooltip: 'Clear',
-                    icon: const Icon(Icons.close),
-                    onPressed: () {
-                      _search.clear();
-                      setState(() {});
-                    },
-                  ),
+                          tooltip: 'Clear',
+                          icon: const Icon(Icons.close),
+                          onPressed: () {
+                            _search.clear();
+                            setState(() {});
+                          },
+                        ),
                   isDense: true,
                   filled: true,
                   fillColor: const Color(0xFFF7F8FB),
@@ -903,12 +905,18 @@ class _ScreensContactListState extends State<ScreensContactList> {
                             children: [
                               IconButton(
                                 tooltip: 'Edit',
-                                icon: const Icon(Icons.edit, color: Colors.blueGrey),
+                                icon: const Icon(
+                                  Icons.edit,
+                                  color: Colors.blueGrey,
+                                ),
                                 onPressed: () => _editContact(r),
                               ),
                               IconButton(
                                 tooltip: 'Delete',
-                                icon: const Icon(Icons.delete, color: Colors.red),
+                                icon: const Icon(
+                                  Icons.delete,
+                                  color: Colors.red,
+                                ),
                                 onPressed: () => _deleteContact(r),
                               ),
                             ],
@@ -939,10 +947,8 @@ class _ScreensContactListState extends State<ScreensContactList> {
     Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (_) => ScreensAddContact(
-          companyRef: widget.companyRef,
-          contactDoc: r.doc,
-        ),
+        builder: (_) =>
+            ScreensAddContact(companyRef: widget.companyRef, contactDoc: r.doc),
       ),
     );
   }
@@ -1003,10 +1009,7 @@ class _SummaryPill extends StatelessWidget {
   final String label;
   final String value;
 
-  const _SummaryPill({
-    required this.label,
-    required this.value,
-  });
+  const _SummaryPill({required this.label, required this.value});
 
   @override
   Widget build(BuildContext context) {
@@ -1023,10 +1026,7 @@ class _SummaryPill extends StatelessWidget {
         children: [
           Text(
             value,
-            style: const TextStyle(
-              fontSize: 18,
-              fontWeight: FontWeight.w800,
-            ),
+            style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
           ),
           const SizedBox(height: 2),
           Text(
@@ -1078,10 +1078,7 @@ class _SideMetricTile extends StatelessWidget {
           ),
           Text(
             value,
-            style: const TextStyle(
-              fontWeight: FontWeight.w900,
-              fontSize: 14,
-            ),
+            style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 14),
           ),
         ],
       ),
@@ -1152,7 +1149,9 @@ class _ContactCard extends StatelessWidget {
                               decoration: BoxDecoration(
                                 color: Colors.green.shade50,
                                 borderRadius: BorderRadius.circular(999),
-                                border: Border.all(color: Colors.green.shade200),
+                                border: Border.all(
+                                  color: Colors.green.shade200,
+                                ),
                               ),
                               child: Text(
                                 'Primary',
@@ -1205,10 +1204,7 @@ class _ContactCard extends StatelessWidget {
                     }
                   },
                   itemBuilder: (context) => const [
-                    PopupMenuItem(
-                      value: 'edit',
-                      child: Text('Edit Contact'),
-                    ),
+                    PopupMenuItem(value: 'edit', child: Text('Edit Contact')),
                     PopupMenuItem(
                       value: 'delete',
                       child: Text('Delete Contact'),
@@ -1228,10 +1224,7 @@ class _MiniBadge extends StatelessWidget {
   final IconData icon;
   final String text;
 
-  const _MiniBadge({
-    required this.icon,
-    required this.text,
-  });
+  const _MiniBadge({required this.icon, required this.text});
 
   @override
   Widget build(BuildContext context) {
@@ -1252,10 +1245,7 @@ class _MiniBadge extends StatelessWidget {
             child: Text(
               text,
               overflow: TextOverflow.ellipsis,
-              style: const TextStyle(
-                fontWeight: FontWeight.w600,
-                fontSize: 12,
-              ),
+              style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 12),
             ),
           ),
         ],
