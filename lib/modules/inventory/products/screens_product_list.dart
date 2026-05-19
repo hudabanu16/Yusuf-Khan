@@ -28,7 +28,7 @@ class _ScreensProductListState extends State<ScreensProductList> {
   String _natureFilter = 'all';
   String _machineTypeFilter = 'all';
   String _familyFilter = 'all';
-  String _brandFilter = 'all';
+  String _makeFilter = 'all';
   String _accessoryGroupFilter = 'all';
   String _spareGroupFilter = 'all';
   String _compatibilityFilter = 'all';
@@ -71,6 +71,10 @@ class _ScreensProductListState extends State<ScreensProductList> {
     return value?.toString().trim().toLowerCase() ?? '';
   }
 
+  bool _isMachine(dynamic nature) => _normalizedNature(nature) == 'machine';
+  bool _isAccessory(dynamic nature) => _normalizedNature(nature) == 'accessory';
+  bool _isSpare(dynamic nature) => _normalizedNature(nature) == 'spare';
+
   String _natureLabel(dynamic value) {
     final nature = _normalizedNature(value);
     if (nature.isEmpty) return 'Standard';
@@ -101,10 +105,10 @@ class _ScreensProductListState extends State<ScreensProductList> {
   Widget _buildNatureBadge(String natureLabel) {
     final color = _natureColor(natureLabel);
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
       decoration: BoxDecoration(
         color: color.withOpacity(0.1),
-        borderRadius: BorderRadius.circular(6),
+        borderRadius: BorderRadius.circular(4),
         border: Border.all(color: color.withOpacity(0.3)),
       ),
       child: Text(
@@ -118,41 +122,73 @@ class _ScreensProductListState extends State<ScreensProductList> {
     );
   }
 
-  String _machineHierarchy(Map<String, dynamic> data, int compatCount) {
+  String _formatSupportedCategories(List<String> items) {
+    if (items.isEmpty) return 'None';
+    if (items.length <= 2) return items.join(', ');
+    return '${items[0]}, ${items[1]} +${items.length - 2} more';
+  }
+
+  String _machineCountLabel(int count, {bool usedIn = false}) {
+    final word = count == 1 ? 'Equipment' : 'Equipment';
+    return usedIn ? 'Used In: $count $word' : 'Compatible: $count $word';
+  }
+
+  String _formatFilterLabel(String value) {
+    switch (value) {
+      case 'low_stock':
+        return 'Low Stock';
+      case 'out_of_stock':
+        return 'Out of Stock';
+      case 'in_stock':
+        return 'In Stock';
+      case 'has_compatibility':
+        return 'Compatible';
+      case 'no_compatibility':
+        return 'No Compatibility';
+      case 'all':
+        return 'All';
+      default:
+        return value.split('_').map((e) => e.isNotEmpty ? '${e[0].toUpperCase()}${e.substring(1)}' : '').join(' ');
+    }
+  }
+
+  String _machineHierarchy(Map<String, dynamic> data, int compatCount, Map<String, String> subcategoryNameCache) {
     final nature = _normalizedNature(data['productNatureLower'] ?? data['productNature'] ?? data['nature']);
 
-    if (nature == 'machine') {
+    if (_isMachine(nature)) {
       final cat = (data['category'] ?? '').toString().trim();
       final sub = (data['subcategory'] ?? '').toString().trim();
       final type = (data['machineType'] ?? data['type'] ?? '').toString().trim();
       final parts = [cat, sub, type].where((e) => e.isNotEmpty).toList();
-      return parts.isEmpty ? '—' : parts.join('\n↳ ');
-    } else if (nature == 'accessory') {
+      return parts.isEmpty ? '—' : parts.join(' → ');
+    } else if (_isAccessory(nature)) {
       final group = (data['accessoryGroupName'] ?? data['accessoryGroup'] ?? '').toString().trim();
       final main = group.isEmpty ? 'Accessory' : group;
-      return compatCount > 0 ? '$main\n↳ Compatible: $compatCount Machines' : main;
-    } else if (nature == 'spare') {
+
+      List<String> supportedSubs = [];
+      if (data['compatibleSubcategoryNames'] is List && (data['compatibleSubcategoryNames'] as List).isNotEmpty) {
+        supportedSubs = List<String>.from(data['compatibleSubcategoryNames']);
+      } else if (data['compatibleSubcategories'] is List) {
+        supportedSubs = (data['compatibleSubcategories'] as List).map((id) {
+          return subcategoryNameCache[id.toString()] ?? id.toString();
+        }).toList();
+      }
+
+      String supportsText = supportedSubs.isNotEmpty ? '\n• Supports: ${_formatSupportedCategories(supportedSubs)}' : '';
+      String compatText = compatCount > 0 ? '\n• ${_machineCountLabel(compatCount, usedIn: true)}' : '';
+
+      return '$main$supportsText$compatText';
+    } else if (_isSpare(nature)) {
       final group = (data['spareGroupName'] ?? data['spareGroup'] ?? '').toString().trim();
       final main = group.isEmpty ? 'Spare Part' : group;
-      return compatCount > 0 ? '$main\n↳ Compatible: $compatCount Machines' : main;
+      final type = (data['compatibleMachineType'] ?? '').toString().trim();
+
+      String typeText = type.isNotEmpty ? '\n• Type: $type' : '';
+      String compatText = compatCount > 0 ? '\n• ${_machineCountLabel(compatCount, usedIn: false)}' : '';
+
+      return '$main$typeText$compatText';
     }
     return '—';
-  }
-
-  List<String> _compatibleMachineNames(Map<String, dynamic> data) {
-    final compat = data['compatibleProductNames'] ?? data['compatibleModels'];
-    if (compat is! List) return [];
-    return compat.map((e) {
-      if (e is String) return e.trim();
-      if (e is Map) return (e['name'] ?? e['id'] ?? '').toString().trim();
-      return '';
-    }).where((e) => e.isNotEmpty).toList();
-  }
-
-  String _compatiblePreview(List<Map<String, String>> models) {
-    if (models.isEmpty) return '';
-    if (models.length <= 2) return models.map((e) => e['name']).join(', ');
-    return '${models[0]['name']}, ${models[1]['name']} +${models.length - 2} more';
   }
 
   List<Map<String, String>> _resolveCompatibleMachines(
@@ -191,7 +227,7 @@ class _ScreensProductListState extends State<ScreensProductList> {
           });
         } else {
           // Safe Fallback using available legacy names if document is missing
-          String fallbackName = 'Unknown Machine ($id)';
+          String fallbackName = 'Unknown Equipment ($id)';
           if (i < parsedNamesOrMaps.length) {
             final fallbackItem = parsedNamesOrMaps[i];
             if (fallbackItem is String && fallbackItem.trim().isNotEmpty) {
@@ -261,7 +297,7 @@ class _ScreensProductListState extends State<ScreensProductList> {
     return docNature.toLowerCase() == selectedNature.toLowerCase();
   }
 
-  void _showCompatibleModelsDialog(String productName, List<Map<String, String>> models) {
+  void _showCompatibleModelsDialog(String productName, List<Map<String, String>> models, {required bool isAccessory}) {
     String dialogSearch = '';
 
     // Performance Optimization: Cache lowercase strings once
@@ -282,48 +318,56 @@ class _ScreensProductListState extends State<ScreensProductList> {
             return (m['searchKey'] as String).contains(dialogSearch);
           }).map((m) => m['data'] as Map<String, String>).toList();
 
+          final titlePrefix = isAccessory ? 'Used In Equipment' : 'Compatible Equipment';
+
           return AlertDialog(
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            titlePadding: const EdgeInsets.fromLTRB(20, 20, 20, 10),
+            contentPadding: const EdgeInsets.symmetric(horizontal: 20),
+            actionsPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
             title: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               mainAxisSize: MainAxisSize.min,
               children: [
                 Row(
                   children: [
-                    const Icon(Icons.precision_manufacturing_outlined, color: Colors.blueGrey),
-                    const SizedBox(width: 10),
+                    const Icon(Icons.precision_manufacturing_outlined, color: Colors.blueGrey, size: 20),
+                    const SizedBox(width: 8),
                     Expanded(
                       child: Text(
-                        'Compatible Machines (${models.length})',
+                        '$titlePrefix (${models.length})',
                         style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
                       ),
                     ),
                   ],
                 ),
-                const SizedBox(height: 4),
-                Text(productName, style: const TextStyle(fontSize: 13, color: Colors.blueGrey, fontWeight: FontWeight.normal)),
-                const SizedBox(height: 16),
-                TextField(
-                  decoration: InputDecoration(
-                    hintText: 'Search machines...',
-                    prefixIcon: const Icon(Icons.search, size: 18),
-                    isDense: true,
-                    filled: true,
-                    fillColor: const Color(0xFFF8FAFC),
-                    contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
-                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: const BorderSide(color: Color(0xFFE4E7EC))),
-                    enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: const BorderSide(color: Color(0xFFE4E7EC))),
-                    focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: const BorderSide(color: Colors.blue)),
+                const SizedBox(height: 6),
+                Text(productName, style: const TextStyle(fontSize: 12, color: Colors.blueGrey, fontWeight: FontWeight.normal)),
+                const SizedBox(height: 14),
+                SizedBox(
+                  height: 36,
+                  child: TextField(
+                    decoration: InputDecoration(
+                      hintText: 'Search equipment...',
+                      prefixIcon: const Icon(Icons.search, size: 16),
+                      isDense: true,
+                      filled: true,
+                      fillColor: const Color(0xFFF8FAFC),
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 0),
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(6), borderSide: const BorderSide(color: Color(0xFFE4E7EC))),
+                      enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(6), borderSide: const BorderSide(color: Color(0xFFE4E7EC))),
+                      focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(6), borderSide: const BorderSide(color: Colors.blue)),
+                    ),
+                    onChanged: (val) => setDialogState(() => dialogSearch = val.toLowerCase()),
                   ),
-                  onChanged: (val) => setDialogState(() => dialogSearch = val.toLowerCase()),
                 ),
               ],
             ),
             content: SizedBox(
-              width: 480,
+              width: MediaQuery.of(ctx).size.width > 600 ? 480 : MediaQuery.of(ctx).size.width * 0.92,
               height: 400,
               child: filtered.isEmpty
-                  ? const Center(child: Text('No compatible machines found', style: TextStyle(color: Colors.grey)))
+                  ? const Center(child: Text('No compatible equipment found', style: TextStyle(color: Colors.grey, fontSize: 13)))
                   : ListView.separated(
                 itemCount: filtered.length,
                 separatorBuilder: (_, __) => const Divider(height: 1, color: Color(0xFFE2E8F0)),
@@ -337,16 +381,30 @@ class _ScreensProductListState extends State<ScreensProductList> {
                   final hierarchyParts = [mCat, mSub, mType].where((e) => e.isNotEmpty).toList();
                   final hierarchyStr = hierarchyParts.join(' → ');
 
-                  return ListTile(
-                    dense: true,
-                    contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                    leading: const CircleAvatar(
-                      backgroundColor: Color(0xFFF1F5F9),
-                      radius: 16,
-                      child: Icon(Icons.precision_manufacturing, size: 16, color: Color(0xFF64748B)),
+                  return Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 8),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Padding(
+                          padding: EdgeInsets.only(top: 2),
+                          child: Icon(Icons.precision_manufacturing, size: 14, color: Color(0xFF64748B)),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(mName, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: Color(0xFF1E293B))),
+                              if (hierarchyStr.isNotEmpty) ...[
+                                const SizedBox(height: 2),
+                                Text(hierarchyStr, style: const TextStyle(fontSize: 11, color: Color(0xFF64748B))),
+                              ]
+                            ],
+                          ),
+                        ),
+                      ],
                     ),
-                    title: Text(mName, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
-                    subtitle: hierarchyStr.isNotEmpty ? Text(hierarchyStr, style: const TextStyle(fontSize: 11, color: Colors.blueGrey)) : null,
                   );
                 },
               ),
@@ -354,7 +412,7 @@ class _ScreensProductListState extends State<ScreensProductList> {
             actions: [
               TextButton(
                 onPressed: () => Navigator.pop(ctx),
-                child: const Text('Close'),
+                child: const Text('Close', style: TextStyle(fontSize: 13)),
               )
             ],
           );
@@ -373,7 +431,7 @@ class _ScreensProductListState extends State<ScreensProductList> {
     required List<String> natureOptions,
     required List<String> machineTypeOptions,
     required List<String> familyOptions,
-    required List<String> brandOptions,
+    required List<String> makeOptions,
     required List<String> accessoryGroupOptions,
     required List<String> spareGroupOptions,
   }) {
@@ -383,7 +441,7 @@ class _ScreensProductListState extends State<ScreensProductList> {
     String newNature = _natureFilter;
     String newMachine = _machineTypeFilter;
     String newFamily = _familyFilter;
-    String newBrand = _brandFilter;
+    String newMake = _makeFilter;
     String newAcc = _accessoryGroupFilter;
     String newSpare = _spareGroupFilter;
 
@@ -392,7 +450,7 @@ class _ScreensProductListState extends State<ScreensProductList> {
     if (newNature != 'all' && !natureOptions.contains(newNature)) { newNature = 'all'; needsUpdate = true; }
     if (newMachine != 'all' && !machineTypeOptions.contains(newMachine)) { newMachine = 'all'; needsUpdate = true; }
     if (newFamily != 'all' && !familyOptions.contains(newFamily)) { newFamily = 'all'; needsUpdate = true; }
-    if (newBrand != 'all' && !brandOptions.contains(newBrand)) { newBrand = 'all'; needsUpdate = true; }
+    if (newMake != 'all' && !makeOptions.contains(newMake)) { newMake = 'all'; needsUpdate = true; }
     if (newAcc != 'all' && !accessoryGroupOptions.contains(newAcc)) { newAcc = 'all'; needsUpdate = true; }
     if (newSpare != 'all' && !spareGroupOptions.contains(newSpare)) { newSpare = 'all'; needsUpdate = true; }
 
@@ -405,7 +463,7 @@ class _ScreensProductListState extends State<ScreensProductList> {
             _natureFilter = newNature;
             _machineTypeFilter = newMachine;
             _familyFilter = newFamily;
-            _brandFilter = newBrand;
+            _makeFilter = newMake;
             _accessoryGroupFilter = newAcc;
             _spareGroupFilter = newSpare;
           });
@@ -428,14 +486,16 @@ class _ScreensProductListState extends State<ScreensProductList> {
         height: size,
         decoration: BoxDecoration(
           color: Colors.white,
-          borderRadius: BorderRadius.circular(8),
+          borderRadius: BorderRadius.circular(6),
           border: Border.all(color: const Color(0xFFE4E7EC)),
         ),
         child: ClipRRect(
-          borderRadius: BorderRadius.circular(7),
+          borderRadius: BorderRadius.circular(5),
           child: Image.network(
             imageUrl,
             fit: BoxFit.cover,
+            filterQuality: FilterQuality.medium,
+            gaplessPlayback: true,
             loadingBuilder: (context, child, loadingProgress) {
               if (loadingProgress == null) return child;
               return Center(
@@ -460,9 +520,14 @@ class _ScreensProductListState extends State<ScreensProductList> {
   }
 
   Widget _buildInitialsFallback(String name, double size) {
-    return CircleAvatar(
-      radius: size / 2,
-      backgroundColor: const Color(0xFFEAF2FF),
+    return Container(
+      width: size,
+      height: size,
+      decoration: BoxDecoration(
+        color: const Color(0xFFEAF2FF),
+        borderRadius: BorderRadius.circular(6),
+      ),
+      alignment: Alignment.center,
       child: Text(
         name.isNotEmpty ? name[0].toUpperCase() : '?',
         style: TextStyle(
@@ -597,15 +662,21 @@ class _ScreensProductListState extends State<ScreensProductList> {
   bool _matchesSearch(Map<String, dynamic> data, List<Map<String, String>> cachedCompatDetails, String cachedHierarchy, String cachedNatureLabel) {
     if (_searchText.isEmpty) return true;
 
+    final subNames = data['compatibleSubcategoryNames'];
+    final mType = data['compatibleMachineType'];
+    final make = data['make'] ?? data['brand'];
+
     final fields = [
       data['name'],
       data['itemCode'],
       data['sku'],
-      data['brand'],
+      make,
       data['category'],
       data['subcategory'],
       cachedNatureLabel,
       cachedHierarchy,
+      if (subNames is List) ...subNames.map((e) => e.toString()),
+      if (mType != null) mType.toString(),
       ...cachedCompatDetails.map((e) => e['name']!),
     ];
 
@@ -649,7 +720,17 @@ class _ScreensProductListState extends State<ScreensProductList> {
 
   bool _matchesSubcategoryFilter(Map<String, dynamic> data) {
     if (_subcategoryFilter == 'all') return true;
-    return _subcategoryName(data).toLowerCase() == _subcategoryFilter.toLowerCase();
+
+    final filter = _subcategoryFilter.toLowerCase();
+    final nature = _normalizedNature(data['productNatureLower'] ?? data['productNature'] ?? data['nature']);
+
+    if (_isAccessory(nature)) {
+      final subNames = data['compatibleSubcategoryNames'];
+      if (subNames is List && subNames.any((e) => e.toString().toLowerCase() == filter)) return true;
+      return false;
+    }
+
+    return _subcategoryName(data).toLowerCase() == filter;
   }
 
   bool _matchesIndustrialFilters(Map<String, dynamic> data, int compatCount) {
@@ -657,7 +738,10 @@ class _ScreensProductListState extends State<ScreensProductList> {
 
     if (_familyFilter != 'all' && (data['family'] ?? '').toString().trim() != _familyFilter) return false;
     if (_machineTypeFilter != 'all' && (data['machineType'] ?? data['type'] ?? '').toString().trim() != _machineTypeFilter) return false;
-    if (_brandFilter != 'all' && (data['brand'] ?? '').toString().trim() != _brandFilter) return false;
+
+    final make = (data['make'] ?? data['brand'] ?? '').toString().trim();
+    if (_makeFilter != 'all' && make != _makeFilter) return false;
+
     if (_accessoryGroupFilter != 'all' && (data['accessoryGroupName'] ?? data['accessoryGroup'] ?? '').toString().trim() != _accessoryGroupFilter) return false;
     if (_spareGroupFilter != 'all' && (data['spareGroupName'] ?? data['spareGroup'] ?? '').toString().trim() != _spareGroupFilter) return false;
 
@@ -685,7 +769,7 @@ class _ScreensProductListState extends State<ScreensProductList> {
       case 'Out of Stock':
         return Colors.red;
       default:
-        return Colors.blue;
+        return Colors.blueGrey;
     }
   }
 
@@ -780,9 +864,10 @@ class _ScreensProductListState extends State<ScreensProductList> {
     final confirm = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Delete Product'),
+        title: const Text('Delete Product', style: TextStyle(fontSize: 16)),
         content: Text(
           'Are you sure you want to delete "$productName"?\n\nThis action cannot be undone.',
+          style: const TextStyle(fontSize: 14),
         ),
         actions: [
           TextButton(
@@ -832,69 +917,6 @@ class _ScreensProductListState extends State<ScreensProductList> {
     }
   }
 
-  Future<void> _showFabMenu({
-    required String companyId,
-    required String currentUserUid,
-    required String currentUserRole,
-  }) async {
-    final ctx = _fabKey.currentContext;
-    if (ctx == null) return;
-
-    final RenderBox button = ctx.findRenderObject() as RenderBox;
-    final RenderBox overlay =
-    Overlay.of(context).context.findRenderObject() as RenderBox;
-    final Offset topLeft = button.localToGlobal(Offset.zero, ancestor: overlay);
-    final Offset bottomRight = button.localToGlobal(
-      button.size.bottomRight(Offset.zero),
-      ancestor: overlay,
-    );
-
-    final selected = await showMenu<String>(
-      context: context,
-      position: RelativeRect.fromLTRB(
-        topLeft.dx,
-        topLeft.dy - 120,
-        overlay.size.width - bottomRight.dx,
-        overlay.size.height - topLeft.dy,
-      ),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      items: const [
-        PopupMenuItem<String>(
-          value: 'add',
-          child: ListTile(
-            dense: true,
-            contentPadding: EdgeInsets.zero,
-            leading: Icon(Icons.add_box_outlined),
-            title: Text('Add Product'),
-          ),
-        ),
-        PopupMenuItem<String>(
-          value: 'import',
-          child: ListTile(
-            dense: true,
-            contentPadding: EdgeInsets.zero,
-            leading: Icon(Icons.file_upload_outlined),
-            title: Text('Import Product'),
-          ),
-        ),
-      ],
-    );
-
-    if (!mounted || selected == null) return;
-
-    if (selected == 'add') {
-      _openAddProduct(
-        companyId: companyId,
-        currentUserUid: currentUserUid,
-        currentUserRole: currentUserRole,
-      );
-    } else if (selected == 'import') {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Import product coming soon')),
-      );
-    }
-  }
-
   void _showFilterSheet({
     required List<String> categoryOptions,
     required List<String> subcategoryOptions,
@@ -902,7 +924,7 @@ class _ScreensProductListState extends State<ScreensProductList> {
     required List<String> natureOptions,
     required List<String> familyOptions,
     required List<String> machineTypeOptions,
-    required List<String> brandOptions,
+    required List<String> makeOptions,
     required List<String> accessoryGroupOptions,
     required List<String> spareGroupOptions,
   }) {
@@ -913,7 +935,7 @@ class _ScreensProductListState extends State<ScreensProductList> {
     String tempNature = _natureFilter;
     String tempFamily = _familyFilter;
     String tempMachineType = _machineTypeFilter;
-    String tempBrand = _brandFilter;
+    String tempMake = _makeFilter;
     String tempAccessoryGroup = _accessoryGroupFilter;
     String tempSpareGroup = _spareGroupFilter;
     String tempCompatibility = _compatibilityFilter;
@@ -921,8 +943,9 @@ class _ScreensProductListState extends State<ScreensProductList> {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
+      backgroundColor: Colors.white,
       shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(18)),
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
       ),
       builder: (context) {
         return StatefulBuilder(
@@ -934,79 +957,50 @@ class _ScreensProductListState extends State<ScreensProductList> {
             return SafeArea(
               child: Container(
                 constraints: BoxConstraints(maxHeight: MediaQuery.of(context).size.height * 0.85),
-                padding: const EdgeInsets.fromLTRB(18, 18, 18, 22),
+                padding: const EdgeInsets.fromLTRB(20, 20, 20, 24),
                 child: Column(
                   children: [
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        const Text('Advanced Filters', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-                        IconButton(onPressed: () => Navigator.pop(context), icon: const Icon(Icons.close)),
+                        const Text('Advanced Filters', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                        IconButton(
+                            padding: EdgeInsets.zero,
+                            constraints: const BoxConstraints(),
+                            onPressed: () => Navigator.pop(context),
+                            icon: const Icon(Icons.close, size: 20)
+                        ),
                       ],
                     ),
-                    const Divider(),
+                    const Divider(height: 24),
                     Expanded(
                       child: SingleChildScrollView(
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            const Text('Basic Status', style: TextStyle(fontWeight: FontWeight.w600, color: Colors.blueGrey)),
-                            const SizedBox(height: 8),
-                            Row(
-                              children: [
-                                Expanded(
-                                  child: DropdownButtonFormField<String>(
-                                    value: tempStatus,
-                                    decoration: InputDecoration(labelText: 'Status', border: OutlineInputBorder(borderRadius: BorderRadius.circular(12))),
-                                    items: const [
-                                      DropdownMenuItem(value: 'all', child: Text('All Status')),
-                                      DropdownMenuItem(value: 'active', child: Text('Active')),
-                                      DropdownMenuItem(value: 'inactive', child: Text('Inactive')),
-                                    ],
-                                    onChanged: (value) => modalSetState(() => tempStatus = value ?? 'all'),
-                                  ),
-                                ),
-                                const SizedBox(width: 10),
-                                Expanded(
-                                  child: DropdownButtonFormField<String>(
-                                    value: tempStock,
-                                    decoration: InputDecoration(labelText: 'Stock', border: OutlineInputBorder(borderRadius: BorderRadius.circular(12))),
-                                    items: const [
-                                      DropdownMenuItem(value: 'all', child: Text('All Stock')),
-                                      DropdownMenuItem(value: 'in_stock', child: Text('In Stock')),
-                                      DropdownMenuItem(value: 'low_stock', child: Text('Low Stock')),
-                                      DropdownMenuItem(value: 'out_of_stock', child: Text('Out of Stock')),
-                                    ],
-                                    onChanged: (value) => modalSetState(() => tempStock = value ?? 'all'),
-                                  ),
-                                ),
-                              ],
-                            ),
-                            const SizedBox(height: 16),
-
-                            const Text('ERP Hierarchy', style: TextStyle(fontWeight: FontWeight.w600, color: Colors.blueGrey)),
-                            const SizedBox(height: 8),
+                            const Text('A. Product Classification', style: TextStyle(fontWeight: FontWeight.w600, color: Colors.blueGrey, fontSize: 13)),
+                            const SizedBox(height: 10),
                             Row(
                               children: [
                                 Expanded(
                                   child: DropdownButtonFormField<String>(
                                     value: tempNature,
-                                    decoration: InputDecoration(labelText: 'Nature', border: OutlineInputBorder(borderRadius: BorderRadius.circular(12))),
+                                    decoration: InputDecoration(labelText: 'Product Nature', border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)), isDense: true),
                                     items: [
-                                      const DropdownMenuItem(value: 'all', child: Text('All Natures')),
-                                      ...natureOptions.map((e) => DropdownMenuItem(value: e, child: Text(e))),
+                                      const DropdownMenuItem(value: 'all', child: Text('All Natures', style: TextStyle(fontSize: 13))),
+                                      ...natureOptions.map((e) => DropdownMenuItem(value: e, child: Text(e, style: const TextStyle(fontSize: 13)))),
                                     ],
                                     onChanged: (value) => modalSetState(() => tempNature = value ?? 'all'),
                                   ),
                                 ),
-                                const SizedBox(width: 10),
+                                const SizedBox(width: 12),
                                 Expanded(
                                   child: DropdownButtonFormField<String>(
                                     value: tempFamily,
-                                    decoration: InputDecoration(labelText: 'Product Family', border: OutlineInputBorder(borderRadius: BorderRadius.circular(12))),
+                                    decoration: InputDecoration(labelText: 'Product Family', border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)), isDense: true),
                                     items: [
-                                      const DropdownMenuItem(value: 'all', child: Text('All Families')),
-                                      ...familyOptions.map((e) => DropdownMenuItem(value: e, child: Text(e))),
+                                      const DropdownMenuItem(value: 'all', child: Text('All Families', style: TextStyle(fontSize: 13))),
+                                      ...familyOptions.map((e) => DropdownMenuItem(value: e, child: Text(e, style: const TextStyle(fontSize: 13)))),
                                     ],
                                     onChanged: (value) => modalSetState(() => tempFamily = value ?? 'all'),
                                   ),
@@ -1018,54 +1012,90 @@ class _ScreensProductListState extends State<ScreensProductList> {
                               children: [
                                 Expanded(
                                   child: DropdownButtonFormField<String>(
-                                    value: tempMachineType,
-                                    decoration: InputDecoration(labelText: 'Machine Type', border: OutlineInputBorder(borderRadius: BorderRadius.circular(12))),
+                                    value: tempCategory,
+                                    decoration: InputDecoration(labelText: 'Category', border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)), isDense: true),
                                     items: [
-                                      const DropdownMenuItem(value: 'all', child: Text('All Types')),
-                                      ...machineTypeOptions.map((e) => DropdownMenuItem(value: e, child: Text(e))),
+                                      const DropdownMenuItem(value: 'all', child: Text('All Categories', style: TextStyle(fontSize: 13))),
+                                      ...categoryOptions.map((e) => DropdownMenuItem(value: e, child: Text(e, style: const TextStyle(fontSize: 13)))),
                                     ],
-                                    onChanged: (value) => modalSetState(() => tempMachineType = value ?? 'all'),
+                                    onChanged: (value) {
+                                      modalSetState(() {
+                                        tempCategory = value ?? 'all';
+                                        tempSubcategory = 'all';
+                                      });
+                                    },
                                   ),
                                 ),
-                                const SizedBox(width: 10),
+                                const SizedBox(width: 12),
                                 Expanded(
                                   child: DropdownButtonFormField<String>(
-                                    value: tempBrand,
-                                    decoration: InputDecoration(labelText: 'Brand', border: OutlineInputBorder(borderRadius: BorderRadius.circular(12))),
+                                    value: tempSubcategory,
+                                    decoration: InputDecoration(labelText: 'Subcategory', border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)), isDense: true),
                                     items: [
-                                      const DropdownMenuItem(value: 'all', child: Text('All Brands')),
-                                      ...brandOptions.map((e) => DropdownMenuItem(value: e, child: Text(e))),
+                                      const DropdownMenuItem(value: 'all', child: Text('All Subcategories', style: TextStyle(fontSize: 13))),
+                                      ...availableSubs.map((e) => DropdownMenuItem(value: e, child: Text(e, style: const TextStyle(fontSize: 13)))),
                                     ],
-                                    onChanged: (value) => modalSetState(() => tempBrand = value ?? 'all'),
+                                    onChanged: (value) => modalSetState(() => tempSubcategory = value ?? 'all'),
                                   ),
                                 ),
                               ],
                             ),
-                            const SizedBox(height: 16),
+                            const SizedBox(height: 20),
 
-                            const Text('Groups & Categorization', style: TextStyle(fontWeight: FontWeight.w600, color: Colors.blueGrey)),
-                            const SizedBox(height: 8),
+                            const Text('B. Machine Structure', style: TextStyle(fontWeight: FontWeight.w600, color: Colors.blueGrey, fontSize: 13)),
+                            const SizedBox(height: 10),
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: DropdownButtonFormField<String>(
+                                    value: tempMachineType,
+                                    decoration: InputDecoration(labelText: 'Machine Series', border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)), isDense: true),
+                                    items: [
+                                      const DropdownMenuItem(value: 'all', child: Text('All Series', style: TextStyle(fontSize: 13))),
+                                      ...machineTypeOptions.map((e) => DropdownMenuItem(value: e, child: Text(e, style: const TextStyle(fontSize: 13)))),
+                                    ],
+                                    onChanged: (value) => modalSetState(() => tempMachineType = value ?? 'all'),
+                                  ),
+                                ),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: DropdownButtonFormField<String>(
+                                    value: tempMake,
+                                    decoration: InputDecoration(labelText: 'Manufacturer', border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)), isDense: true),
+                                    items: [
+                                      const DropdownMenuItem(value: 'all', child: Text('All Manufacturers', style: TextStyle(fontSize: 13))),
+                                      ...makeOptions.map((e) => DropdownMenuItem(value: e, child: Text(e, style: const TextStyle(fontSize: 13)))),
+                                    ],
+                                    onChanged: (value) => modalSetState(() => tempMake = value ?? 'all'),
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 20),
+
+                            const Text('C. Compatibility Mapping', style: TextStyle(fontWeight: FontWeight.w600, color: Colors.blueGrey, fontSize: 13)),
+                            const SizedBox(height: 10),
                             Row(
                               children: [
                                 Expanded(
                                   child: DropdownButtonFormField<String>(
                                     value: tempAccessoryGroup,
-                                    decoration: InputDecoration(labelText: 'Accessory Group', border: OutlineInputBorder(borderRadius: BorderRadius.circular(12))),
+                                    decoration: InputDecoration(labelText: 'Accessory Group', border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)), isDense: true),
                                     items: [
-                                      const DropdownMenuItem(value: 'all', child: Text('All Acc. Groups')),
-                                      ...accessoryGroupOptions.map((e) => DropdownMenuItem(value: e, child: Text(e))),
+                                      const DropdownMenuItem(value: 'all', child: Text('All Acc. Groups', style: TextStyle(fontSize: 13))),
+                                      ...accessoryGroupOptions.map((e) => DropdownMenuItem(value: e, child: Text(e, style: const TextStyle(fontSize: 13)))),
                                     ],
                                     onChanged: (value) => modalSetState(() => tempAccessoryGroup = value ?? 'all'),
                                   ),
                                 ),
-                                const SizedBox(width: 10),
+                                const SizedBox(width: 12),
                                 Expanded(
                                   child: DropdownButtonFormField<String>(
                                     value: tempSpareGroup,
-                                    decoration: InputDecoration(labelText: 'Spare Group', border: OutlineInputBorder(borderRadius: BorderRadius.circular(12))),
+                                    decoration: InputDecoration(labelText: 'Spare Group', border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)), isDense: true),
                                     items: [
-                                      const DropdownMenuItem(value: 'all', child: Text('All Spare Groups')),
-                                      ...spareGroupOptions.map((e) => DropdownMenuItem(value: e, child: Text(e))),
+                                      const DropdownMenuItem(value: 'all', child: Text('All Spare Groups', style: TextStyle(fontSize: 13))),
+                                      ...spareGroupOptions.map((e) => DropdownMenuItem(value: e, child: Text(e, style: const TextStyle(fontSize: 13)))),
                                     ],
                                     onChanged: (value) => modalSetState(() => tempSpareGroup = value ?? 'all'),
                                   ),
@@ -1077,47 +1107,48 @@ class _ScreensProductListState extends State<ScreensProductList> {
                               children: [
                                 Expanded(
                                   child: DropdownButtonFormField<String>(
-                                    value: tempCategory,
-                                    decoration: InputDecoration(labelText: 'Category', border: OutlineInputBorder(borderRadius: BorderRadius.circular(12))),
-                                    items: [
-                                      const DropdownMenuItem(value: 'all', child: Text('All Categories')),
-                                      ...categoryOptions.map((e) => DropdownMenuItem(value: e, child: Text(e))),
+                                    value: tempCompatibility,
+                                    decoration: InputDecoration(labelText: 'Compatibility Status', border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)), isDense: true),
+                                    items: const [
+                                      DropdownMenuItem(value: 'all', child: Text('All', style: TextStyle(fontSize: 13))),
+                                      DropdownMenuItem(value: 'has_compatibility', child: Text('Compatible', style: TextStyle(fontSize: 13))),
+                                      DropdownMenuItem(value: 'no_compatibility', child: Text('No Compatibility', style: TextStyle(fontSize: 13))),
                                     ],
-                                    onChanged: (value) {
-                                      modalSetState(() {
-                                        tempCategory = value ?? 'all';
-                                        tempSubcategory = 'all';
-                                      });
-                                    },
-                                  ),
-                                ),
-                                const SizedBox(width: 10),
-                                Expanded(
-                                  child: DropdownButtonFormField<String>(
-                                    value: tempSubcategory,
-                                    decoration: InputDecoration(labelText: 'Subcategory', border: OutlineInputBorder(borderRadius: BorderRadius.circular(12))),
-                                    items: [
-                                      const DropdownMenuItem(value: 'all', child: Text('All Subcategories')),
-                                      ...availableSubs.map((e) => DropdownMenuItem(value: e, child: Text(e))),
-                                    ],
-                                    onChanged: (value) => modalSetState(() => tempSubcategory = value ?? 'all'),
+                                    onChanged: (value) => modalSetState(() => tempCompatibility = value ?? 'all'),
                                   ),
                                 ),
                               ],
                             ),
-                            const SizedBox(height: 12),
+                            const SizedBox(height: 20),
+
+                            const Text('D. Inventory Controls', style: TextStyle(fontWeight: FontWeight.w600, color: Colors.blueGrey, fontSize: 13)),
+                            const SizedBox(height: 10),
                             Row(
                               children: [
                                 Expanded(
                                   child: DropdownButtonFormField<String>(
-                                    value: tempCompatibility,
-                                    decoration: InputDecoration(labelText: 'Compatibility', border: OutlineInputBorder(borderRadius: BorderRadius.circular(12))),
+                                    value: tempStatus,
+                                    decoration: InputDecoration(labelText: 'Product Status', border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)), isDense: true),
                                     items: const [
-                                      DropdownMenuItem(value: 'all', child: Text('All')),
-                                      DropdownMenuItem(value: 'has_compatibility', child: Text('Has Compatibility')),
-                                      DropdownMenuItem(value: 'no_compatibility', child: Text('No Compatibility')),
+                                      DropdownMenuItem(value: 'all', child: Text('All Status', style: TextStyle(fontSize: 13))),
+                                      DropdownMenuItem(value: 'active', child: Text('Active', style: TextStyle(fontSize: 13))),
+                                      DropdownMenuItem(value: 'inactive', child: Text('Inactive', style: TextStyle(fontSize: 13))),
                                     ],
-                                    onChanged: (value) => modalSetState(() => tempCompatibility = value ?? 'all'),
+                                    onChanged: (value) => modalSetState(() => tempStatus = value ?? 'all'),
+                                  ),
+                                ),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: DropdownButtonFormField<String>(
+                                    value: tempStock,
+                                    decoration: InputDecoration(labelText: 'Inventory Status', border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)), isDense: true),
+                                    items: const [
+                                      DropdownMenuItem(value: 'all', child: Text('All Stock', style: TextStyle(fontSize: 13))),
+                                      DropdownMenuItem(value: 'in_stock', child: Text('In Stock', style: TextStyle(fontSize: 13))),
+                                      DropdownMenuItem(value: 'low_stock', child: Text('Low Stock', style: TextStyle(fontSize: 13))),
+                                      DropdownMenuItem(value: 'out_of_stock', child: Text('Out of Stock', style: TextStyle(fontSize: 13))),
+                                    ],
+                                    onChanged: (value) => modalSetState(() => tempStock = value ?? 'all'),
                                   ),
                                 ),
                               ],
@@ -1131,7 +1162,10 @@ class _ScreensProductListState extends State<ScreensProductList> {
                       children: [
                         Expanded(
                           child: OutlinedButton(
-                            style: OutlinedButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: 14)),
+                            style: OutlinedButton.styleFrom(
+                              padding: const EdgeInsets.symmetric(vertical: 14),
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                            ),
                             onPressed: () {
                               setState(() {
                                 _statusFilter = 'all';
@@ -1141,7 +1175,7 @@ class _ScreensProductListState extends State<ScreensProductList> {
                                 _natureFilter = 'all';
                                 _familyFilter = 'all';
                                 _machineTypeFilter = 'all';
-                                _brandFilter = 'all';
+                                _makeFilter = 'all';
                                 _accessoryGroupFilter = 'all';
                                 _spareGroupFilter = 'all';
                                 _compatibilityFilter = 'all';
@@ -1154,7 +1188,10 @@ class _ScreensProductListState extends State<ScreensProductList> {
                         const SizedBox(width: 12),
                         Expanded(
                           child: FilledButton(
-                            style: FilledButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: 14)),
+                            style: FilledButton.styleFrom(
+                              padding: const EdgeInsets.symmetric(vertical: 14),
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                            ),
                             onPressed: () {
                               setState(() {
                                 _statusFilter = tempStatus;
@@ -1164,7 +1201,7 @@ class _ScreensProductListState extends State<ScreensProductList> {
                                 _natureFilter = tempNature;
                                 _familyFilter = tempFamily;
                                 _machineTypeFilter = tempMachineType;
-                                _brandFilter = tempBrand;
+                                _makeFilter = tempMake;
                                 _accessoryGroupFilter = tempAccessoryGroup;
                                 _spareGroupFilter = tempSpareGroup;
                                 _compatibilityFilter = tempCompatibility;
@@ -1200,6 +1237,7 @@ class _ScreensProductListState extends State<ScreensProductList> {
         return AlertDialog(
           title: Text(
             categoryId == null ? 'Create Category' : 'Create Subcategory',
+            style: const TextStyle(fontSize: 16),
           ),
           content: TextField(
             controller: controller,
@@ -1208,8 +1246,9 @@ class _ScreensProductListState extends State<ScreensProductList> {
               labelText:
               categoryId == null ? 'Category Name' : 'Subcategory Name',
               border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(12),
+                borderRadius: BorderRadius.circular(8),
               ),
+              isDense: true,
             ),
           ),
           actions: [
@@ -1292,15 +1331,16 @@ class _ScreensProductListState extends State<ScreensProductList> {
       context: context,
       builder: (context) {
         return AlertDialog(
-          title: const Text('Rename Category'),
+          title: const Text('Rename Category', style: TextStyle(fontSize: 16)),
           content: TextField(
             controller: controller,
             autofocus: true,
             decoration: InputDecoration(
               labelText: 'Category Name',
               border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(12),
+                borderRadius: BorderRadius.circular(8),
               ),
+              isDense: true,
             ),
           ),
           actions: [
@@ -1390,15 +1430,16 @@ class _ScreensProductListState extends State<ScreensProductList> {
       context: context,
       builder: (context) {
         return AlertDialog(
-          title: const Text('Rename Subcategory'),
+          title: const Text('Rename Subcategory', style: TextStyle(fontSize: 16)),
           content: TextField(
             controller: controller,
             autofocus: true,
             decoration: InputDecoration(
               labelText: 'Subcategory Name',
               border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(12),
+                borderRadius: BorderRadius.circular(8),
               ),
+              isDense: true,
             ),
           ),
           actions: [
@@ -1475,8 +1516,8 @@ class _ScreensProductListState extends State<ScreensProductList> {
       context: context,
       builder: (context) {
         return AlertDialog(
-          title: Text(title),
-          content: Text(message),
+          title: Text(title, style: const TextStyle(fontSize: 16)),
+          content: Text(message, style: const TextStyle(fontSize: 14)),
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(context, false),
@@ -1669,13 +1710,17 @@ class _ScreensProductListState extends State<ScreensProductList> {
     showDialog<void>(
       context: context,
       builder: (context) {
+        final dialogWidth = MediaQuery.of(context).size.width > 900
+            ? 820.0
+            : MediaQuery.of(context).size.width * 0.95;
+
         return Dialog(
-          insetPadding: const EdgeInsets.all(20),
+          insetPadding: const EdgeInsets.all(16),
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(16),
+            borderRadius: BorderRadius.circular(12),
           ),
           child: Container(
-            width: 820,
+            width: dialogWidth,
             constraints: const BoxConstraints(maxHeight: 620),
             padding: const EdgeInsets.all(16),
             child: Column(
@@ -1686,7 +1731,7 @@ class _ScreensProductListState extends State<ScreensProductList> {
                       child: Text(
                         'Category Manager',
                         style: TextStyle(
-                          fontSize: 18,
+                          fontSize: 16,
                           fontWeight: FontWeight.w700,
                         ),
                       ),
@@ -1700,14 +1745,20 @@ class _ScreensProductListState extends State<ScreensProductList> {
                       },
                       icon: const Icon(
                         Icons.create_new_folder_outlined,
-                        size: 18,
+                        size: 16,
                       ),
-                      label: const Text('New Category'),
+                      label: const Text('New Category', style: TextStyle(fontSize: 13)),
+                      style: OutlinedButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8))
+                      ),
                     ),
                     const SizedBox(width: 8),
                     IconButton(
+                      padding: EdgeInsets.zero,
+                      constraints: const BoxConstraints(),
                       onPressed: () => Navigator.pop(context),
-                      icon: const Icon(Icons.close),
+                      icon: const Icon(Icons.close, size: 20),
                     ),
                   ],
                 ),
@@ -1732,22 +1783,22 @@ class _ScreensProductListState extends State<ScreensProductList> {
 
                       final docs = snap.data?.docs ?? [];
                       if (docs.isEmpty) {
-                        return const Center(child: Text('No categories yet'));
+                        return const Center(child: Text('No categories yet', style: TextStyle(fontSize: 13, color: Colors.blueGrey)));
                       }
 
                       return ListView.separated(
                         itemCount: docs.length,
-                        separatorBuilder: (_, __) => const SizedBox(height: 10),
+                        separatorBuilder: (_, __) => const SizedBox(height: 8),
                         itemBuilder: (context, index) {
                           final doc = docs[index];
                           final data = doc.data();
                           final categoryName = (data['name'] ?? '').toString();
 
                           return Container(
-                            padding: const EdgeInsets.all(12),
+                            padding: const EdgeInsets.all(10),
                             decoration: BoxDecoration(
                               color: const Color(0xFFF9FBFD),
-                              borderRadius: BorderRadius.circular(12),
+                              borderRadius: BorderRadius.circular(8),
                               border: Border.all(
                                 color: const Color(0xFFE6EAF0),
                               ),
@@ -1759,6 +1810,7 @@ class _ScreensProductListState extends State<ScreensProductList> {
                                     const Icon(
                                       Icons.folder_outlined,
                                       color: Color(0xFF3167E3),
+                                      size: 18,
                                     ),
                                     const SizedBox(width: 8),
                                     Expanded(
@@ -1766,6 +1818,7 @@ class _ScreensProductListState extends State<ScreensProductList> {
                                         categoryName,
                                         style: const TextStyle(
                                           fontWeight: FontWeight.w700,
+                                          fontSize: 13,
                                         ),
                                       ),
                                     ),
@@ -1780,11 +1833,18 @@ class _ScreensProductListState extends State<ScreensProductList> {
                                       },
                                       icon: const Icon(
                                         Icons.add_circle_outline,
-                                        size: 16,
+                                        size: 14,
                                       ),
-                                      label: const Text('Add Subcategory'),
+                                      label: const Text('Add Subcategory', style: TextStyle(fontSize: 12)),
+                                      style: TextButton.styleFrom(
+                                        padding: const EdgeInsets.symmetric(horizontal: 8),
+                                        minimumSize: Size.zero,
+                                        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                                      ),
                                     ),
                                     PopupMenuButton<String>(
+                                      padding: EdgeInsets.zero,
+                                      iconSize: 18,
                                       onSelected: (value) async {
                                         if (value == 'rename') {
                                           await _renameCategory(
@@ -1809,25 +1869,28 @@ class _ScreensProductListState extends State<ScreensProductList> {
                                       itemBuilder: (context) => const [
                                         PopupMenuItem(
                                           value: 'rename',
+                                          height: 32,
                                           child: ListTile(
                                             dense: true,
                                             contentPadding: EdgeInsets.zero,
-                                            leading: Icon(Icons.edit_outlined),
-                                            title: Text('Rename'),
+                                            leading: Icon(Icons.edit_outlined, size: 16),
+                                            title: Text('Rename', style: TextStyle(fontSize: 13)),
                                           ),
                                         ),
                                         PopupMenuItem(
                                           value: 'delete',
+                                          height: 32,
                                           child: ListTile(
                                             dense: true,
                                             contentPadding: EdgeInsets.zero,
                                             leading: Icon(
                                               Icons.delete_outline,
                                               color: Colors.red,
+                                              size: 16,
                                             ),
                                             title: Text(
                                               'Delete',
-                                              style: TextStyle(color: Colors.red),
+                                              style: TextStyle(color: Colors.red, fontSize: 13),
                                             ),
                                           ),
                                         ),
@@ -1835,7 +1898,7 @@ class _ScreensProductListState extends State<ScreensProductList> {
                                     ),
                                   ],
                                 ),
-                                const SizedBox(height: 8),
+                                const SizedBox(height: 6),
                                 StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
                                   stream: _categoriesRef(companyId)
                                       .doc(doc.id)
@@ -1848,10 +1911,10 @@ class _ScreensProductListState extends State<ScreensProductList> {
                                       return const Align(
                                         alignment: Alignment.centerLeft,
                                         child: Padding(
-                                          padding: EdgeInsets.only(left: 32),
+                                          padding: EdgeInsets.only(left: 26),
                                           child: SizedBox(
-                                            width: 18,
-                                            height: 18,
+                                            width: 14,
+                                            height: 14,
                                             child: CircularProgressIndicator(
                                               strokeWidth: 2,
                                             ),
@@ -1865,12 +1928,12 @@ class _ScreensProductListState extends State<ScreensProductList> {
                                       return const Align(
                                         alignment: Alignment.centerLeft,
                                         child: Padding(
-                                          padding: EdgeInsets.only(left: 32),
+                                          padding: EdgeInsets.only(left: 26),
                                           child: Text(
                                             'No subcategories',
                                             style: TextStyle(
                                               color: Color(0xFF667085),
-                                              fontSize: 12,
+                                              fontSize: 11,
                                             ),
                                           ),
                                         ),
@@ -1880,10 +1943,10 @@ class _ScreensProductListState extends State<ScreensProductList> {
                                     return Align(
                                       alignment: Alignment.centerLeft,
                                       child: Padding(
-                                        padding: const EdgeInsets.only(left: 32),
+                                        padding: const EdgeInsets.only(left: 26),
                                         child: Wrap(
-                                          spacing: 8,
-                                          runSpacing: 8,
+                                          spacing: 6,
+                                          runSpacing: 6,
                                           children: subs.map((s) {
                                             final subData = s.data();
                                             final subName =
@@ -1892,13 +1955,13 @@ class _ScreensProductListState extends State<ScreensProductList> {
                                             return Container(
                                               padding:
                                               const EdgeInsets.symmetric(
-                                                horizontal: 10,
-                                                vertical: 6,
+                                                horizontal: 8,
+                                                vertical: 4,
                                               ),
                                               decoration: BoxDecoration(
                                                 color: Colors.white,
                                                 borderRadius:
-                                                BorderRadius.circular(20),
+                                                BorderRadius.circular(16),
                                                 border: Border.all(
                                                   color:
                                                   const Color(0xFFE4E7EC),
@@ -1910,21 +1973,22 @@ class _ScreensProductListState extends State<ScreensProductList> {
                                                   const Icon(
                                                     Icons
                                                         .subdirectory_arrow_right,
-                                                    size: 14,
+                                                    size: 12,
                                                     color: Color(0xFF667085),
                                                   ),
                                                   const SizedBox(width: 4),
                                                   Text(
                                                     subName,
                                                     style: const TextStyle(
-                                                      fontSize: 12,
+                                                      fontSize: 11,
                                                       fontWeight:
                                                       FontWeight.w500,
                                                     ),
                                                   ),
-                                                  const SizedBox(width: 4),
+                                                  const SizedBox(width: 2),
                                                   PopupMenuButton<String>(
                                                     padding: EdgeInsets.zero,
+                                                    iconSize: 14,
                                                     constraints:
                                                     const BoxConstraints(),
                                                     onSelected: (value) async {
@@ -1959,18 +2023,21 @@ class _ScreensProductListState extends State<ScreensProductList> {
                                                     const [
                                                       PopupMenuItem(
                                                         value: 'rename',
+                                                        height: 32,
                                                         child: ListTile(
                                                           dense: true,
                                                           contentPadding:
                                                           EdgeInsets.zero,
                                                           leading: Icon(
                                                             Icons.edit_outlined,
+                                                            size: 14,
                                                           ),
-                                                          title: Text('Rename'),
+                                                          title: Text('Rename', style: TextStyle(fontSize: 12)),
                                                         ),
                                                       ),
                                                       PopupMenuItem(
                                                         value: 'delete',
+                                                        height: 32,
                                                         child: ListTile(
                                                           dense: true,
                                                           contentPadding:
@@ -1978,11 +2045,13 @@ class _ScreensProductListState extends State<ScreensProductList> {
                                                           leading: Icon(
                                                             Icons.delete_outline,
                                                             color: Colors.red,
+                                                            size: 14,
                                                           ),
                                                           title: Text(
                                                             'Delete',
                                                             style: TextStyle(
                                                               color: Colors.red,
+                                                              fontSize: 12,
                                                             ),
                                                           ),
                                                         ),
@@ -2027,10 +2096,10 @@ class _ScreensProductListState extends State<ScreensProductList> {
         side: const BorderSide(color: Color(0xFFE4E7EC)),
         padding: EdgeInsets.zero,
         shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: BorderRadius.circular(8),
         ),
       ),
-      child: Icon(icon, size: 20),
+      child: Icon(icon, size: 18),
     );
   }
 
@@ -2047,7 +2116,7 @@ class _ScreensProductListState extends State<ScreensProductList> {
     required List<String> natureOptions,
     required List<String> familyOptions,
     required List<String> machineTypeOptions,
-    required List<String> brandOptions,
+    required List<String> makeOptions,
     required List<String> accessoryGroupOptions,
     required List<String> spareGroupOptions,
 
@@ -2055,10 +2124,8 @@ class _ScreensProductListState extends State<ScreensProductList> {
     required int activeProducts,
     required int lowStockProducts,
     required int outOfStockProducts,
-    required int totalCategories,
-    required int totalSubcategories,
   }) {
-    const double rowHeight = 42;
+    const double rowHeight = 36;
 
     final categoryButton = canCreate
         ? SizedBox(
@@ -2068,16 +2135,16 @@ class _ScreensProductListState extends State<ScreensProductList> {
           companyId: companyId,
           currentUserUid: currentUserUid,
         ),
-        icon: const Icon(Icons.create_new_folder_outlined, size: 16),
-        label: const Text('Category Manager'),
+        icon: const Icon(Icons.create_new_folder_outlined, size: 14),
+        label: const Text('Categories', style: TextStyle(fontSize: 12)),
         style: OutlinedButton.styleFrom(
           elevation: 0,
           backgroundColor: Colors.white,
           foregroundColor: const Color(0xFF111827),
           side: const BorderSide(color: Color(0xFFE4E7EC)),
-          padding: const EdgeInsets.symmetric(horizontal: 12),
+          padding: const EdgeInsets.symmetric(horizontal: 10),
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(12),
+            borderRadius: BorderRadius.circular(8),
           ),
         ),
       ),
@@ -2088,39 +2155,29 @@ class _ScreensProductListState extends State<ScreensProductList> {
       TextSpan(
         style: const TextStyle(
           color: Color(0xFF475467),
-          fontSize: 13,
+          fontSize: 12,
           fontWeight: FontWeight.w600,
         ),
         children: [
           const TextSpan(text: 'Products: '),
           TextSpan(
-            text: '$totalProducts',
+            text: '$totalProducts  |  ',
             style: const TextStyle(color: Color(0xFF111827), fontWeight: FontWeight.bold),
           ),
-          const TextSpan(text: '   Active: '),
+          const TextSpan(text: 'Active: '),
           TextSpan(
-            text: '$activeProducts',
+            text: '$activeProducts  |  ',
             style: const TextStyle(color: Colors.green, fontWeight: FontWeight.bold),
           ),
-          const TextSpan(text: '   Low Stock: '),
+          const TextSpan(text: 'Low Stock: '),
           TextSpan(
-            text: '$lowStockProducts',
-            style: TextStyle(color: Colors.orange, fontWeight: FontWeight.bold),
+            text: '$lowStockProducts  |  ',
+            style: const TextStyle(color: Colors.orange, fontWeight: FontWeight.bold),
           ),
-          const TextSpan(text: '   Out of Stock: '),
+          const TextSpan(text: 'OOS: '),
           TextSpan(
             text: '$outOfStockProducts',
             style: const TextStyle(color: Colors.red, fontWeight: FontWeight.bold),
-          ),
-          const TextSpan(text: '   Categories: '),
-          TextSpan(
-            text: '$totalCategories',
-            style: const TextStyle(color: Color(0xFF111827), fontWeight: FontWeight.bold),
-          ),
-          const TextSpan(text: '   Subcategories: '),
-          TextSpan(
-            text: '$totalSubcategories',
-            style: const TextStyle(color: Color(0xFF111827), fontWeight: FontWeight.bold),
           ),
         ],
       ),
@@ -2137,7 +2194,7 @@ class _ScreensProductListState extends State<ScreensProductList> {
         ),
         const SizedBox(width: 8),
         SizedBox(
-          width: 42,
+          width: rowHeight,
           height: rowHeight,
           child: _iconBoxButton(
             icon: Icons.filter_alt_outlined,
@@ -2149,7 +2206,7 @@ class _ScreensProductListState extends State<ScreensProductList> {
               natureOptions: natureOptions,
               familyOptions: familyOptions,
               machineTypeOptions: machineTypeOptions,
-              brandOptions: brandOptions,
+              makeOptions: makeOptions,
               accessoryGroupOptions: accessoryGroupOptions,
               spareGroupOptions: spareGroupOptions,
             ),
@@ -2161,7 +2218,7 @@ class _ScreensProductListState extends State<ScreensProductList> {
           const SizedBox(width: 8),
         ],
         SizedBox(
-          width: 42,
+          width: rowHeight,
           height: rowHeight,
           child: _iconBoxButton(
             icon: _showTableView
@@ -2172,17 +2229,17 @@ class _ScreensProductListState extends State<ScreensProductList> {
             },
           ),
         ),
-        if (isWide) const Spacer() else const SizedBox(width: 16),
+        if (isWide) const Spacer() else const SizedBox(width: 12),
         statsText,
       ],
     );
 
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.all(10),
+      padding: const EdgeInsets.all(8),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(10),
         border: Border.all(color: const Color(0xFFE6EAF0)),
       ),
       child: isWide
@@ -2198,13 +2255,15 @@ class _ScreensProductListState extends State<ScreensProductList> {
     return TextField(
       controller: _searchController,
       focusNode: _searchFocusNode,
+      style: const TextStyle(fontSize: 13),
       decoration: InputDecoration(
-        hintText: 'Search product...',
-        prefixIcon: const Icon(Icons.search, size: 18),
+        hintText: 'Search products, SKU, machine series...',
+        hintStyle: const TextStyle(fontSize: 12),
+        prefixIcon: const Icon(Icons.search, size: 16),
         suffixIcon: _searchText.isEmpty
             ? null
             : IconButton(
-          icon: const Icon(Icons.close, size: 18),
+          icon: const Icon(Icons.close, size: 16),
           onPressed: () {
             _searchController.clear();
             setState(() {
@@ -2214,19 +2273,19 @@ class _ScreensProductListState extends State<ScreensProductList> {
         ),
         isDense: true,
         filled: true,
-        fillColor: Colors.white,
+        fillColor: const Color(0xFFF8FAFC),
         contentPadding:
-        const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+        const EdgeInsets.symmetric(horizontal: 10, vertical: 0),
         border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: BorderRadius.circular(8),
           borderSide: const BorderSide(color: Color(0xFFE4E7EC)),
         ),
         enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: BorderRadius.circular(8),
           borderSide: const BorderSide(color: Color(0xFFE4E7EC)),
         ),
         focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: BorderRadius.circular(8),
           borderSide: const BorderSide(color: Color(0xFF2563EB)),
         ),
       ),
@@ -2237,12 +2296,12 @@ class _ScreensProductListState extends State<ScreensProductList> {
     final chips = <Widget>[];
 
     if (_statusFilter != 'all') {
-      chips.add(_filterChip('Status: $_statusFilter', () {
+      chips.add(_filterChip('Product Status: ${_formatFilterLabel(_statusFilter)}', () {
         setState(() => _statusFilter = 'all');
       }));
     }
     if (_stockFilter != 'all') {
-      chips.add(_filterChip('Stock: $_stockFilter', () {
+      chips.add(_filterChip('Inventory: ${_formatFilterLabel(_stockFilter)}', () {
         setState(() => _stockFilter = 'all');
       }));
     }
@@ -2252,8 +2311,13 @@ class _ScreensProductListState extends State<ScreensProductList> {
       }));
     }
     if (_machineTypeFilter != 'all') {
-      chips.add(_filterChip('Machine Type: $_machineTypeFilter', () {
+      chips.add(_filterChip('Series: $_machineTypeFilter', () {
         setState(() => _machineTypeFilter = 'all');
+      }));
+    }
+    if (_makeFilter != 'all') {
+      chips.add(_filterChip('Manufacturer: $_makeFilter', () {
+        setState(() => _makeFilter = 'all');
       }));
     }
     if (_categoryFilter != 'all') {
@@ -2270,7 +2334,7 @@ class _ScreensProductListState extends State<ScreensProductList> {
       }));
     }
     if (_compatibilityFilter != 'all') {
-      chips.add(_filterChip('Compatibility: ${_compatibilityFilter.replaceAll('_', ' ').toUpperCase()}', () {
+      chips.add(_filterChip('Compatibility: ${_formatFilterLabel(_compatibilityFilter)}', () {
         setState(() => _compatibilityFilter = 'all');
       }));
     }
@@ -2279,22 +2343,22 @@ class _ScreensProductListState extends State<ScreensProductList> {
 
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.all(10),
+      padding: const EdgeInsets.all(8),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(10),
         border: Border.all(color: const Color(0xFFE6EAF0)),
       ),
-      child: Wrap(spacing: 8, runSpacing: 8, children: chips),
+      child: Wrap(spacing: 6, runSpacing: 6, children: chips),
     );
   }
 
   Widget _filterChip(String text, VoidCallback onDeleted) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       decoration: BoxDecoration(
         color: const Color(0xFFEFF4FF),
-        borderRadius: BorderRadius.circular(30),
+        borderRadius: BorderRadius.circular(16),
         border: Border.all(color: const Color(0xFFD6E4FF)),
       ),
       child: Row(
@@ -2303,15 +2367,15 @@ class _ScreensProductListState extends State<ScreensProductList> {
           Text(
             text,
             style: const TextStyle(
-              fontSize: 12,
+              fontSize: 11,
               fontWeight: FontWeight.w600,
               color: Color(0xFF1D4ED8),
             ),
           ),
-          const SizedBox(width: 6),
+          const SizedBox(width: 4),
           InkWell(
             onTap: onDeleted,
-            child: const Icon(Icons.close, size: 14, color: Color(0xFF1D4ED8)),
+            child: const Icon(Icons.close, size: 12, color: Color(0xFF1D4ED8)),
           ),
         ],
       ),
@@ -2329,19 +2393,27 @@ class _ScreensProductListState extends State<ScreensProductList> {
     required String firebaseUserUid,
     required String role,
     required bool showTable,
+    required Map<String, String> subcategoryNameCache,
   }) {
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.all(12),
+      padding: const EdgeInsets.all(8),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(10),
         border: Border.all(color: const Color(0xFFE6EAF0)),
       ),
       child: docs.isEmpty
-          ? const Padding(
-        padding: EdgeInsets.symmetric(vertical: 50),
-        child: Center(child: Text('No products found matching filters.')),
+          ? Padding(
+        padding: const EdgeInsets.symmetric(vertical: 40),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: const [
+            Text('No products found for the selected filters.', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+            SizedBox(height: 10),
+            Text('Try:\n• Changing filter criteria\n• Clearing filters\n• Searching different keywords', style: TextStyle(color: Colors.blueGrey, fontSize: 13, height: 1.5)),
+          ],
+        ),
       )
           : showTable
           ? _buildTableView(
@@ -2354,6 +2426,7 @@ class _ScreensProductListState extends State<ScreensProductList> {
         companyId: companyId,
         firebaseUserUid: firebaseUserUid,
         role: role,
+        subcategoryNameCache: subcategoryNameCache,
       )
           : _buildCardView(
         docs: docs,
@@ -2365,6 +2438,7 @@ class _ScreensProductListState extends State<ScreensProductList> {
         companyId: companyId,
         firebaseUserUid: firebaseUserUid,
         role: role,
+        subcategoryNameCache: subcategoryNameCache,
       ),
     );
   }
@@ -2379,181 +2453,198 @@ class _ScreensProductListState extends State<ScreensProductList> {
     required String companyId,
     required String firebaseUserUid,
     required String role,
+    required Map<String, String> subcategoryNameCache,
   }) {
     return SingleChildScrollView(
       scrollDirection: Axis.horizontal,
-      child: DataTable(
-        horizontalMargin: 10,
-        columnSpacing: 18,
-        headingRowColor: WidgetStateProperty.all(const Color(0xFFF8FAFC)),
-        columns: const [
-          DataColumn(label: Text('Product')),
-          DataColumn(label: Text('Nature')),
-          DataColumn(label: Text('ERP Hierarchy')),
-          DataColumn(label: Text('Brand')),
-          DataColumn(label: Text('SKU')),
-          DataColumn(label: Text('Price')),
-          DataColumn(label: Text('Stock')),
-          DataColumn(label: Text('Status')),
-          DataColumn(label: Text('')),
-        ],
-        rows: docs.map((doc) {
-          final data = doc.data();
-          final name = (data['name'] ?? '').toString();
-          final description = (data['description'] ?? '').toString();
-          final brand = (data['brand'] ?? '').toString();
-          final sku = (data['sku'] ?? data['itemCode'] ?? '').toString();
-          final price = data['unitPrice'];
-          final isActive = _isProductActive(data);
-          final stock = _stockOnHand(data);
-          final imageUrl = data['imageUrl']?.toString();
+      clipBehavior: Clip.none,
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(minWidth: 1200),
+        child: DataTable(
+          dataRowMinHeight: 72,
+          dataRowMaxHeight: 110,
+          horizontalMargin: 12,
+          columnSpacing: 16,
+          headingRowColor: MaterialStateProperty.all(const Color(0xFFF8FAFC)),
+          columns: const [
+            DataColumn(label: Text('Product', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold))),
+            DataColumn(label: Text('Nature', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold))),
+            DataColumn(label: Text('Machine / Compatibility Structure', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold))),
+            DataColumn(label: Text('Manufacturer', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold))),
+            DataColumn(label: Text('SKU', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold))),
+            DataColumn(label: Text('Price', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold))),
+            DataColumn(label: Text('Stock', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold))),
+            DataColumn(label: Text('Status', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold))),
+            DataColumn(label: Text('', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold))),
+          ],
+          rows: docs.map((doc) {
+            final data = doc.data();
+            final name = (data['name'] ?? '').toString();
+            final description = (data['description'] ?? '').toString();
+            final make = (data['make'] ?? data['brand'] ?? '').toString();
+            final sku = (data['sku'] ?? data['itemCode'] ?? '').toString();
+            final price = data['unitPrice'];
+            final isActive = _isProductActive(data);
+            final stock = _stockOnHand(data);
+            final imageUrl = data['imageUrl']?.toString();
 
-          final natureName = natureLabelCache[doc.id] ?? 'Standard';
-          final hierarchy = hierarchyCache[doc.id] ?? '—';
+            final natureName = natureLabelCache[doc.id] ?? 'Standard';
+            final hierarchy = hierarchyCache[doc.id] ?? '—';
 
-          final compatDetails = compatDetailsCache[doc.id] ?? [];
-          final int compatCount = compatDetails.length;
+            final compatDetails = compatDetailsCache[doc.id] ?? [];
+            final int compatCount = compatDetails.length;
 
-          return DataRow(
-            cells: [
-              DataCell(
-                SizedBox(
-                  width: 250,
-                  child: Row(
-                    children: [
-                      _buildProductAvatar(imageUrl, name, 36),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              name.isEmpty ? '(No name)' : name,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(fontWeight: FontWeight.w600),
-                            ),
-                            if (description.isNotEmpty)
+            final isAccessory = _isAccessory(data['productNatureLower'] ?? data['productNature'] ?? data['nature']);
+
+            return DataRow(
+              cells: [
+                DataCell(
+                  SizedBox(
+                    width: 240,
+                    child: Row(
+                      children: [
+                        _buildProductAvatar(imageUrl, name, 36),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
                               Text(
-                                description,
-                                maxLines: 1,
+                                name.isEmpty ? '(No name)' : name,
+                                maxLines: 2,
                                 overflow: TextOverflow.ellipsis,
-                                style: const TextStyle(fontSize: 12, color: Color(0xFF667085)),
+                                style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
                               ),
-                          ],
+                              if (description.isNotEmpty)
+                                Text(
+                                  description,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(fontSize: 11, color: Color(0xFF667085)),
+                                ),
+                            ],
+                          ),
                         ),
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
                 ),
-              ),
-              DataCell(_buildNatureBadge(natureName)),
-              DataCell(
-                SizedBox(
-                  width: 220,
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        hierarchy,
-                        style: const TextStyle(fontWeight: FontWeight.w500),
-                        maxLines: 3,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                      if (compatCount > 0)
-                        Padding(
-                          padding: const EdgeInsets.only(top: 4),
-                          child: InkWell(
-                            onTap: () => _showCompatibleModelsDialog(name, compatDetails),
-                            child: Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                              decoration: BoxDecoration(color: Colors.blue.shade50, borderRadius: BorderRadius.circular(4), border: Border.all(color: Colors.blue.shade200)),
-                              child: Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  Icon(Icons.link_outlined, size: 12, color: Colors.blue.shade700),
-                                  const SizedBox(width: 4),
-                                  Flexible(
-                                    child: Text(
-                                      'Compatible With: $compatCount Machines',
-                                      style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.blue.shade700),
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
+                DataCell(SizedBox(width: 90, child: Align(alignment: Alignment.centerLeft, child: _buildNatureBadge(natureName)))),
+                DataCell(
+                  SizedBox(
+                    width: 260,
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          hierarchy,
+                          style: const TextStyle(fontWeight: FontWeight.w500, fontSize: 12),
+                          softWrap: true,
+                        ),
+                        if (compatCount > 0)
+                          Padding(
+                            padding: const EdgeInsets.only(top: 4),
+                            child: InkWell(
+                              onTap: () => _showCompatibleModelsDialog(name, compatDetails, isAccessory: isAccessory),
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                decoration: BoxDecoration(color: Colors.blue.shade50, borderRadius: BorderRadius.circular(4), border: Border.all(color: Colors.blue.shade200)),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Icon(Icons.link_outlined, size: 12, color: Colors.blue.shade700),
+                                    const SizedBox(width: 4),
+                                    ConstrainedBox(
+                                      constraints: const BoxConstraints(maxWidth: 160),
+                                      child: Text(
+                                        _machineCountLabel(compatCount, usedIn: isAccessory),
+                                        style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.blue.shade700),
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
                                     ),
-                                  ),
-                                ],
+                                  ],
+                                ),
                               ),
                             ),
                           ),
-                        ),
-                    ],
+                      ],
+                    ),
                   ),
                 ),
-              ),
-              DataCell(Text(brand.isEmpty ? '—' : brand)),
-              DataCell(Text(sku.isEmpty ? '—' : sku)),
-              DataCell(Text(_formatCurrency(price))),
-              DataCell(Text(_formatNumber(stock))),
-              DataCell(_buildStatusChip(isActive ? 'Active' : 'Inactive')),
-              DataCell(
-                (canEdit || canDelete)
-                    ? PopupMenuButton<String>(
-                  tooltip: 'Actions',
-                  onSelected: (value) async {
-                    if (value == 'edit' && canEdit) {
-                      _openEditProduct(
-                        productId: doc.id,
-                        initialData: data,
-                        companyId: companyId,
-                        currentUserUid: firebaseUserUid,
-                        currentUserRole: role,
-                      );
-                    } else if (value == 'delete' && canDelete) {
-                      await _deleteProduct(
-                        companyId: companyId,
-                        productId: doc.id,
-                        productName: name.isEmpty ? 'Product' : name,
-                        currentUserUid: firebaseUserUid,
-                      );
-                    }
-                  },
-                  itemBuilder: (context) => [
-                    if (canEdit)
-                      const PopupMenuItem(
-                        value: 'edit',
-                        child: ListTile(
-                          dense: true,
-                          contentPadding: EdgeInsets.zero,
-                          leading: Icon(Icons.edit_outlined),
-                          title: Text('Edit'),
-                        ),
-                      ),
-                    if (canDelete) const PopupMenuDivider(),
-                    if (canDelete)
-                      const PopupMenuItem(
-                        value: 'delete',
-                        child: ListTile(
-                          dense: true,
-                          contentPadding: EdgeInsets.zero,
-                          leading: Icon(
-                            Icons.delete_outline,
-                            color: Colors.red,
+                DataCell(SizedBox(width: 120, child: Text(make.isEmpty ? '—' : make, style: const TextStyle(fontSize: 12), maxLines: 2, overflow: TextOverflow.ellipsis))),
+                DataCell(SizedBox(width: 120, child: Text(sku.isEmpty ? '—' : sku, style: const TextStyle(fontSize: 12), maxLines: 2, overflow: TextOverflow.ellipsis))),
+                DataCell(SizedBox(width: 100, child: Text(_formatCurrency(price), style: const TextStyle(fontSize: 12)))),
+                DataCell(SizedBox(width: 90, child: Text(_formatNumber(stock), style: const TextStyle(fontSize: 12)))),
+                DataCell(SizedBox(width: 90, child: Align(alignment: Alignment.centerLeft, child: _buildStatusChip(isActive ? 'Active' : 'Inactive')))),
+                DataCell(
+                  SizedBox(
+                    width: 60,
+                    child: (canEdit || canDelete)
+                        ? PopupMenuButton<String>(
+                      tooltip: 'Actions',
+                      iconSize: 18,
+                      padding: EdgeInsets.zero,
+                      onSelected: (value) async {
+                        if (value == 'edit' && canEdit) {
+                          _openEditProduct(
+                            productId: doc.id,
+                            initialData: data,
+                            companyId: companyId,
+                            currentUserUid: firebaseUserUid,
+                            currentUserRole: role,
+                          );
+                        } else if (value == 'delete' && canDelete) {
+                          await _deleteProduct(
+                            companyId: companyId,
+                            productId: doc.id,
+                            productName: name.isEmpty ? 'Product' : name,
+                            currentUserUid: firebaseUserUid,
+                          );
+                        }
+                      },
+                      itemBuilder: (context) => [
+                        if (canEdit)
+                          const PopupMenuItem(
+                            value: 'edit',
+                            height: 32,
+                            child: ListTile(
+                              dense: true,
+                              contentPadding: EdgeInsets.zero,
+                              leading: Icon(Icons.edit_outlined, size: 16),
+                              title: Text('Edit', style: TextStyle(fontSize: 13)),
+                            ),
                           ),
-                          title: Text(
-                            'Delete',
-                            style: TextStyle(color: Colors.red),
+                        if (canDelete) const PopupMenuDivider(),
+                        if (canDelete)
+                          const PopupMenuItem(
+                            value: 'delete',
+                            height: 32,
+                            child: ListTile(
+                              dense: true,
+                              contentPadding: EdgeInsets.zero,
+                              leading: Icon(
+                                Icons.delete_outline,
+                                color: Colors.red,
+                                size: 16,
+                              ),
+                              title: Text(
+                                'Delete',
+                                style: TextStyle(color: Colors.red, fontSize: 13),
+                              ),
+                            ),
                           ),
-                        ),
-                      ),
-                  ],
-                )
-                    : const SizedBox.shrink(),
-              ),
-            ],
-          );
-        }).toList(),
+                      ],
+                    )
+                        : const SizedBox.shrink(),
+                  ),
+                ),
+              ],
+            );
+          }).toList(),
+        ),
       ),
     );
   }
@@ -2568,6 +2659,7 @@ class _ScreensProductListState extends State<ScreensProductList> {
     required String companyId,
     required String firebaseUserUid,
     required String role,
+    required Map<String, String> subcategoryNameCache,
   }) {
     return ListView.builder(
       shrinkWrap: true,
@@ -2578,7 +2670,7 @@ class _ScreensProductListState extends State<ScreensProductList> {
         final data = doc.data();
         final name = (data['name'] ?? '').toString();
         final description = (data['description'] ?? '').toString();
-        final brand = (data['brand'] ?? '').toString();
+        final make = (data['make'] ?? data['brand'] ?? '').toString();
         final sku = (data['sku'] ?? data['itemCode'] ?? '').toString();
         final price = data['unitPrice'];
         final isActive = _isProductActive(data);
@@ -2591,43 +2683,49 @@ class _ScreensProductListState extends State<ScreensProductList> {
         final compatDetails = compatDetailsCache[doc.id] ?? [];
         final int compatCount = compatDetails.length;
 
+        final isAccessory = _isAccessory(data['productNatureLower'] ?? data['productNature'] ?? data['nature']);
+
         return Container(
-          margin: const EdgeInsets.only(bottom: 12),
-          padding: const EdgeInsets.all(14),
+          margin: const EdgeInsets.only(bottom: 8),
+          padding: const EdgeInsets.all(12),
           decoration: BoxDecoration(
             color: const Color(0xFFFBFCFE),
-            borderRadius: BorderRadius.circular(14),
+            borderRadius: BorderRadius.circular(8),
             border: Border.all(color: const Color(0xFFE6EAF0)),
           ),
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              _buildProductAvatar(imageUrl, name, 60),
-              const SizedBox(width: 14),
+              _buildProductAvatar(imageUrl, name, 50),
+              const SizedBox(width: 12),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Expanded(
                           child: Text(
                             name.isEmpty ? '(No name)' : name,
-                            style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15, color: Color(0xFF111827)),
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14, color: Color(0xFF111827)),
                           ),
                         ),
+                        const SizedBox(width: 8),
                         Text(
                           _formatCurrency(price),
-                          style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16, color: Color(0xFF111827)),
+                          style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14, color: Color(0xFF111827)),
                         ),
                         if (canEdit || canDelete) ...[
-                          const SizedBox(width: 8),
+                          const SizedBox(width: 4),
                           SizedBox(
-                            height: 24,
-                            width: 24,
+                            height: 20,
+                            width: 20,
                             child: PopupMenuButton<String>(
                               padding: EdgeInsets.zero,
-                              iconSize: 20,
+                              iconSize: 18,
                               onSelected: (value) async {
                                 if (value == 'edit' && canEdit) {
                                   _openEditProduct(
@@ -2647,8 +2745,8 @@ class _ScreensProductListState extends State<ScreensProductList> {
                                 }
                               },
                               itemBuilder: (context) => [
-                                if (canEdit) const PopupMenuItem(value: 'edit', child: Text('Edit')),
-                                if (canDelete) const PopupMenuItem(value: 'delete', child: Text('Delete', style: TextStyle(color: Colors.red))),
+                                if (canEdit) const PopupMenuItem(value: 'edit', height: 32, child: Text('Edit', style: TextStyle(fontSize: 13))),
+                                if (canDelete) const PopupMenuItem(value: 'delete', height: 32, child: Text('Delete', style: TextStyle(color: Colors.red, fontSize: 13))),
                               ],
                             ),
                           ),
@@ -2656,34 +2754,34 @@ class _ScreensProductListState extends State<ScreensProductList> {
                       ],
                     ),
                     if (description.isNotEmpty) ...[
-                      const SizedBox(height: 4),
+                      const SizedBox(height: 2),
                       Text(
                         description,
                         maxLines: 2,
                         overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(color: Color(0xFF667085), fontSize: 12),
+                        style: const TextStyle(color: Color(0xFF667085), fontSize: 11),
                       ),
                     ],
-                    const SizedBox(height: 10),
+                    const SizedBox(height: 8),
                     Wrap(
-                      spacing: 8,
-                      runSpacing: 8,
+                      spacing: 6,
+                      runSpacing: 6,
                       crossAxisAlignment: WrapCrossAlignment.center,
                       children: [
                         _buildNatureBadge(natureName),
                         _buildStatusChip(isActive ? 'Active' : 'Inactive'),
                         _buildStockChip(stockStatus),
                         if (stock > 0 || stockStatus == 'Low Stock')
-                          Text('${_formatNumber(stock)} in stock', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Color(0xFF475467))),
+                          Text('${_formatNumber(stock)} in stock', style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: Color(0xFF475467))),
                       ],
                     ),
-                    const SizedBox(height: 12),
+                    const SizedBox(height: 8),
                     Container(
-                      padding: const EdgeInsets.all(10),
+                      padding: const EdgeInsets.all(8),
                       width: double.infinity,
                       decoration: BoxDecoration(
                         color: Colors.white,
-                        borderRadius: BorderRadius.circular(10),
+                        borderRadius: BorderRadius.circular(8),
                         border: Border.all(color: const Color(0xFFE4E7EC)),
                       ),
                       child: Column(
@@ -2694,30 +2792,29 @@ class _ScreensProductListState extends State<ScreensProductList> {
                             children: [
                               const Padding(
                                 padding: EdgeInsets.only(top: 2),
-                                child: Icon(Icons.account_tree_outlined, size: 14, color: Colors.blueGrey),
+                                child: Icon(Icons.account_tree_outlined, size: 12, color: Colors.blueGrey),
                               ),
                               const SizedBox(width: 6),
                               Expanded(
                                 child: Text(
                                   hierarchy,
-                                  style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Color(0xFF344054)),
-                                  maxLines: 3,
-                                  overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: Color(0xFF344054)),
+                                  softWrap: true,
                                 ),
                               ),
                             ],
                           ),
-                          const SizedBox(height: 8),
+                          const SizedBox(height: 6),
                           Wrap(
-                            spacing: 8,
-                            runSpacing: 8,
+                            spacing: 6,
+                            runSpacing: 6,
                             children: [
-                              _pill('Brand', brand.isEmpty ? '—' : brand),
+                              _pill('Manufacturer', make.isEmpty ? '—' : make),
                               _pill('SKU', sku.isEmpty ? '—' : sku),
                               if (compatCount > 0)
                                 InkWell(
-                                  onTap: () => _showCompatibleModelsDialog(name, compatDetails),
-                                  child: _pill('Compatible With', '$compatCount Machines', isLink: true),
+                                  onTap: () => _showCompatibleModelsDialog(name, compatDetails, isAccessory: isAccessory),
+                                  child: _pill(isAccessory ? 'Used In' : 'Compatible', '$compatCount ${compatCount == 1 ? 'Equipment' : 'Equipment'}', isLink: true),
                                 ),
                             ],
                           ),
@@ -2737,19 +2834,19 @@ class _ScreensProductListState extends State<ScreensProductList> {
   Widget _buildStatusChip(String label) {
     final isActive = label == 'Active';
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
       decoration: BoxDecoration(
         color: isActive
             ? Colors.green.withOpacity(0.10)
             : Colors.grey.withOpacity(0.12),
-        borderRadius: BorderRadius.circular(30),
+        borderRadius: BorderRadius.circular(4),
       ),
       child: Text(
         label,
         style: TextStyle(
           color: isActive ? Colors.green[800] : Colors.grey[700],
           fontWeight: FontWeight.w600,
-          fontSize: 11,
+          fontSize: 10,
         ),
       ),
     );
@@ -2758,17 +2855,17 @@ class _ScreensProductListState extends State<ScreensProductList> {
   Widget _buildStockChip(String label) {
     final color = _stockStatusColor(label);
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
       decoration: BoxDecoration(
         color: color.withOpacity(0.10),
-        borderRadius: BorderRadius.circular(30),
+        borderRadius: BorderRadius.circular(4),
       ),
       child: Text(
         label,
         style: TextStyle(
           color: color,
           fontWeight: FontWeight.w600,
-          fontSize: 11,
+          fontSize: 10,
         ),
       ),
     );
@@ -2776,10 +2873,10 @@ class _ScreensProductListState extends State<ScreensProductList> {
 
   Widget _pill(String label, String value, {bool isLink = false}) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
       decoration: BoxDecoration(
         color: isLink ? Colors.blue.shade50 : const Color(0xFFF9FAFB),
-        borderRadius: BorderRadius.circular(6),
+        borderRadius: BorderRadius.circular(4),
         border: Border.all(color: isLink ? Colors.blue.shade200 : const Color(0xFFE4E7EC)),
       ),
       child: Row(
@@ -2787,13 +2884,14 @@ class _ScreensProductListState extends State<ScreensProductList> {
         children: [
           Text(
             '$label: ',
-            style: const TextStyle(fontSize: 11, color: Color(0xFF667085)),
+            style: const TextStyle(fontSize: 10, color: Color(0xFF667085)),
           ),
-          Flexible(
+          ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 160),
             child: Text(
               value,
               style: TextStyle(
-                fontSize: 11,
+                fontSize: 10,
                 fontWeight: FontWeight.w600,
                 color: isLink ? Colors.blue.shade700 : const Color(0xFF344054),
               ),
@@ -2865,8 +2963,6 @@ class _ScreensProductListState extends State<ScreensProductList> {
         if (_currentCompanyId != companyId && companyId.isNotEmpty) {
           _currentCompanyId = companyId;
           _categoryMasterFuture = _loadCategoryMaster(companyId);
-          // Safely using local filtering because Firestore .where('isDeleted', isEqualTo: false)
-          // will drop legacy documents that do not have the 'isDeleted' field.
           _productsStream = FirebaseFirestore.instance
               .collection('companies')
               .doc(companyId)
@@ -2885,7 +2981,7 @@ class _ScreensProductListState extends State<ScreensProductList> {
               ? FloatingActionButton(
             key: _fabKey,
             onPressed: () {
-              _showFabMenu(
+              _openAddProduct(
                 companyId: companyId,
                 currentUserUid: firebaseUser.uid,
                 currentUserRole: role,
@@ -2939,6 +3035,13 @@ class _ScreensProductListState extends State<ScreensProductList> {
                   .toSet()
                   .toList()
                 ..sort((a, b) => a.toLowerCase().compareTo(b.toLowerCase()));
+
+              final Map<String, String> subcategoryNameCache = {};
+              for (final cat in categoryMasters) {
+                for (final sub in cat.subcategories) {
+                  subcategoryNameCache[sub.id] = sub.name;
+                }
+              }
 
               final totalCategories = categoryMasters.length;
               final totalSubcategories = categoryMasters.fold<int>(
@@ -2999,7 +3102,7 @@ class _ScreensProductListState extends State<ScreensProductList> {
                   final natureOptions = allDocs.map((d) => _natureLabel(dataCache[d.id]!['productNatureLower'] ?? dataCache[d.id]!['productNature'] ?? dataCache[d.id]!['nature'])).where((e) => e.isNotEmpty && e != 'Standard').toSet().toList()..sort((a, b) => a.toLowerCase().compareTo(b.toLowerCase()));
                   final familyOptions = allDocs.map((d) => (dataCache[d.id]!['family'] ?? '').toString().trim()).where((e) => e.isNotEmpty).toSet().toList()..sort((a, b) => a.toLowerCase().compareTo(b.toLowerCase()));
                   final machineTypeOptions = allDocs.map((d) => (dataCache[d.id]!['machineType'] ?? dataCache[d.id]!['type'] ?? '').toString().trim()).where((e) => e.isNotEmpty).toSet().toList()..sort((a, b) => a.toLowerCase().compareTo(b.toLowerCase()));
-                  final brandOptions = allDocs.map((d) => (dataCache[d.id]!['brand'] ?? '').toString().trim()).where((e) => e.isNotEmpty).toSet().toList()..sort((a, b) => a.toLowerCase().compareTo(b.toLowerCase()));
+                  final makeOptions = allDocs.map((d) => (dataCache[d.id]!['make'] ?? dataCache[d.id]!['brand'] ?? '').toString().trim()).where((e) => e.isNotEmpty).toSet().toList()..sort((a, b) => a.toLowerCase().compareTo(b.toLowerCase()));
                   final accessoryGroupOptions = allDocs.map((d) => (dataCache[d.id]!['accessoryGroupName'] ?? dataCache[d.id]!['accessoryGroup'] ?? '').toString().trim()).where((e) => e.isNotEmpty).toSet().toList()..sort((a, b) => a.toLowerCase().compareTo(b.toLowerCase()));
                   final spareGroupOptions = allDocs.map((d) => (dataCache[d.id]!['spareGroupName'] ?? dataCache[d.id]!['spareGroup'] ?? '').toString().trim()).where((e) => e.isNotEmpty).toSet().toList()..sort((a, b) => a.toLowerCase().compareTo(b.toLowerCase()));
 
@@ -3013,7 +3116,7 @@ class _ScreensProductListState extends State<ScreensProductList> {
                     natureOptions: natureOptions,
                     machineTypeOptions: machineTypeOptions,
                     familyOptions: familyOptions,
-                    brandOptions: brandOptions,
+                    makeOptions: makeOptions,
                     accessoryGroupOptions: accessoryGroupOptions,
                     spareGroupOptions: spareGroupOptions,
                   );
@@ -3029,7 +3132,7 @@ class _ScreensProductListState extends State<ScreensProductList> {
                     final compatDetails = _resolveCompatibleMachines(data, productMapById, productMapByName);
                     final compatCount = compatDetails.length;
 
-                    final hierarchy = _machineHierarchy(data, compatCount);
+                    final hierarchy = _machineHierarchy(data, compatCount, subcategoryNameCache);
                     final natureLabel = _natureLabel(data['productNatureLower'] ?? data['productNature'] ?? data['nature']);
 
                     compatDetailsCache[doc.id] = compatDetails;
@@ -3060,12 +3163,14 @@ class _ScreensProductListState extends State<ScreensProductList> {
 
                   return LayoutBuilder(
                     builder: (context, constraints) {
-                      final isWide = constraints.maxWidth >= 1280;
+                      final isWide = constraints.maxWidth >= 768;
+                      final allowTableView = constraints.maxWidth >= 1100;
+                      final effectiveTableView = allowTableView ? _showTableView : false;
                       final activeFiltersBar = _buildActiveFiltersBar();
                       final hasFilters = activeFiltersBar is! SizedBox;
 
                       return SingleChildScrollView(
-                        padding: const EdgeInsets.all(16),
+                        padding: const EdgeInsets.all(12),
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
@@ -3080,21 +3185,19 @@ class _ScreensProductListState extends State<ScreensProductList> {
                               natureOptions: natureOptions,
                               familyOptions: familyOptions,
                               machineTypeOptions: machineTypeOptions,
-                              brandOptions: brandOptions,
+                              makeOptions: makeOptions,
                               accessoryGroupOptions: accessoryGroupOptions,
                               spareGroupOptions: spareGroupOptions,
                               totalProducts: totalProducts,
                               activeProducts: activeProducts,
                               lowStockProducts: lowStockProducts,
                               outOfStockProducts: outOfStockProducts,
-                              totalCategories: totalCategories,
-                              totalSubcategories: totalSubcategories,
                             ),
                             if (hasFilters) ...[
-                              const SizedBox(height: 10),
+                              const SizedBox(height: 8),
                               activeFiltersBar,
                             ],
-                            const SizedBox(height: 10),
+                            const SizedBox(height: 8),
                             _buildContentCard(
                               docs: filteredDocs,
                               compatDetailsCache: compatDetailsCache,
@@ -3105,7 +3208,8 @@ class _ScreensProductListState extends State<ScreensProductList> {
                               companyId: companyId,
                               firebaseUserUid: firebaseUser.uid,
                               role: role,
-                              showTable: isWide ? _showTableView : false,
+                              showTable: effectiveTableView,
+                              subcategoryNameCache: subcategoryNameCache,
                             ),
                           ],
                         ),
