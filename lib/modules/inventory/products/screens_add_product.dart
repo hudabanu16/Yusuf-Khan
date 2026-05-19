@@ -51,7 +51,17 @@ class _ScreensAddProductState extends State<ScreensAddProduct> {
 
   // UOM Smart Memory Data
   List<String> _uomOptions = [
-    'Nos.', 'Set', 'Pair', 'Kg', 'Meter', 'Feet', 'Roll', 'Coil', 'Litre', 'Box', 'Packet'
+    'Nos.',
+    'Set',
+    'Pair',
+    'Kg',
+    'Meter',
+    'Feet',
+    'Roll',
+    'Coil',
+    'Litre',
+    'Box',
+    'Packet',
   ];
   String _selectedUom = 'Nos.';
 
@@ -125,8 +135,9 @@ class _ScreensAddProductState extends State<ScreensAddProduct> {
           .doc(widget.companyId)
           .collection('inventory_categories');
 
-  CollectionReference<Map<String, dynamic>> _subcategoriesRef(String categoryId) =>
-      _categoriesRef.doc(categoryId).collection('subcategories');
+  CollectionReference<Map<String, dynamic>> _subcategoriesRef(
+    String categoryId,
+  ) => _categoriesRef.doc(categoryId).collection('subcategories');
 
   CollectionReference<Map<String, dynamic>> get _machineTypesRef =>
       FirebaseFirestore.instance
@@ -140,11 +151,11 @@ class _ScreensAddProductState extends State<ScreensAddProduct> {
     if (natureRaw == 'accessory') return 'Accessory';
     if (natureRaw == 'spare') return 'Spare';
     if (natureRaw == 'consumable') return 'Consumable';
-    if (natureRaw == 'raw material' || natureRaw == 'raw_material') return 'Raw Material';
+    if (natureRaw == 'raw material' || natureRaw == 'raw_material') {
+      return 'Raw Material';
+    }
     return 'Machine';
   }
-
-  String _natureLabel(dynamic value) => _normalizedNature(value);
 
   @override
   void initState() {
@@ -175,25 +186,33 @@ class _ScreensAddProductState extends State<ScreensAddProduct> {
       }
 
       // Load Product Nature Safely
-      _productNature = _normalizedNature(data['productNatureLower'] ?? data['productNature'] ?? data['nature']);
+      _productNature = _normalizedNature(
+        data['productNatureLower'] ?? data['productNature'] ?? data['nature'],
+      );
       _machineType = data['machineType']?.toString();
 
       _compatibleMachineType = data['compatibleMachineType']?.toString();
 
       if (data['compatibleSubcategories'] is List) {
-        _compatibleSubcategories = List<String>.from(data['compatibleSubcategories']);
+        _compatibleSubcategories = List<String>.from(
+          data['compatibleSubcategories'],
+        );
       }
       if (data['compatibleProductIds'] is List) {
         _compatibleProductIds = List<String>.from(data['compatibleProductIds']);
       }
       if (data['compatibleProductNames'] is List) {
-        _compatibleProductNames = List<String>.from(data['compatibleProductNames']);
+        _compatibleProductNames = List<String>.from(
+          data['compatibleProductNames'],
+        );
       }
 
       // Load Included Products safely
       if (data['includedProducts'] is List) {
         _includedProducts = List<Map<String, dynamic>>.from(
-            (data['includedProducts'] as List).map((e) => Map<String, dynamic>.from(e))
+          (data['includedProducts'] as List).map(
+            (e) => Map<String, dynamic>.from(e),
+          ),
         );
       }
 
@@ -208,14 +227,16 @@ class _ScreensAddProductState extends State<ScreensAddProduct> {
       // Safely migrate legacy single catalog OR load new multi-catalog list
       final existingCatalogs = data['catalogs'];
       if (existingCatalogs is List) {
-        _catalogs = (existingCatalogs).map((e) => Map<String, dynamic>.from(e as Map)).toList();
+        _catalogs = (existingCatalogs)
+            .map((e) => Map<String, dynamic>.from(e as Map))
+            .toList();
       } else if ((data['catalogUrl'] ?? '').toString().trim().isNotEmpty) {
         _catalogs = [
           {
             'url': (data['catalogUrl'] ?? '').toString().trim(),
             'name': (data['catalogName'] ?? '').toString().trim(),
             'contentType': (data['catalogContentType'] ?? '').toString().trim(),
-          }
+          },
         ];
       }
 
@@ -227,15 +248,24 @@ class _ScreensAddProductState extends State<ScreensAddProduct> {
       _selectedCategoryId = categoryId.isEmpty ? null : categoryId;
       _selectedCategoryName = categoryName.isEmpty ? null : categoryName;
       _selectedSubcategoryId = subcategoryId.isEmpty ? null : subcategoryId;
-      _selectedSubcategoryName = subcategoryName.isEmpty ? null : subcategoryName;
+      _selectedSubcategoryName = subcategoryName.isEmpty
+          ? null
+          : subcategoryName;
 
       _productType = (data['type'] ?? 'stock').toString();
       _isActive = data['isActive'] == null ? true : data['isActive'] == true;
-      _trackInventory = data['trackInventory'] == null ? true : data['trackInventory'] == true;
-      _isSaleable = data['isSaleable'] == null ? true : data['isSaleable'] == true;
-      _isPurchasable = data['isPurchasable'] == null ? true : data['isPurchasable'] == true;
+      _trackInventory = data['trackInventory'] == null
+          ? true
+          : data['trackInventory'] == true;
+      _isSaleable = data['isSaleable'] == null
+          ? true
+          : data['isSaleable'] == true;
+      _isPurchasable = data['isPurchasable'] == null
+          ? true
+          : data['isPurchasable'] == true;
 
-      final openingStock = data['openingStock'] ?? data['stockOnHand'] ?? data['qty'];
+      final openingStock =
+          data['openingStock'] ?? data['stockOnHand'] ?? data['qty'];
       if (openingStock != null) {
         _openingStockController.text = openingStock.toString();
       }
@@ -297,10 +327,20 @@ class _ScreensAddProductState extends State<ScreensAddProduct> {
 
       if (!mounted) return;
       setState(() {
-        _uomOptions = [
-          'Nos.', 'Set', 'Pair', 'Kg', 'Meter', 'Feet', 'Roll', 'Coil', 'Litre', 'Box', 'Packet',
-          ...customUoms
-        ].toSet().toList();
+        _uomOptions = {
+          'Nos.',
+          'Set',
+          'Pair',
+          'Kg',
+          'Meter',
+          'Feet',
+          'Roll',
+          'Coil',
+          'Litre',
+          'Box',
+          'Packet',
+          ...customUoms,
+        }.toList();
 
         // 2. Load latest UOM memory
         if (!isEditMode) {
@@ -431,10 +471,16 @@ class _ScreensAddProductState extends State<ScreensAddProduct> {
     if (lowerType.contains('pdf') || lowerName.endsWith('.pdf')) {
       return Icons.picture_as_pdf_outlined;
     }
-    if (lowerType.contains('msword') || lowerType.contains('word') || lowerName.endsWith('.doc') || lowerName.endsWith('.docx')) {
+    if (lowerType.contains('msword') ||
+        lowerType.contains('word') ||
+        lowerName.endsWith('.doc') ||
+        lowerName.endsWith('.docx')) {
       return Icons.description_outlined;
     }
-    if (lowerType.contains('excel') || lowerType.contains('spreadsheet') || lowerName.endsWith('.xls') || lowerName.endsWith('.xlsx')) {
+    if (lowerType.contains('excel') ||
+        lowerType.contains('spreadsheet') ||
+        lowerName.endsWith('.xls') ||
+        lowerName.endsWith('.xlsx')) {
       return Icons.table_chart_outlined;
     }
     if (lowerType.startsWith('image/') ||
@@ -466,11 +512,12 @@ class _ScreensAddProductState extends State<ScreensAddProduct> {
 
         final ext = _safeExt(file.extension, fallback: 'jpg');
         final contentType = _detectContentTypeFromExtension(ext);
-        final fileName = 'product_photo_${DateTime.now().millisecondsSinceEpoch}_${widget.currentUserUid}_${file.name}';
+        final fileName =
+            'product_photo_${DateTime.now().millisecondsSinceEpoch}_${widget.currentUserUid}_${file.name}';
 
-        final ref = FirebaseStorage.instance
-            .ref()
-            .child('companies/${widget.companyId}/products/images/$fileName');
+        final ref = FirebaseStorage.instance.ref().child(
+          'companies/${widget.companyId}/products/images/$fileName',
+        );
 
         final metadata = SettableMetadata(
           contentType: contentType,
@@ -483,12 +530,17 @@ class _ScreensAddProductState extends State<ScreensAddProduct> {
           },
         );
 
-        final task = await ref.putData(bytes, metadata).timeout(
-          const Duration(seconds: 30),
-          onTimeout: () => throw Exception('Upload timed out after 30 seconds'),
-        );
+        final task = await ref
+            .putData(bytes, metadata)
+            .timeout(
+              const Duration(seconds: 30),
+              onTimeout: () =>
+                  throw Exception('Upload timed out after 30 seconds'),
+            );
 
-        if (task.state != TaskState.success) throw Exception('Image upload did not complete successfully');
+        if (task.state != TaskState.success) {
+          throw Exception('Image upload did not complete successfully');
+        }
 
         final downloadUrl = await ref.getDownloadURL();
 
@@ -501,13 +553,19 @@ class _ScreensAddProductState extends State<ScreensAddProduct> {
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Product photos uploaded successfully'), backgroundColor: Colors.green),
+          const SnackBar(
+            content: Text('Product photos uploaded successfully'),
+            backgroundColor: Colors.green,
+          ),
         );
       }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Image upload failed: $e'), backgroundColor: Colors.red),
+          SnackBar(
+            content: Text('Image upload failed: $e'),
+            backgroundColor: Colors.red,
+          ),
         );
       }
     } finally {
@@ -521,7 +579,17 @@ class _ScreensAddProductState extends State<ScreensAddProduct> {
 
       final result = await FilePicker.platform.pickFiles(
         type: FileType.custom,
-        allowedExtensions: ['pdf', 'jpg', 'jpeg', 'png', 'webp', 'doc', 'docx', 'xls', 'xlsx'],
+        allowedExtensions: [
+          'pdf',
+          'jpg',
+          'jpeg',
+          'png',
+          'webp',
+          'doc',
+          'docx',
+          'xls',
+          'xlsx',
+        ],
         allowMultiple: true,
         withData: true,
       );
@@ -534,11 +602,12 @@ class _ScreensAddProductState extends State<ScreensAddProduct> {
 
         final ext = _safeExt(file.extension, fallback: 'bin');
         final contentType = _detectContentTypeFromExtension(ext);
-        final fileName = 'product_catalog_${DateTime.now().millisecondsSinceEpoch}_${widget.currentUserUid}_${file.name}';
+        final fileName =
+            'product_catalog_${DateTime.now().millisecondsSinceEpoch}_${widget.currentUserUid}_${file.name}';
 
-        final ref = FirebaseStorage.instance
-            .ref()
-            .child('companies/${widget.companyId}/products/catalogs/$fileName');
+        final ref = FirebaseStorage.instance.ref().child(
+          'companies/${widget.companyId}/products/catalogs/$fileName',
+        );
 
         final metadata = SettableMetadata(
           contentType: contentType,
@@ -551,12 +620,17 @@ class _ScreensAddProductState extends State<ScreensAddProduct> {
           },
         );
 
-        final task = await ref.putData(bytes, metadata).timeout(
-          const Duration(seconds: 30),
-          onTimeout: () => throw Exception('Upload timed out after 30 seconds'),
-        );
+        final task = await ref
+            .putData(bytes, metadata)
+            .timeout(
+              const Duration(seconds: 30),
+              onTimeout: () =>
+                  throw Exception('Upload timed out after 30 seconds'),
+            );
 
-        if (task.state != TaskState.success) throw Exception('Catalog upload did not complete successfully');
+        if (task.state != TaskState.success) {
+          throw Exception('Catalog upload did not complete successfully');
+        }
 
         final downloadUrl = await ref.getDownloadURL();
 
@@ -573,13 +647,19 @@ class _ScreensAddProductState extends State<ScreensAddProduct> {
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Catalogs uploaded successfully'), backgroundColor: Colors.green),
+          const SnackBar(
+            content: Text('Catalogs uploaded successfully'),
+            backgroundColor: Colors.green,
+          ),
         );
       }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Catalog upload failed: $e'), backgroundColor: Colors.red),
+          SnackBar(
+            content: Text('Catalog upload failed: $e'),
+            backgroundColor: Colors.red,
+          ),
         );
       }
     } finally {
@@ -612,9 +692,7 @@ class _ScreensAddProductState extends State<ScreensAddProduct> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text(
-              'Cannot open gs:// URLs directly.',
-            ),
+            content: Text('Cannot open gs:// URLs directly.'),
             backgroundColor: Colors.red,
           ),
         );
@@ -676,7 +754,9 @@ class _ScreensAddProductState extends State<ScreensAddProduct> {
             onPressed: () {
               final val = ctrl.text.trim();
               if (val.isEmpty) {
-                ScaffoldMessenger.of(ctx).showSnackBar(const SnackBar(content: Text('UOM cannot be empty')));
+                ScaffoldMessenger.of(ctx).showSnackBar(
+                  const SnackBar(content: Text('UOM cannot be empty')),
+                );
                 return;
               }
               Navigator.pop(ctx, val);
@@ -700,7 +780,10 @@ class _ScreensAddProductState extends State<ScreensAddProduct> {
         if (!_uomOptions.any((e) => e.toLowerCase() == result.toLowerCase())) {
           _uomOptions.add(result);
         }
-        _selectedUom = _uomOptions.firstWhere((e) => e.toLowerCase() == result.toLowerCase(), orElse: () => result);
+        _selectedUom = _uomOptions.firstWhere(
+          (e) => e.toLowerCase() == result.toLowerCase(),
+          orElse: () => result,
+        );
       });
     } else {
       setState(() {}); // refresh visual state if canceled
@@ -708,15 +791,25 @@ class _ScreensAddProductState extends State<ScreensAddProduct> {
   }
 
   Widget _buildUomField() {
-    List<DropdownMenuItem<String>> items = _uomOptions.map((e) => DropdownMenuItem<String>(value: e, child: Text(e))).toList();
-    items.add(const DropdownMenuItem<String>(
-      value: 'ADD_NEW_UOM',
-      child: Text('+ Add Custom UOM...', style: TextStyle(color: Colors.blue, fontWeight: FontWeight.bold)),
-    ));
+    List<DropdownMenuItem<String>> items = _uomOptions
+        .map((e) => DropdownMenuItem<String>(value: e, child: Text(e)))
+        .toList();
+    items.add(
+      const DropdownMenuItem<String>(
+        value: 'ADD_NEW_UOM',
+        child: Text(
+          '+ Add Custom UOM...',
+          style: TextStyle(color: Colors.blue, fontWeight: FontWeight.bold),
+        ),
+      ),
+    );
 
     return DropdownButtonFormField<String>(
       value: _selectedUom,
-      decoration: _inputDecoration(label: 'UOM *', icon: Icons.straighten_outlined),
+      decoration: _inputDecoration(
+        label: 'UOM *',
+        icon: Icons.straighten_outlined,
+      ),
       items: items,
       validator: _requiredValidator,
       onChanged: (val) {
@@ -755,12 +848,18 @@ class _ScreensAddProductState extends State<ScreensAddProduct> {
             onPressed: () {
               final val = ctrl.text.trim();
               if (val.isEmpty) {
-                ScaffoldMessenger.of(ctx).showSnackBar(const SnackBar(content: Text('Name cannot be empty')));
+                ScaffoldMessenger.of(ctx).showSnackBar(
+                  const SnackBar(content: Text('Name cannot be empty')),
+                );
                 return;
               }
-              final isDup = currentOptions.any((e) => e.toLowerCase() == val.toLowerCase());
+              final isDup = currentOptions.any(
+                (e) => e.toLowerCase() == val.toLowerCase(),
+              );
               if (isDup) {
-                ScaffoldMessenger.of(ctx).showSnackBar(const SnackBar(content: Text('Machine type already exists')));
+                ScaffoldMessenger.of(ctx).showSnackBar(
+                  const SnackBar(content: Text('Machine type already exists')),
+                );
                 return;
               }
               Navigator.pop(ctx, val);
@@ -788,7 +887,9 @@ class _ScreensAddProductState extends State<ScreensAddProduct> {
           }
         });
       } catch (e) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error adding machine type: $e')));
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error adding machine type: $e')),
+        );
       }
     } else {
       setState(() {}); // refresh visual state if canceled
@@ -800,16 +901,24 @@ class _ScreensAddProductState extends State<ScreensAddProduct> {
       stream: _machineTypesRef.orderBy('nameLower').snapshots(),
       builder: (context, snap) {
         if (snap.hasError) {
-          return const Text('Error loading machine types', style: TextStyle(color: Colors.red));
+          return const Text(
+            'Error loading machine types',
+            style: TextStyle(color: Colors.red),
+          );
         }
 
         List<String> options = [];
         if (snap.hasData) {
-          options = snap.data!.docs.map((d) => (d.data()['name'] ?? '').toString()).where((e) => e.isNotEmpty).toList();
+          options = snap.data!.docs
+              .map((d) => (d.data()['name'] ?? '').toString())
+              .where((e) => e.isNotEmpty)
+              .toList();
         }
 
         // Keep legacy backward compatibility safe
-        if (_machineType != null && _machineType!.isNotEmpty && !options.contains(_machineType)) {
+        if (_machineType != null &&
+            _machineType!.isNotEmpty &&
+            !options.contains(_machineType)) {
           options.insert(0, _machineType!);
         }
 
@@ -822,24 +931,40 @@ class _ScreensAddProductState extends State<ScreensAddProduct> {
           return true;
         }).toList();
 
-        List<DropdownMenuItem<String?>> items = options.map((e) => DropdownMenuItem<String?>(value: e, child: Text(e))).toList();
-        items.add(const DropdownMenuItem<String?>(
-          value: 'ADD_NEW',
-          child: Text('+ Add New Machine Type...', style: TextStyle(color: Colors.blue, fontWeight: FontWeight.bold)),
-        ));
+        List<DropdownMenuItem<String?>> items = options
+            .map((e) => DropdownMenuItem<String?>(value: e, child: Text(e)))
+            .toList();
+        items.add(
+          const DropdownMenuItem<String?>(
+            value: 'ADD_NEW',
+            child: Text(
+              '+ Add New Machine Type...',
+              style: TextStyle(color: Colors.blue, fontWeight: FontWeight.bold),
+            ),
+          ),
+        );
 
         // Safe Dropdown Value (REMOVED POST FRAME CALLBACK RISK)
-        final safeMachineType = options.contains(_machineType) ? _machineType : null;
+        final safeMachineType = options.contains(_machineType)
+            ? _machineType
+            : null;
 
         return DropdownButtonFormField<String?>(
           value: safeMachineType,
-          decoration: _inputDecoration(label: 'Machine Type *', icon: Icons.precision_manufacturing_outlined),
+          decoration: _inputDecoration(
+            label: 'Machine Type *',
+            icon: Icons.precision_manufacturing_outlined,
+          ),
           items: [
-            const DropdownMenuItem(value: null, child: Text('Select Machine Type')),
+            const DropdownMenuItem(
+              value: null,
+              child: Text('Select Machine Type'),
+            ),
             ...items,
           ],
           validator: (val) {
-            if (_productNature == 'Machine' && (val == null || val.trim().isEmpty || val == 'ADD_NEW')) {
+            if (_productNature == 'Machine' &&
+                (val == null || val.trim().isEmpty || val == 'ADD_NEW')) {
               return 'Please select machine type';
             }
             return null;
@@ -865,73 +990,94 @@ class _ScreensAddProductState extends State<ScreensAddProduct> {
     }
 
     return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-        stream: _subcategoriesRef(_selectedCategoryId!).orderBy('nameLower').snapshots(),
-        builder: (context, snap) {
-          if (snap.connectionState == ConnectionState.waiting && !snap.hasData) {
-            return const LinearProgressIndicator();
-          }
-          if (snap.hasError) return Text('Error: ${snap.error}');
+      stream: _subcategoriesRef(
+        _selectedCategoryId!,
+      ).orderBy('nameLower').snapshots(),
+      builder: (context, snap) {
+        if (snap.connectionState == ConnectionState.waiting && !snap.hasData) {
+          return const LinearProgressIndicator();
+        }
+        if (snap.hasError) return Text('Error: ${snap.error}');
 
-          var docs = snap.data?.docs ?? [];
-          docs = docs.where((doc) => doc.data()['isActive'] != false).toList();
+        var docs = snap.data?.docs ?? [];
+        docs = docs.where((doc) => doc.data()['isActive'] != false).toList();
 
-          if (docs.isEmpty) {
-            return const Text('No subcategories found in selected category', style: TextStyle(color: Colors.grey));
-          }
-
-          return Container(
-            width: double.infinity,
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: const Color(0xFFE4E7EC)),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text('Supported Machine Categories', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
-                const SizedBox(height: 4),
-                const Text('Select machine categories this accessory supports', style: TextStyle(fontSize: 12, color: Color(0xFF667085))),
-                const SizedBox(height: 12),
-                Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
-                  children: docs.map((doc) {
-                    final data = doc.data();
-                    final name = (data['name'] ?? '').toString();
-                    final isSelected = _compatibleSubcategories.contains(doc.id);
-
-                    return FilterChip(
-                      label: Text(name, style: TextStyle(fontSize: 12, color: isSelected ? Colors.blue[700] : Colors.black87)),
-                      selected: isSelected,
-                      selectedColor: Colors.blue[50],
-                      checkmarkColor: Colors.blue[700],
-                      backgroundColor: const Color(0xFFF9FAFB),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(8),
-                        side: BorderSide(color: isSelected ? Colors.blue.shade200 : const Color(0xFFE4E7EC)),
-                      ),
-                      onSelected: (selected) {
-                        setState(() {
-                          if (selected) {
-                            if (!_compatibleSubcategories.contains(doc.id)) {
-                              _compatibleSubcategories.add(doc.id);
-                            }
-                          } else {
-                            _compatibleSubcategories.remove(doc.id);
-                          }
-                          _compatibleProductIds.clear();
-                          _compatibleProductNames.clear();
-                        });
-                      },
-                    );
-                  }).toList(),
-                ),
-              ],
-            ),
+        if (docs.isEmpty) {
+          return const Text(
+            'No subcategories found in selected category',
+            style: TextStyle(color: Colors.grey),
           );
         }
+
+        return Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: const Color(0xFFE4E7EC)),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'Supported Machine Categories',
+                style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
+              ),
+              const SizedBox(height: 4),
+              const Text(
+                'Select machine categories this accessory supports',
+                style: TextStyle(fontSize: 12, color: Color(0xFF667085)),
+              ),
+              const SizedBox(height: 12),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: docs.map((doc) {
+                  final data = doc.data();
+                  final name = (data['name'] ?? '').toString();
+                  final isSelected = _compatibleSubcategories.contains(doc.id);
+
+                  return FilterChip(
+                    label: Text(
+                      name,
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: isSelected ? Colors.blue[700] : Colors.black87,
+                      ),
+                    ),
+                    selected: isSelected,
+                    selectedColor: Colors.blue[50],
+                    checkmarkColor: Colors.blue[700],
+                    backgroundColor: const Color(0xFFF9FAFB),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(8),
+                      side: BorderSide(
+                        color: isSelected
+                            ? Colors.blue.shade200
+                            : const Color(0xFFE4E7EC),
+                      ),
+                    ),
+                    onSelected: (selected) {
+                      setState(() {
+                        if (selected) {
+                          if (!_compatibleSubcategories.contains(doc.id)) {
+                            _compatibleSubcategories.add(doc.id);
+                          }
+                        } else {
+                          _compatibleSubcategories.remove(doc.id);
+                        }
+                        _compatibleProductIds.clear();
+                        _compatibleProductNames.clear();
+                      });
+                    },
+                  );
+                }).toList(),
+              ),
+            ],
+          ),
+        );
+      },
     );
   }
 
@@ -945,15 +1091,23 @@ class _ScreensAddProductState extends State<ScreensAddProduct> {
       stream: _machineTypesRef.orderBy('nameLower').snapshots(),
       builder: (context, snap) {
         if (snap.hasError) {
-          return const Text('Error loading machine types', style: TextStyle(color: Colors.red));
+          return const Text(
+            'Error loading machine types',
+            style: TextStyle(color: Colors.red),
+          );
         }
 
         List<String> options = [];
         if (snap.hasData) {
-          options = snap.data!.docs.map((d) => (d.data()['name'] ?? '').toString()).where((e) => e.isNotEmpty).toList();
+          options = snap.data!.docs
+              .map((d) => (d.data()['name'] ?? '').toString())
+              .where((e) => e.isNotEmpty)
+              .toList();
         }
 
-        if (_compatibleMachineType != null && _compatibleMachineType!.isNotEmpty && !options.contains(_compatibleMachineType)) {
+        if (_compatibleMachineType != null &&
+            _compatibleMachineType!.isNotEmpty &&
+            !options.contains(_compatibleMachineType)) {
           options.insert(0, _compatibleMachineType!);
         }
 
@@ -965,20 +1119,32 @@ class _ScreensAddProductState extends State<ScreensAddProduct> {
           return true;
         }).toList();
 
-        final safeMachineType = options.contains(_compatibleMachineType) ? _compatibleMachineType : null;
+        final safeMachineType = options.contains(_compatibleMachineType)
+            ? _compatibleMachineType
+            : null;
 
         List<DropdownMenuItem<String?>> items = [
           const DropdownMenuItem(value: null, child: Text('All Machine Types')),
-          ...options.map((e) => DropdownMenuItem<String?>(value: e, child: Text(e))),
+          ...options.map(
+            (e) => DropdownMenuItem<String?>(value: e, child: Text(e)),
+          ),
         ];
-        items.add(const DropdownMenuItem<String?>(
-          value: 'ADD_NEW',
-          child: Text('+ Add New Machine Type...', style: TextStyle(color: Colors.blue, fontWeight: FontWeight.bold)),
-        ));
+        items.add(
+          const DropdownMenuItem<String?>(
+            value: 'ADD_NEW',
+            child: Text(
+              '+ Add New Machine Type...',
+              style: TextStyle(color: Colors.blue, fontWeight: FontWeight.bold),
+            ),
+          ),
+        );
 
         return DropdownButtonFormField<String?>(
           value: safeMachineType,
-          decoration: _inputDecoration(label: 'Machine Type Compatibility', icon: Icons.precision_manufacturing_outlined),
+          decoration: _inputDecoration(
+            label: 'Machine Type Compatibility',
+            icon: Icons.precision_manufacturing_outlined,
+          ),
           items: items,
           onChanged: (val) {
             if (val == 'ADD_NEW') {
@@ -1001,178 +1167,257 @@ class _ScreensAddProductState extends State<ScreensAddProduct> {
     String? selectedProductId;
     String? selectedProductName;
     final qtyCtrl = TextEditingController(text: '1');
-    String selectedUom = _selectedUom; // Default to main product UOM if possible, or 'Nos.'
+    String selectedUom =
+        _selectedUom; // Default to main product UOM if possible, or 'Nos.'
     String searchQuery = '';
 
     final result = await showDialog<Map<String, dynamic>>(
-        context: context,
-        builder: (ctx) {
-          return StatefulBuilder(
-            builder: (ctx, setDialogState) {
-              return AlertDialog(
-                title: const Text('Add Included Product'),
-                content: SizedBox(
-                  width: 500,
-                  child: SingleChildScrollView(
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        // Product Search & Selection
-                        TextField(
-                          decoration: InputDecoration(
-                            labelText: 'Search Product',
-                            prefixIcon: const Icon(Icons.search),
-                            border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+      context: context,
+      builder: (ctx) {
+        return StatefulBuilder(
+          builder: (ctx, setDialogState) {
+            return AlertDialog(
+              title: const Text('Add Included Product'),
+              content: SizedBox(
+                width: 500,
+                child: SingleChildScrollView(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      // Product Search & Selection
+                      TextField(
+                        decoration: InputDecoration(
+                          labelText: 'Search Product',
+                          prefixIcon: const Icon(Icons.search),
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
                           ),
-                          onChanged: (val) => setDialogState(() => searchQuery = val.toLowerCase()),
                         ),
-                        const SizedBox(height: 12),
-                        Container(
-                          height: 200,
-                          decoration: BoxDecoration(
-                            border: Border.all(color: Colors.grey.shade300),
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          child: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-                            stream: _productsRef
-                                .where('isActive', isEqualTo: true)
-                            // Only exclude current product being edited
-                                .snapshots(),
-                            builder: (context, snap) {
-                              if (snap.connectionState == ConnectionState.waiting && !snap.hasData) {
-                                return const Center(child: CircularProgressIndicator());
-                              }
-                              if (snap.hasError) return const Center(child: Text('Error loading products'));
-
-                              var docs = snap.data?.docs ?? [];
-
-                              // PROFESSIONAL ERP LOGIC: Scope of Supply should ONLY allow Accessories and Spares
-                              final allowed = ['accessory', 'spare'];
-                              docs = docs.where((d) {
-                                final nature = (d.data()['productNatureLower'] ?? '').toString().trim().toLowerCase();
-                                return allowed.contains(nature);
-                              }).toList();
-
-                              // Prevent self-inclusion
-                              if (widget.productId != null) {
-                                docs = docs.where((d) => d.id != widget.productId).toList();
-                              }
-
-                              // Filter by search query
-                              if (searchQuery.isNotEmpty) {
-                                docs = docs.where((d) {
-                                  final name = (d.data()['name'] ?? '').toString().toLowerCase();
-                                  final sku = (d.data()['sku'] ?? d.data()['itemCode'] ?? '').toString().toLowerCase();
-                                  return name.contains(searchQuery) || sku.contains(searchQuery);
-                                }).toList();
-                              }
-
-                              // Prevent adding already included products
-                              docs = docs.where((d) => !_includedProducts.any((ip) => ip['productId'] == d.id)).toList();
-
-                              if (docs.isEmpty) {
-                                return const Center(child: Text('No accessory or spare products available', style: TextStyle(color: Colors.grey)));
-                              }
-
-                              return ListView.separated(
-                                itemCount: docs.length,
-                                separatorBuilder: (_, __) => const Divider(height: 1),
-                                itemBuilder: (context, index) {
-                                  final doc = docs[index];
-                                  final data = doc.data();
-                                  final name = (data['name'] ?? '').toString();
-                                  final sku = (data['sku'] ?? data['itemCode'] ?? '').toString();
-                                  final isSelected = selectedProductId == doc.id;
-
-                                  return ListTile(
-                                    dense: true,
-                                    selected: isSelected,
-                                    selectedTileColor: Colors.blue.shade50,
-                                    title: Text(name, style: const TextStyle(fontWeight: FontWeight.w600)),
-                                    subtitle: sku.isNotEmpty ? Text('SKU: $sku') : null,
-                                    onTap: () {
-                                      setDialogState(() {
-                                        selectedProductId = doc.id;
-                                        selectedProductName = name;
-                                        // Suggest UOM if product has one
-                                        final pUom = data['uom']?.toString();
-                                        if (pUom != null && pUom.isNotEmpty && _uomOptions.contains(pUom)) {
-                                          selectedUom = pUom;
-                                        }
-                                      });
-                                    },
-                                  );
-                                },
+                        onChanged: (val) => setDialogState(
+                          () => searchQuery = val.toLowerCase(),
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      Container(
+                        height: 200,
+                        decoration: BoxDecoration(
+                          border: Border.all(color: Colors.grey.shade300),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+                          stream: _productsRef
+                              .where('isActive', isEqualTo: true)
+                              // Only exclude current product being edited
+                              .snapshots(),
+                          builder: (context, snap) {
+                            if (snap.connectionState ==
+                                    ConnectionState.waiting &&
+                                !snap.hasData) {
+                              return const Center(
+                                child: CircularProgressIndicator(),
                               );
-                            },
+                            }
+                            if (snap.hasError) {
+                              return const Center(
+                                child: Text('Error loading products'),
+                              );
+                            }
+
+                            var docs = snap.data?.docs ?? [];
+
+                            // PROFESSIONAL ERP LOGIC: Scope of Supply should ONLY allow Accessories and Spares
+                            final allowed = ['accessory', 'spare'];
+                            docs = docs.where((d) {
+                              final nature =
+                                  (d.data()['productNatureLower'] ?? '')
+                                      .toString()
+                                      .trim()
+                                      .toLowerCase();
+                              return allowed.contains(nature);
+                            }).toList();
+
+                            // Prevent self-inclusion
+                            if (widget.productId != null) {
+                              docs = docs
+                                  .where((d) => d.id != widget.productId)
+                                  .toList();
+                            }
+
+                            // Filter by search query
+                            if (searchQuery.isNotEmpty) {
+                              docs = docs.where((d) {
+                                final name = (d.data()['name'] ?? '')
+                                    .toString()
+                                    .toLowerCase();
+                                final sku =
+                                    (d.data()['sku'] ??
+                                            d.data()['itemCode'] ??
+                                            '')
+                                        .toString()
+                                        .toLowerCase();
+                                return name.contains(searchQuery) ||
+                                    sku.contains(searchQuery);
+                              }).toList();
+                            }
+
+                            // Prevent adding already included products
+                            docs = docs
+                                .where(
+                                  (d) => !_includedProducts.any(
+                                    (ip) => ip['productId'] == d.id,
+                                  ),
+                                )
+                                .toList();
+
+                            if (docs.isEmpty) {
+                              return const Center(
+                                child: Text(
+                                  'No accessory or spare products available',
+                                  style: TextStyle(color: Colors.grey),
+                                ),
+                              );
+                            }
+
+                            return ListView.separated(
+                              itemCount: docs.length,
+                              separatorBuilder: (_, __) =>
+                                  const Divider(height: 1),
+                              itemBuilder: (context, index) {
+                                final doc = docs[index];
+                                final data = doc.data();
+                                final name = (data['name'] ?? '').toString();
+                                final sku =
+                                    (data['sku'] ?? data['itemCode'] ?? '')
+                                        .toString();
+                                final isSelected = selectedProductId == doc.id;
+
+                                return ListTile(
+                                  dense: true,
+                                  selected: isSelected,
+                                  selectedTileColor: Colors.blue.shade50,
+                                  title: Text(
+                                    name,
+                                    style: const TextStyle(
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                  subtitle: sku.isNotEmpty
+                                      ? Text('SKU: $sku')
+                                      : null,
+                                  onTap: () {
+                                    setDialogState(() {
+                                      selectedProductId = doc.id;
+                                      selectedProductName = name;
+                                      // Suggest UOM if product has one
+                                      final pUom = data['uom']?.toString();
+                                      if (pUom != null &&
+                                          pUom.isNotEmpty &&
+                                          _uomOptions.contains(pUom)) {
+                                        selectedUom = pUom;
+                                      }
+                                    });
+                                  },
+                                );
+                              },
+                            );
+                          },
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      // Quantity & UOM
+                      Row(
+                        children: [
+                          Expanded(
+                            child: TextFormField(
+                              controller: qtyCtrl,
+                              decoration: InputDecoration(
+                                labelText: 'Quantity',
+                                border: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                              ),
+                              keyboardType:
+                                  const TextInputType.numberWithOptions(
+                                    decimal: true,
+                                  ),
+                              inputFormatters: [
+                                FilteringTextInputFormatter.allow(
+                                  RegExp(r'^\d*\.?\d*'),
+                                ),
+                              ],
+                            ),
                           ),
-                        ),
-                        const SizedBox(height: 16),
-                        // Quantity & UOM
-                        Row(
-                          children: [
-                            Expanded(
-                              child: TextFormField(
-                                controller: qtyCtrl,
-                                decoration: InputDecoration(
-                                  labelText: 'Quantity',
-                                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: DropdownButtonFormField<String>(
+                              value: selectedUom,
+                              decoration: InputDecoration(
+                                labelText: 'UOM',
+                                border: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(12),
                                 ),
-                                keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                                inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'^\d*\.?\d*'))],
                               ),
+                              items: _uomOptions
+                                  .map(
+                                    (e) => DropdownMenuItem(
+                                      value: e,
+                                      child: Text(e),
+                                    ),
+                                  )
+                                  .toList(),
+                              onChanged: (val) {
+                                if (val != null) {
+                                  setDialogState(() => selectedUom = val);
+                                }
+                              },
                             ),
-                            const SizedBox(width: 12),
-                            Expanded(
-                              child: DropdownButtonFormField<String>(
-                                value: selectedUom,
-                                decoration: InputDecoration(
-                                  labelText: 'UOM',
-                                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-                                ),
-                                items: _uomOptions.map((e) => DropdownMenuItem(value: e, child: Text(e))).toList(),
-                                onChanged: (val) {
-                                  if (val != null) setDialogState(() => selectedUom = val);
-                                },
-                              ),
-                            ),
-                          ],
-                        ),
-                      ],
-                    ),
+                          ),
+                        ],
+                      ),
+                    ],
                   ),
                 ),
-                actions: [
-                  TextButton(
-                    onPressed: () => Navigator.pop(ctx),
-                    child: const Text('Cancel'),
-                  ),
-                  FilledButton(
-                    onPressed: () {
-                      if (selectedProductId == null || selectedProductName == null) {
-                        ScaffoldMessenger.of(ctx).showSnackBar(const SnackBar(content: Text('Please select a product')));
-                        return;
-                      }
-                      final qty = double.tryParse(qtyCtrl.text.trim()) ?? 0;
-                      if (qty <= 0) {
-                        ScaffoldMessenger.of(ctx).showSnackBar(const SnackBar(content: Text('Quantity must be greater than 0')));
-                        return;
-                      }
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(ctx),
+                  child: const Text('Cancel'),
+                ),
+                FilledButton(
+                  onPressed: () {
+                    if (selectedProductId == null ||
+                        selectedProductName == null) {
+                      ScaffoldMessenger.of(ctx).showSnackBar(
+                        const SnackBar(
+                          content: Text('Please select a product'),
+                        ),
+                      );
+                      return;
+                    }
+                    final qty = double.tryParse(qtyCtrl.text.trim()) ?? 0;
+                    if (qty <= 0) {
+                      ScaffoldMessenger.of(ctx).showSnackBar(
+                        const SnackBar(
+                          content: Text('Quantity must be greater than 0'),
+                        ),
+                      );
+                      return;
+                    }
 
-                      Navigator.pop(ctx, {
-                        'productId': selectedProductId,
-                        'productName': selectedProductName,
-                        'qty': qty,
-                        'uom': selectedUom,
-                      });
-                    },
-                    child: const Text('Add to Scope'),
-                  ),
-                ],
-              );
-            },
-          );
-        }
+                    Navigator.pop(ctx, {
+                      'productId': selectedProductId,
+                      'productName': selectedProductName,
+                      'qty': qty,
+                      'uom': selectedUom,
+                    });
+                  },
+                  child: const Text('Add to Scope'),
+                ),
+              ],
+            );
+          },
+        );
+      },
     );
 
     // CRITICAL FIX: Ensure valid map is received before saving to state
@@ -1201,9 +1446,15 @@ class _ScreensAddProductState extends State<ScreensAddProduct> {
               Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text('Scope of Supply', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 15)),
+                  const Text(
+                    'Scope of Supply',
+                    style: TextStyle(fontWeight: FontWeight.w700, fontSize: 15),
+                  ),
                   const SizedBox(height: 4),
-                  const Text('Select accessory or spare products included with this machine', style: TextStyle(fontSize: 12, color: Color(0xFF667085))),
+                  const Text(
+                    'Select accessory or spare products included with this machine',
+                    style: TextStyle(fontSize: 12, color: Color(0xFF667085)),
+                  ),
                 ],
               ),
               OutlinedButton.icon(
@@ -1214,7 +1465,7 @@ class _ScreensAddProductState extends State<ScreensAddProduct> {
                   foregroundColor: Colors.blue.shade700,
                   side: BorderSide(color: Colors.blue.shade200),
                 ),
-              )
+              ),
             ],
           ),
           if (_includedProducts.isNotEmpty) ...[
@@ -1242,56 +1493,123 @@ class _ScreensAddProductState extends State<ScreensAddProduct> {
                         ),
                       ), // CRITICAL FIX: Proper Border implementation
                       children: [
-                        const Padding(padding: EdgeInsets.all(10), child: Text('Product', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13))),
-                        const Padding(padding: EdgeInsets.all(10), child: Text('Qty', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13))),
-                        const Padding(padding: EdgeInsets.all(10), child: Text('UOM', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13))),
-                        const Padding(padding: EdgeInsets.all(10), child: Text('Action', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13), textAlign: TextAlign.center)),
+                        const Padding(
+                          padding: EdgeInsets.all(10),
+                          child: Text(
+                            'Product',
+                            style: TextStyle(
+                              fontWeight: FontWeight.w600,
+                              fontSize: 13,
+                            ),
+                          ),
+                        ),
+                        const Padding(
+                          padding: EdgeInsets.all(10),
+                          child: Text(
+                            'Qty',
+                            style: TextStyle(
+                              fontWeight: FontWeight.w600,
+                              fontSize: 13,
+                            ),
+                          ),
+                        ),
+                        const Padding(
+                          padding: EdgeInsets.all(10),
+                          child: Text(
+                            'UOM',
+                            style: TextStyle(
+                              fontWeight: FontWeight.w600,
+                              fontSize: 13,
+                            ),
+                          ),
+                        ),
+                        const Padding(
+                          padding: EdgeInsets.all(10),
+                          child: Text(
+                            'Action',
+                            style: TextStyle(
+                              fontWeight: FontWeight.w600,
+                              fontSize: 13,
+                            ),
+                            textAlign: TextAlign.center,
+                          ),
+                        ),
                       ],
                     ),
                     ..._includedProducts.asMap().entries.map((entry) {
                       final idx = entry.key;
                       final item = entry.value;
                       return TableRow(
-                          decoration: BoxDecoration(
-                            border: idx != _includedProducts.length - 1 ? const Border(bottom: BorderSide(color: Color(0xFFF1F5F9))) : null, // CRITICAL FIX: Proper Border implementation
-                          ),
-                          children: [
-                            Padding(
-                              padding: const EdgeInsets.all(10),
-                              child: Text(item['productName'] ?? '', style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500)),
-                            ),
-                            Padding(
-                              padding: const EdgeInsets.all(10),
-                              child: Text(item['qty'].toString(), style: const TextStyle(fontSize: 13)),
-                            ),
-                            Padding(
-                              padding: const EdgeInsets.all(10),
-                              child: Text(item['uom'] ?? '', style: const TextStyle(fontSize: 13)),
-                            ),
-                            Padding(
-                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                              child: IconButton(
-                                icon: const Icon(Icons.remove_circle_outline, color: Colors.red, size: 20),
-                                onPressed: () {
-                                  setState(() {
-                                    _includedProducts.removeAt(idx);
-                                  });
-                                },
-                                tooltip: 'Remove',
-                                padding: EdgeInsets.zero,
-                                constraints: const BoxConstraints(),
+                        decoration: BoxDecoration(
+                          border: idx != _includedProducts.length - 1
+                              ? const Border(
+                                  bottom: BorderSide(color: Color(0xFFF1F5F9)),
+                                )
+                              : null, // CRITICAL FIX: Proper Border implementation
+                        ),
+                        children: [
+                          Padding(
+                            padding: const EdgeInsets.all(10),
+                            child: Text(
+                              item['productName'] ?? '',
+                              style: const TextStyle(
+                                fontSize: 13,
+                                fontWeight: FontWeight.w500,
                               ),
                             ),
-                          ]
+                          ),
+                          Padding(
+                            padding: const EdgeInsets.all(10),
+                            child: Text(
+                              item['qty'].toString(),
+                              style: const TextStyle(fontSize: 13),
+                            ),
+                          ),
+                          Padding(
+                            padding: const EdgeInsets.all(10),
+                            child: Text(
+                              item['uom'] ?? '',
+                              style: const TextStyle(fontSize: 13),
+                            ),
+                          ),
+                          Padding(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 10,
+                              vertical: 4,
+                            ),
+                            child: IconButton(
+                              icon: const Icon(
+                                Icons.remove_circle_outline,
+                                color: Colors.red,
+                                size: 20,
+                              ),
+                              onPressed: () {
+                                setState(() {
+                                  _includedProducts.removeAt(idx);
+                                });
+                              },
+                              tooltip: 'Remove',
+                              padding: EdgeInsets.zero,
+                              constraints: const BoxConstraints(),
+                            ),
+                          ),
+                        ],
                       );
-                    }).toList()
+                    }),
                   ],
                 ),
               ),
             ),
           ],
           const SizedBox(height: 12),
-          const Text('You can add included products later by editing this machine', style: TextStyle(fontSize: 11, color: Colors.grey, fontStyle: FontStyle.italic)),
+          const Text(
+            'You can add included products later by editing this machine',
+            style: TextStyle(
+              fontSize: 11,
+              color: Colors.grey,
+              fontStyle: FontStyle.italic,
+            ),
+          ),
         ],
       ),
     );
@@ -1309,11 +1627,20 @@ class _ScreensAddProductState extends State<ScreensAddProduct> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(title, style: const TextStyle(color: Colors.grey, fontWeight: FontWeight.bold)),
+          Text(
+            title,
+            style: const TextStyle(
+              color: Colors.grey,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
           if (subtitle != null) ...[
             const SizedBox(height: 4),
-            Text(subtitle, style: const TextStyle(color: Colors.grey, fontSize: 12)),
-          ]
+            Text(
+              subtitle,
+              style: const TextStyle(color: Colors.grey, fontSize: 12),
+            ),
+          ],
         ],
       ),
     );
@@ -1324,7 +1651,9 @@ class _ScreensAddProductState extends State<ScreensAddProduct> {
       return _emptyStateCard('Please select a category first');
     }
 
-    if (_productNature == 'Spare' && (_selectedSubcategoryId == null || _selectedSubcategoryId!.trim().isEmpty)) {
+    if (_productNature == 'Spare' &&
+        (_selectedSubcategoryId == null ||
+            _selectedSubcategoryId!.trim().isEmpty)) {
       return _emptyStateCard('Please select a subcategory first');
     }
 
@@ -1335,7 +1664,10 @@ class _ScreensAddProductState extends State<ScreensAddProduct> {
     return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
       stream: _productsRef
           .where('isActive', isEqualTo: true)
-          .where('productNatureLower', isEqualTo: 'machine') // Case-insensitive Machine matching
+          .where(
+            'productNatureLower',
+            isEqualTo: 'machine',
+          ) // Case-insensitive Machine matching
           .snapshots(),
       builder: (context, snap) {
         if (snap.connectionState == ConnectionState.waiting && !snap.hasData) {
@@ -1353,14 +1685,20 @@ class _ScreensAddProductState extends State<ScreensAddProduct> {
           final data = doc.data();
           final catId = (data['categoryId'] ?? '').toString().trim();
           final subId = (data['subcategoryId'] ?? '').toString().trim();
-          final mType = (data['machineType'] ?? data['type'] ?? '').toString().trim();
+          final mType = (data['machineType'] ?? data['type'] ?? '')
+              .toString()
+              .trim();
 
           if (catId != _selectedCategoryId) return false;
 
           if (_productNature == 'Spare') {
             if (subId != _selectedSubcategoryId) return false;
-            if (_compatibleMachineType != null && _compatibleMachineType!.isNotEmpty) {
-              if (mType.toLowerCase() != _compatibleMachineType!.toLowerCase()) return false;
+            if (_compatibleMachineType != null &&
+                _compatibleMachineType!.isNotEmpty) {
+              if (mType.toLowerCase() !=
+                  _compatibleMachineType!.toLowerCase()) {
+                return false;
+              }
             }
           } else if (_productNature == 'Accessory') {
             if (!_compatibleSubcategories.contains(subId)) return false;
@@ -1374,13 +1712,22 @@ class _ScreensAddProductState extends State<ScreensAddProduct> {
           docs = docs.where((e) => e.id != widget.productId).toList();
         }
 
-        docs.sort((a, b) => (a.data()['name'] ?? '').toString().toLowerCase().compareTo((b.data()['name'] ?? '').toString().toLowerCase()));
+        docs.sort(
+          (a, b) => (a.data()['name'] ?? '').toString().toLowerCase().compareTo(
+            (b.data()['name'] ?? '').toString().toLowerCase(),
+          ),
+        );
 
         if (docs.isEmpty) {
-          return _emptyStateCard('No compatible machines available yet', subtitle: 'Create machine products first or link them later');
+          return _emptyStateCard(
+            'No compatible machines available yet',
+            subtitle: 'Create machine products first or link them later',
+          );
         }
 
-        final titleLabel = _productNature == 'Accessory' ? 'Supported Machines' : 'Compatible Machines';
+        final titleLabel = _productNature == 'Accessory'
+            ? 'Supported Machines'
+            : 'Compatible Machines';
 
         return Container(
           width: double.infinity,
@@ -1393,9 +1740,18 @@ class _ScreensAddProductState extends State<ScreensAddProduct> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(titleLabel, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
+              Text(
+                titleLabel,
+                style: const TextStyle(
+                  fontWeight: FontWeight.w600,
+                  fontSize: 14,
+                ),
+              ),
               const SizedBox(height: 4),
-              const Text('Showing machines based on compatibility filters', style: TextStyle(fontSize: 12, color: Color(0xFF667085))),
+              const Text(
+                'Showing machines based on compatibility filters',
+                style: TextStyle(fontSize: 12, color: Color(0xFF667085)),
+              ),
               const SizedBox(height: 12),
               Wrap(
                 spacing: 8,
@@ -1406,14 +1762,24 @@ class _ScreensAddProductState extends State<ScreensAddProduct> {
                   final isSelected = _compatibleProductIds.contains(doc.id);
 
                   return FilterChip(
-                    label: Text(name, style: TextStyle(fontSize: 12, color: isSelected ? Colors.blue[700] : Colors.black87)),
+                    label: Text(
+                      name,
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: isSelected ? Colors.blue[700] : Colors.black87,
+                      ),
+                    ),
                     selected: isSelected,
                     selectedColor: Colors.blue[50],
                     checkmarkColor: Colors.blue[700],
                     backgroundColor: const Color(0xFFF9FAFB),
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(8),
-                      side: BorderSide(color: isSelected ? Colors.blue.shade200 : const Color(0xFFE4E7EC)),
+                      side: BorderSide(
+                        color: isSelected
+                            ? Colors.blue.shade200
+                            : const Color(0xFFE4E7EC),
+                      ),
                     ),
                     onSelected: (selected) {
                       setState(() {
@@ -1435,7 +1801,14 @@ class _ScreensAddProductState extends State<ScreensAddProduct> {
                 }).toList(),
               ),
               const SizedBox(height: 12),
-              const Text('You can link compatible machines later by editing this product', style: TextStyle(fontSize: 11, color: Colors.grey, fontStyle: FontStyle.italic)),
+              const Text(
+                'You can link compatible machines later by editing this product',
+                style: TextStyle(
+                  fontSize: 11,
+                  color: Colors.grey,
+                  fontStyle: FontStyle.italic,
+                ),
+              ),
             ],
           ),
         );
@@ -1473,9 +1846,20 @@ class _ScreensAddProductState extends State<ScreensAddProduct> {
                       child: const Column(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
-                          Icon(Icons.cloud_done_outlined, size: 30, color: Colors.green),
+                          Icon(
+                            Icons.cloud_done_outlined,
+                            size: 30,
+                            color: Colors.green,
+                          ),
                           SizedBox(height: 4),
-                          Text('Uploaded', style: TextStyle(fontSize: 12, color: Colors.green, fontWeight: FontWeight.w600)),
+                          Text(
+                            'Uploaded',
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: Colors.green,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
                         ],
                       ),
                     ),
@@ -1492,7 +1876,11 @@ class _ScreensAddProductState extends State<ScreensAddProduct> {
                         color: Colors.black54,
                         shape: BoxShape.circle,
                       ),
-                      child: const Icon(Icons.close, size: 14, color: Colors.white),
+                      child: const Icon(
+                        Icons.close,
+                        size: 14,
+                        color: Colors.white,
+                      ),
                     ),
                   ),
                 ),
@@ -1515,7 +1903,11 @@ class _ScreensAddProductState extends State<ScreensAddProduct> {
                           SizedBox(width: 4),
                           Text(
                             'View',
-                            style: TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold),
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 10,
+                              fontWeight: FontWeight.bold,
+                            ),
                           ),
                         ],
                       ),
@@ -1561,7 +1953,10 @@ class _ScreensAddProductState extends State<ScreensAddProduct> {
                       name,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
+                      style: const TextStyle(
+                        fontWeight: FontWeight.w600,
+                        fontSize: 13,
+                      ),
                     ),
                     const SizedBox(height: 2),
                     const Text(
@@ -1578,7 +1973,11 @@ class _ScreensAddProductState extends State<ScreensAddProduct> {
               ),
               IconButton(
                 onPressed: () => _removeCatalog(index),
-                icon: const Icon(Icons.delete_outline, size: 18, color: Colors.red),
+                icon: const Icon(
+                  Icons.delete_outline,
+                  size: 18,
+                  color: Colors.red,
+                ),
               ),
             ],
           ),
@@ -1606,18 +2005,32 @@ class _ScreensAddProductState extends State<ScreensAddProduct> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text('Product Images', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 14)),
+                const Text(
+                  'Product Images',
+                  style: TextStyle(fontWeight: FontWeight.w700, fontSize: 14),
+                ),
                 const SizedBox(height: 4),
-                const Text('Upload one or multiple images.', style: TextStyle(fontSize: 12, color: Color(0xFF667085))),
+                const Text(
+                  'Upload one or multiple images.',
+                  style: TextStyle(fontSize: 12, color: Color(0xFF667085)),
+                ),
                 const SizedBox(height: 12),
                 Row(
                   children: [
                     FilledButton.icon(
-                      onPressed: _isUploadingImage ? null : _pickAndUploadImages,
+                      onPressed: _isUploadingImage
+                          ? null
+                          : _pickAndUploadImages,
                       icon: _isUploadingImage
-                          ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                          ? const SizedBox(
+                              width: 16,
+                              height: 16,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
                           : const Icon(Icons.add_photo_alternate_outlined),
-                      label: Text(_isUploadingImage ? 'Uploading...' : 'Add Images'),
+                      label: Text(
+                        _isUploadingImage ? 'Uploading...' : 'Add Images',
+                      ),
                     ),
                   ],
                 ),
@@ -1641,18 +2054,32 @@ class _ScreensAddProductState extends State<ScreensAddProduct> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text('Product Catalogs & Attachments', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 14)),
+                const Text(
+                  'Product Catalogs & Attachments',
+                  style: TextStyle(fontWeight: FontWeight.w700, fontSize: 14),
+                ),
                 const SizedBox(height: 4),
-                const Text('Upload PDFs, brochures, or spec sheets.', style: TextStyle(fontSize: 12, color: Color(0xFF667085))),
+                const Text(
+                  'Upload PDFs, brochures, or spec sheets.',
+                  style: TextStyle(fontSize: 12, color: Color(0xFF667085)),
+                ),
                 const SizedBox(height: 12),
                 Row(
                   children: [
                     FilledButton.icon(
-                      onPressed: _isUploadingCatalog ? null : _pickAndUploadCatalogs,
+                      onPressed: _isUploadingCatalog
+                          ? null
+                          : _pickAndUploadCatalogs,
                       icon: _isUploadingCatalog
-                          ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                          ? const SizedBox(
+                              width: 16,
+                              height: 16,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
                           : const Icon(Icons.attach_file_outlined),
-                      label: Text(_isUploadingCatalog ? 'Uploading...' : 'Add Catalogs'),
+                      label: Text(
+                        _isUploadingCatalog ? 'Uploading...' : 'Add Catalogs',
+                      ),
                     ),
                   ],
                 ),
@@ -1739,14 +2166,19 @@ class _ScreensAddProductState extends State<ScreensAddProduct> {
         'productNature': _productNature, // Saved for backward compat
         'productNatureLower': _productNature.toLowerCase(),
         if (_productNature == 'Machine') 'machineType': _machineType ?? '',
-        if (_productNature == 'Machine') 'machineTypeLower': (_machineType ?? '').toLowerCase(),
+        if (_productNature == 'Machine')
+          'machineTypeLower': (_machineType ?? '').toLowerCase(),
         if (_productNature == 'Machine') 'includedProducts': _includedProducts,
 
-        if (_productNature == 'Spare') 'compatibleMachineType': _compatibleMachineType ?? '',
-        if (_productNature == 'Accessory') 'compatibleSubcategories': _compatibleSubcategories,
+        if (_productNature == 'Spare')
+          'compatibleMachineType': _compatibleMachineType ?? '',
+        if (_productNature == 'Accessory')
+          'compatibleSubcategories': _compatibleSubcategories,
 
-        if (_productNature == 'Accessory' || _productNature == 'Spare') 'compatibleProductIds': _compatibleProductIds,
-        if (_productNature == 'Accessory' || _productNature == 'Spare') 'compatibleProductNames': _compatibleProductNames,
+        if (_productNature == 'Accessory' || _productNature == 'Spare')
+          'compatibleProductIds': _compatibleProductIds,
+        if (_productNature == 'Accessory' || _productNature == 'Spare')
+          'compatibleProductNames': _compatibleProductNames,
         'name': cleanName,
         'nameLower': cleanName.toLowerCase(),
         'description': cleanDescription,
@@ -1756,7 +2188,8 @@ class _ScreensAddProductState extends State<ScreensAddProduct> {
         'subcategoryId': _selectedSubcategoryId,
         'subcategory': _selectedSubcategoryName ?? '',
         'make': cleanMake,
-        'brand': cleanMake, // Ensure backward compatibility with legacy 'brand' query dependencies
+        'brand':
+            cleanMake, // Ensure backward compatibility with legacy 'brand' query dependencies
         'hsnCode': cleanHsn,
         'itemCode': cleanItemCode,
         'sku': cleanSku,
@@ -1777,7 +2210,9 @@ class _ScreensAddProductState extends State<ScreensAddProduct> {
         'images': _imageUrls,
         'catalogUrl': _catalogs.isNotEmpty ? _catalogs.first['url'] : '',
         'catalogName': _catalogs.isNotEmpty ? _catalogs.first['name'] : '',
-        'catalogContentType': _catalogs.isNotEmpty ? _catalogs.first['contentType'] : '',
+        'catalogContentType': _catalogs.isNotEmpty
+            ? _catalogs.first['contentType']
+            : '',
         'catalogs': _catalogs,
         'notes': cleanNotes,
         'isActive': _isActive,
@@ -1810,8 +2245,9 @@ class _ScreensAddProductState extends State<ScreensAddProduct> {
 
         await _productsRef.doc(widget.productId).update({
           ...data,
-          'stockOnHand':
-          _trackInventory && !_isServiceLike ? _existingStockOnHand : 0.0,
+          'stockOnHand': _trackInventory && !_isServiceLike
+              ? _existingStockOnHand
+              : 0.0,
           'qty': _trackInventory && !_isServiceLike
               ? (_existingQty == 0 ? _existingStockOnHand : _existingQty)
               : 0.0,
@@ -1819,7 +2255,9 @@ class _ScreensAddProductState extends State<ScreensAddProduct> {
       } else {
         await _productsRef.add({
           ...data,
-          'stockOnHand': _trackInventory && !_isServiceLike ? openingStock : 0.0,
+          'stockOnHand': _trackInventory && !_isServiceLike
+              ? openingStock
+              : 0.0,
           'qty': _trackInventory && !_isServiceLike ? openingStock : 0.0,
           'isDeleted': false,
           'createdAt': FieldValue.serverTimestamp(),
@@ -1993,10 +2431,7 @@ class _ScreensAddProductState extends State<ScreensAddProduct> {
       padding: const EdgeInsets.only(bottom: 12),
       child: Text(
         title,
-        style: const TextStyle(
-          fontSize: 15,
-          fontWeight: FontWeight.w700,
-        ),
+        style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
       ),
     );
   }
@@ -2029,10 +2464,7 @@ class _ScreensAddProductState extends State<ScreensAddProduct> {
         title,
         style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
       ),
-      subtitle: Text(
-        subtitle,
-        style: const TextStyle(fontSize: 12),
-      ),
+      subtitle: Text(subtitle, style: const TextStyle(fontSize: 12)),
     );
   }
 
@@ -2119,8 +2551,8 @@ class _ScreensAddProductState extends State<ScreensAddProduct> {
             final selectedDoc = docs.firstWhere((e) => e.id == value);
             setState(() {
               _selectedCategoryId = value;
-              _selectedCategoryName =
-                  (selectedDoc.data()['name'] ?? '').toString();
+              _selectedCategoryName = (selectedDoc.data()['name'] ?? '')
+                  .toString();
               _selectedSubcategoryId = null;
               _selectedSubcategoryName = null;
               _machineType = null;
@@ -2159,9 +2591,7 @@ class _ScreensAddProductState extends State<ScreensAddProduct> {
     }
 
     return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-      stream: _subcategoriesRef(catId)
-          .orderBy('nameLower')
-          .snapshots(),
+      stream: _subcategoriesRef(catId).orderBy('nameLower').snapshots(),
       builder: (context, snap) {
         if (snap.connectionState == ConnectionState.waiting && !snap.hasData) {
           return const LinearProgressIndicator();
@@ -2233,8 +2663,8 @@ class _ScreensAddProductState extends State<ScreensAddProduct> {
             final selectedDoc = docs.firstWhere((e) => e.id == value);
             setState(() {
               _selectedSubcategoryId = value;
-              _selectedSubcategoryName =
-                  (selectedDoc.data()['name'] ?? '').toString();
+              _selectedSubcategoryName = (selectedDoc.data()['name'] ?? '')
+                  .toString();
               _compatibleMachineType = null;
               _compatibleProductIds.clear();
               _compatibleProductNames.clear();
@@ -2251,10 +2681,7 @@ class _ScreensAddProductState extends State<ScreensAddProduct> {
 
     return Scaffold(
       backgroundColor: const Color(0xFFF6F8FB),
-      appBar: AppBar(
-        title: Text(isEditText),
-        elevation: 0,
-      ),
+      appBar: AppBar(title: Text(isEditText), elevation: 0),
       body: LayoutBuilder(
         builder: (context, constraints) {
           final isTablet = constraints.maxWidth >= 760;
@@ -2274,11 +2701,26 @@ class _ScreensAddProductState extends State<ScreensAddProduct> {
                         icon: Icons.settings_applications_outlined,
                         value: _productNature,
                         items: const [
-                          DropdownMenuItem(value: 'Machine', child: Text('Machine')),
-                          DropdownMenuItem(value: 'Accessory', child: Text('Accessory')),
-                          DropdownMenuItem(value: 'Spare', child: Text('Spare')),
-                          DropdownMenuItem(value: 'Consumable', child: Text('Consumable')),
-                          DropdownMenuItem(value: 'Raw Material', child: Text('Raw Material')),
+                          DropdownMenuItem(
+                            value: 'Machine',
+                            child: Text('Machine'),
+                          ),
+                          DropdownMenuItem(
+                            value: 'Accessory',
+                            child: Text('Accessory'),
+                          ),
+                          DropdownMenuItem(
+                            value: 'Spare',
+                            child: Text('Spare'),
+                          ),
+                          DropdownMenuItem(
+                            value: 'Consumable',
+                            child: Text('Consumable'),
+                          ),
+                          DropdownMenuItem(
+                            value: 'Raw Material',
+                            child: Text('Raw Material'),
+                          ),
                         ],
                         onChanged: (value) {
                           if (value != null) {
@@ -2294,7 +2736,8 @@ class _ScreensAddProductState extends State<ScreensAddProduct> {
                               if (_productNature != 'Accessory') {
                                 _compatibleSubcategories.clear();
                               }
-                              if (_productNature != 'Accessory' && _productNature != 'Spare') {
+                              if (_productNature != 'Accessory' &&
+                                  _productNature != 'Spare') {
                                 _compatibleProductIds.clear();
                                 _compatibleProductNames.clear();
                               }
@@ -2445,8 +2888,8 @@ class _ScreensAddProductState extends State<ScreensAddProduct> {
                         const SizedBox(height: 10),
                         _buildCompatibleMachines(),
                       ],
-                      // --- DYNAMIC FIELDS END ---
 
+                      // --- DYNAMIC FIELDS END ---
                       const SizedBox(height: 10),
                       _buildTextField(
                         controller: _makeController,
@@ -2551,21 +2994,21 @@ class _ScreensAddProductState extends State<ScreensAddProduct> {
                       _buildStatusToggleTile(
                         title: 'Track Inventory',
                         subtitle:
-                        'Enable quantity and stock-related control for this item.',
+                            'Enable quantity and stock-related control for this item.',
                         value: _trackInventory,
                         onChanged: _isServiceLike
                             ? (_) {}
                             : (value) {
-                          setState(() {
-                            _trackInventory = value;
-                            if (!value) {
-                              _openingStockController.text = '0';
-                              _reorderLevelController.text = '0';
-                              _minStockLevelController.text = '0';
-                              _maxStockLevelController.text = '0';
-                            }
-                          });
-                        },
+                                setState(() {
+                                  _trackInventory = value;
+                                  if (!value) {
+                                    _openingStockController.text = '0';
+                                    _reorderLevelController.text = '0';
+                                    _minStockLevelController.text = '0';
+                                    _maxStockLevelController.text = '0';
+                                  }
+                                });
+                              },
                       ),
                       if (_isServiceLike)
                         const Padding(
@@ -2591,11 +3034,11 @@ class _ScreensAddProductState extends State<ScreensAddProduct> {
                                 label: 'Opening Stock',
                                 icon: Icons.production_quantity_limits_outlined,
                                 keyboardType:
-                                const TextInputType.numberWithOptions(
-                                  decimal: true,
-                                ),
+                                    const TextInputType.numberWithOptions(
+                                      decimal: true,
+                                    ),
                                 validator: (v) =>
-                                _trackInventory && !_isServiceLike
+                                    _trackInventory && !_isServiceLike
                                     ? _numberValidator(v)
                                     : null,
                                 onChanged: (_) => setState(() {}),
@@ -2609,11 +3052,11 @@ class _ScreensAddProductState extends State<ScreensAddProduct> {
                                 label: 'Reorder Level',
                                 icon: Icons.warning_amber_outlined,
                                 keyboardType:
-                                const TextInputType.numberWithOptions(
-                                  decimal: true,
-                                ),
+                                    const TextInputType.numberWithOptions(
+                                      decimal: true,
+                                    ),
                                 validator: (v) =>
-                                _trackInventory && !_isServiceLike
+                                    _trackInventory && !_isServiceLike
                                     ? _numberValidator(v)
                                     : null,
                                 onChanged: (_) => setState(() {}),
@@ -2661,11 +3104,11 @@ class _ScreensAddProductState extends State<ScreensAddProduct> {
                                 label: 'Minimum Stock',
                                 icon: Icons.vertical_align_bottom_outlined,
                                 keyboardType:
-                                const TextInputType.numberWithOptions(
-                                  decimal: true,
-                                ),
+                                    const TextInputType.numberWithOptions(
+                                      decimal: true,
+                                    ),
                                 validator: (v) =>
-                                _trackInventory && !_isServiceLike
+                                    _trackInventory && !_isServiceLike
                                     ? _numberValidator(v)
                                     : null,
                                 enabled: _trackInventory && !_isServiceLike,
@@ -2678,11 +3121,11 @@ class _ScreensAddProductState extends State<ScreensAddProduct> {
                                 label: 'Maximum Stock',
                                 icon: Icons.vertical_align_top_outlined,
                                 keyboardType:
-                                const TextInputType.numberWithOptions(
-                                  decimal: true,
-                                ),
+                                    const TextInputType.numberWithOptions(
+                                      decimal: true,
+                                    ),
                                 validator: (v) =>
-                                _trackInventory && !_isServiceLike
+                                    _trackInventory && !_isServiceLike
                                     ? _numberValidator(v)
                                     : null,
                                 enabled: _trackInventory && !_isServiceLike,
@@ -2735,9 +3178,9 @@ class _ScreensAddProductState extends State<ScreensAddProduct> {
                                 label: 'Cost Price',
                                 icon: Icons.payments_outlined,
                                 keyboardType:
-                                const TextInputType.numberWithOptions(
-                                  decimal: true,
-                                ),
+                                    const TextInputType.numberWithOptions(
+                                      decimal: true,
+                                    ),
                                 validator: (v) => _numberValidator(v),
                                 onChanged: (_) => setState(() {}),
                               ),
@@ -2749,9 +3192,9 @@ class _ScreensAddProductState extends State<ScreensAddProduct> {
                                 label: 'Selling Price *',
                                 icon: Icons.currency_rupee,
                                 keyboardType:
-                                const TextInputType.numberWithOptions(
-                                  decimal: true,
-                                ),
+                                    const TextInputType.numberWithOptions(
+                                      decimal: true,
+                                    ),
                                 validator: (v) =>
                                     _numberValidator(v, required: true),
                                 onChanged: (_) => setState(() {}),
@@ -2792,9 +3235,9 @@ class _ScreensAddProductState extends State<ScreensAddProduct> {
                                 label: 'MRP',
                                 icon: Icons.sell_outlined,
                                 keyboardType:
-                                const TextInputType.numberWithOptions(
-                                  decimal: true,
-                                ),
+                                    const TextInputType.numberWithOptions(
+                                      decimal: true,
+                                    ),
                                 validator: (v) => _numberValidator(v),
                                 onChanged: (_) => setState(() {}),
                               ),
@@ -2806,9 +3249,9 @@ class _ScreensAddProductState extends State<ScreensAddProduct> {
                                 label: 'GST % *',
                                 icon: Icons.percent,
                                 keyboardType:
-                                const TextInputType.numberWithOptions(
-                                  decimal: true,
-                                ),
+                                    const TextInputType.numberWithOptions(
+                                      decimal: true,
+                                    ),
                                 validator: (v) =>
                                     _numberValidator(v, required: true),
                                 onChanged: (_) => setState(() {}),
@@ -2863,7 +3306,7 @@ class _ScreensAddProductState extends State<ScreensAddProduct> {
                       _buildStatusToggleTile(
                         title: 'Active Product',
                         subtitle:
-                        'Inactive products can be hidden from normal use.',
+                            'Inactive products can be hidden from normal use.',
                         value: _isActive,
                         onChanged: (value) {
                           setState(() {
@@ -2874,7 +3317,7 @@ class _ScreensAddProductState extends State<ScreensAddProduct> {
                       _buildStatusToggleTile(
                         title: 'Saleable',
                         subtitle:
-                        'Allow this product to be used in sales and quotations.',
+                            'Allow this product to be used in sales and quotations.',
                         value: _isSaleable,
                         onChanged: (value) {
                           setState(() {
@@ -2885,7 +3328,7 @@ class _ScreensAddProductState extends State<ScreensAddProduct> {
                       _buildStatusToggleTile(
                         title: 'Purchasable',
                         subtitle:
-                        'Allow this product to be used in purchase workflows.',
+                            'Allow this product to be used in purchase workflows.',
                         value: _isPurchasable,
                         onChanged: (value) {
                           setState(() {
@@ -2913,23 +3356,28 @@ class _ScreensAddProductState extends State<ScreensAddProduct> {
                     runSpacing: 10,
                     children: [
                       OutlinedButton(
-                        onPressed: _isSaving ? null : () => Navigator.pop(context),
+                        onPressed: _isSaving
+                            ? null
+                            : () => Navigator.pop(context),
                         child: const Text('Cancel'),
                       ),
                       FilledButton.icon(
                         onPressed: _isSaving ? null : _saveProduct,
                         icon: _isSaving
                             ? const SizedBox(
-                          width: 16,
-                          height: 16,
-                          child:
-                          CircularProgressIndicator(strokeWidth: 2),
-                        )
+                                width: 16,
+                                height: 16,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                ),
+                              )
                             : const Icon(Icons.save_outlined),
                         label: Text(
                           _isSaving
                               ? 'Saving...'
-                              : (isEditMode ? 'Update Product' : 'Save Product'),
+                              : (isEditMode
+                                    ? 'Update Product'
+                                    : 'Save Product'),
                         ),
                       ),
                     ],

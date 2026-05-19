@@ -3,7 +3,6 @@ import 'package:flutter/material.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
-import 'package:intl/intl.dart';
 
 import 'proforma_screen.dart';
 
@@ -15,10 +14,10 @@ class ProformaPreviewScreen extends StatelessWidget {
   final List<ProformaLocalItem> items;
 
   const ProformaPreviewScreen({
-    Key? key,
+    super.key,
     required this.data,
     required this.items,
-  }) : super(key: key);
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -50,8 +49,11 @@ class ProformaPreviewScreen extends StatelessWidget {
 // =========================================================
 // 2. PDF GENERATOR LOGIC
 // =========================================================
-Future<Uint8List> generateProformaPdf(Map<String, dynamic> data, List<ProformaLocalItem> items) async {
-  print("Quotation Number (FINAL): ${data['quotationNumber']}");
+Future<Uint8List> generateProformaPdf(
+  Map<String, dynamic> data,
+  List<ProformaLocalItem> items,
+) async {
+  debugPrint("Quotation Number (FINAL): ${data['quotationNumber']}");
 
   final pdf = pw.Document();
 
@@ -104,18 +106,39 @@ Future<Uint8List> generateProformaPdf(Map<String, dynamic> data, List<ProformaLo
                       ),
                     pw.Text(
                       safeStr(data['companyName']).toUpperCase(),
-                      style: pw.TextStyle(fontSize: 16, fontWeight: pw.FontWeight.bold),
+                      style: pw.TextStyle(
+                        fontSize: 16,
+                        fontWeight: pw.FontWeight.bold,
+                      ),
                     ),
                     pw.SizedBox(height: 4),
-                    pw.Text(safeStr(data['companyAddress']), style: const pw.TextStyle(fontSize: 10)),
+                    pw.Text(
+                      safeStr(data['companyAddress']),
+                      style: const pw.TextStyle(fontSize: 10),
+                    ),
                     if (safeStr(data['companyGst']).isNotEmpty)
-                      pw.Text('GSTIN: ${data['companyGst']}', style: pw.TextStyle(fontSize: 10, fontWeight: pw.FontWeight.bold)),
+                      pw.Text(
+                        'GSTIN: ${data['companyGst']}',
+                        style: pw.TextStyle(
+                          fontSize: 10,
+                          fontWeight: pw.FontWeight.bold,
+                        ),
+                      ),
                     if (safeStr(data['companyPan']).isNotEmpty)
-                      pw.Text('PAN: ${data['companyPan']}', style: const pw.TextStyle(fontSize: 10)),
+                      pw.Text(
+                        'PAN: ${data['companyPan']}',
+                        style: const pw.TextStyle(fontSize: 10),
+                      ),
                     if (safeStr(data['companyPhone']).isNotEmpty)
-                      pw.Text('Phone: ${data['companyPhone']}', style: const pw.TextStyle(fontSize: 10)),
+                      pw.Text(
+                        'Phone: ${data['companyPhone']}',
+                        style: const pw.TextStyle(fontSize: 10),
+                      ),
                     if (safeStr(data['companyEmail']).isNotEmpty)
-                      pw.Text('Email: ${data['companyEmail']}', style: const pw.TextStyle(fontSize: 10)),
+                      pw.Text(
+                        'Email: ${data['companyEmail']}',
+                        style: const pw.TextStyle(fontSize: 10),
+                      ),
                   ],
                 ),
               ),
@@ -126,27 +149,41 @@ Future<Uint8List> generateProformaPdf(Map<String, dynamic> data, List<ProformaLo
                   children: [
                     pw.Text(
                       'PROFORMA INVOICE',
-                      style: pw.TextStyle(fontSize: 18, fontWeight: pw.FontWeight.bold, color: PdfColors.blue900),
+                      style: pw.TextStyle(
+                        fontSize: 18,
+                        fontWeight: pw.FontWeight.bold,
+                        color: PdfColors.blue900,
+                      ),
                     ),
                     pw.SizedBox(height: 10),
                     pw.Container(
                       padding: const pw.EdgeInsets.all(8),
                       decoration: pw.BoxDecoration(
                         color: PdfColors.grey100,
-                        borderRadius: const pw.BorderRadius.all(pw.Radius.circular(4)),
+                        borderRadius: const pw.BorderRadius.all(
+                          pw.Radius.circular(4),
+                        ),
                         border: pw.Border.all(color: PdfColors.grey300),
                       ),
                       child: pw.Column(
                         crossAxisAlignment: pw.CrossAxisAlignment.start,
                         children: [
-                          _buildPdfRow('PI Number:', safeStr(data['proformaNumber'])),
+                          _buildPdfRow(
+                            'PI Number:',
+                            safeStr(data['proformaNumber']),
+                          ),
                           pw.SizedBox(height: 4),
-                          _buildPdfRow('Date:', safeStr(data['proformaDateStr'])),
+                          _buildPdfRow(
+                            'Date:',
+                            safeStr(data['proformaDateStr']),
+                          ),
                           if (inquiryNumber.isNotEmpty) ...[
                             pw.SizedBox(height: 4),
                             _buildPdfRow('Inquiry Ref:', inquiryNumber),
                           ],
-                          if (quotationNumber.isNotEmpty && quotationNumber != safeStr(data['proformaNumber'])) ...[
+                          if (quotationNumber.isNotEmpty &&
+                              quotationNumber !=
+                                  safeStr(data['proformaNumber'])) ...[
                             pw.SizedBox(height: 4),
                             _buildPdfRow('Quotation No:', quotationNumber),
                           ],
@@ -173,16 +210,45 @@ Future<Uint8List> generateProformaPdf(Map<String, dynamic> data, List<ProformaLo
                 child: pw.Column(
                   crossAxisAlignment: pw.CrossAxisAlignment.start,
                   children: [
-                    pw.Text('BILL TO:', style: pw.TextStyle(fontSize: 10, fontWeight: pw.FontWeight.bold, color: PdfColors.grey700)),
+                    pw.Text(
+                      'BILL TO:',
+                      style: pw.TextStyle(
+                        fontSize: 10,
+                        fontWeight: pw.FontWeight.bold,
+                        color: PdfColors.grey700,
+                      ),
+                    ),
                     pw.SizedBox(height: 4),
-                    pw.Text(safeStr(data['clientName']), style: pw.TextStyle(fontSize: 12, fontWeight: pw.FontWeight.bold)),
-                    pw.Text(safeStr(data['clientAddress']), style: const pw.TextStyle(fontSize: 10)),
+                    pw.Text(
+                      safeStr(data['clientName']),
+                      style: pw.TextStyle(
+                        fontSize: 12,
+                        fontWeight: pw.FontWeight.bold,
+                      ),
+                    ),
+                    pw.Text(
+                      safeStr(data['clientAddress']),
+                      style: const pw.TextStyle(fontSize: 10),
+                    ),
                     if (safeStr(data['customerState']).isNotEmpty)
-                      pw.Text('State: ${data['customerState']}', style: const pw.TextStyle(fontSize: 10)),
+                      pw.Text(
+                        'State: ${data['customerState']}',
+                        style: const pw.TextStyle(fontSize: 10),
+                      ),
                     if (safeStr(data['gstNo']).isNotEmpty)
-                      pw.Text('GSTIN: ${data['gstNo']}', style: pw.TextStyle(fontSize: 10, fontWeight: pw.FontWeight.bold)),
-                    if (safeStr(data['contactPerson']).isNotEmpty || safeStr(data['clientMobile']).isNotEmpty)
-                      pw.Text('Contact: ${safeStr(data['contactPerson'])} ${safeStr(data['clientMobile']).isNotEmpty ? '(${data['clientMobile']})' : ''}', style: const pw.TextStyle(fontSize: 10)),
+                      pw.Text(
+                        'GSTIN: ${data['gstNo']}',
+                        style: pw.TextStyle(
+                          fontSize: 10,
+                          fontWeight: pw.FontWeight.bold,
+                        ),
+                      ),
+                    if (safeStr(data['contactPerson']).isNotEmpty ||
+                        safeStr(data['clientMobile']).isNotEmpty)
+                      pw.Text(
+                        'Contact: ${safeStr(data['contactPerson'])} ${safeStr(data['clientMobile']).isNotEmpty ? '(${data['clientMobile']})' : ''}',
+                        style: const pw.TextStyle(fontSize: 10),
+                      ),
                   ],
                 ),
               ),
@@ -191,16 +257,45 @@ Future<Uint8List> generateProformaPdf(Map<String, dynamic> data, List<ProformaLo
                 child: pw.Column(
                   crossAxisAlignment: pw.CrossAxisAlignment.start,
                   children: [
-                    pw.Text('SHIP TO:', style: pw.TextStyle(fontSize: 10, fontWeight: pw.FontWeight.bold, color: PdfColors.grey700)),
+                    pw.Text(
+                      'SHIP TO:',
+                      style: pw.TextStyle(
+                        fontSize: 10,
+                        fontWeight: pw.FontWeight.bold,
+                        color: PdfColors.grey700,
+                      ),
+                    ),
                     pw.SizedBox(height: 4),
-                    pw.Text(safeStr(data['shippingName']), style: pw.TextStyle(fontSize: 12, fontWeight: pw.FontWeight.bold)),
-                    pw.Text(safeStr(data['shippingAddress']), style: const pw.TextStyle(fontSize: 10)),
+                    pw.Text(
+                      safeStr(data['shippingName']),
+                      style: pw.TextStyle(
+                        fontSize: 12,
+                        fontWeight: pw.FontWeight.bold,
+                      ),
+                    ),
+                    pw.Text(
+                      safeStr(data['shippingAddress']),
+                      style: const pw.TextStyle(fontSize: 10),
+                    ),
                     if (safeStr(data['shippingState']).isNotEmpty)
-                      pw.Text('State: ${data['shippingState']}', style: const pw.TextStyle(fontSize: 10)),
+                      pw.Text(
+                        'State: ${data['shippingState']}',
+                        style: const pw.TextStyle(fontSize: 10),
+                      ),
                     if (safeStr(data['shippingGst']).isNotEmpty)
-                      pw.Text('GSTIN: ${data['shippingGst']}', style: pw.TextStyle(fontSize: 10, fontWeight: pw.FontWeight.bold)),
-                    if (safeStr(data['shippingContactPerson']).isNotEmpty || safeStr(data['shippingMobile']).isNotEmpty)
-                      pw.Text('Contact: ${safeStr(data['shippingContactPerson'])} ${safeStr(data['shippingMobile']).isNotEmpty ? '(${data['shippingMobile']})' : ''}', style: const pw.TextStyle(fontSize: 10)),
+                      pw.Text(
+                        'GSTIN: ${data['shippingGst']}',
+                        style: pw.TextStyle(
+                          fontSize: 10,
+                          fontWeight: pw.FontWeight.bold,
+                        ),
+                      ),
+                    if (safeStr(data['shippingContactPerson']).isNotEmpty ||
+                        safeStr(data['shippingMobile']).isNotEmpty)
+                      pw.Text(
+                        'Contact: ${safeStr(data['shippingContactPerson'])} ${safeStr(data['shippingMobile']).isNotEmpty ? '(${data['shippingMobile']})' : ''}',
+                        style: const pw.TextStyle(fontSize: 10),
+                      ),
                   ],
                 ),
               ),
@@ -213,17 +308,33 @@ Future<Uint8List> generateProformaPdf(Map<String, dynamic> data, List<ProformaLo
           // LINE ITEMS TABLE
           // ==============================
           pw.TableHelper.fromTextArray(
-            headerStyle: pw.TextStyle(fontSize: 9, fontWeight: pw.FontWeight.bold, color: PdfColors.white),
+            headerStyle: pw.TextStyle(
+              fontSize: 9,
+              fontWeight: pw.FontWeight.bold,
+              color: PdfColors.white,
+            ),
             headerDecoration: const pw.BoxDecoration(color: PdfColors.blue900),
             cellStyle: const pw.TextStyle(fontSize: 9),
-            cellPadding: const pw.EdgeInsets.symmetric(vertical: 6, horizontal: 4),
+            cellPadding: const pw.EdgeInsets.symmetric(
+              vertical: 6,
+              horizontal: 4,
+            ),
             border: pw.TableBorder.all(color: PdfColors.grey300, width: 0.5),
             headers: [
-              'Sn', 'Item & Description', 'HSN', 'Qty', 'UOM', 'Rate', 'Disc%', 'Tax%', 'Total'
+              'Sn',
+              'Item & Description',
+              'HSN',
+              'Qty',
+              'UOM',
+              'Rate',
+              'Disc%',
+              'Tax%',
+              'Total',
             ],
             data: List.generate(items.length, (index) {
               final item = items[index];
-              final double totalTaxPct = item.cgstPercent + item.sgstPercent + item.igstPercent;
+              final double totalTaxPct =
+                  item.cgstPercent + item.sgstPercent + item.igstPercent;
               return [
                 (index + 1).toString(),
                 '${item.name}${item.description.isNotEmpty ? '\n${item.description}' : ''}',
@@ -291,14 +402,29 @@ Future<Uint8List> generateProformaPdf(Map<String, dynamic> data, List<ProformaLo
                   ),
                   child: pw.Column(
                     children: [
-                      _buildSummaryRow('Subtotal', safeDouble(data['totalSubtotal'])),
+                      _buildSummaryRow(
+                        'Subtotal',
+                        safeDouble(data['totalSubtotal']),
+                      ),
                       if (safeDouble(data['totalItemDiscount']) > 0)
-                        _buildSummaryRow('Item Discounts', -safeDouble(data['totalItemDiscount']), color: PdfColors.red800),
+                        _buildSummaryRow(
+                          'Item Discounts',
+                          -safeDouble(data['totalItemDiscount']),
+                          color: PdfColors.red800,
+                        ),
                       if (safeDouble(data['globalDiscountAmount']) > 0)
-                        _buildSummaryRow('Global Discount', -safeDouble(data['globalDiscountAmount']), color: PdfColors.red800),
+                        _buildSummaryRow(
+                          'Global Discount',
+                          -safeDouble(data['globalDiscountAmount']),
+                          color: PdfColors.red800,
+                        ),
 
                       pw.Divider(color: PdfColors.blue200),
-                      _buildSummaryRow('Taxable Amount', safeDouble(data['totalTaxableAmount']), bold: true),
+                      _buildSummaryRow(
+                        'Taxable Amount',
+                        safeDouble(data['totalTaxableAmount']),
+                        bold: true,
+                      ),
 
                       if (!isInterState) ...[
                         _buildSummaryRow('CGST', safeDouble(data['totalCgst'])),
@@ -308,17 +434,37 @@ Future<Uint8List> generateProformaPdf(Map<String, dynamic> data, List<ProformaLo
                       ],
 
                       if (safeDouble(data['roundOff']) != 0)
-                        _buildSummaryRow('Round Off', safeDouble(data['roundOff'])),
+                        _buildSummaryRow(
+                          'Round Off',
+                          safeDouble(data['roundOff']),
+                        ),
 
                       pw.Divider(color: PdfColors.blue900, thickness: 1.5),
-                      _buildSummaryRow('GRAND TOTAL', safeDouble(data['finalTotal']), bold: true, size: 14),
+                      _buildSummaryRow(
+                        'GRAND TOTAL',
+                        safeDouble(data['finalTotal']),
+                        bold: true,
+                        size: 14,
+                      ),
 
                       if (safeDouble(data['advanceAmount']) > 0) ...[
                         pw.SizedBox(height: 8),
-                        pw.Divider(color: PdfColors.grey400, borderStyle: pw.BorderStyle.dashed),
-                        _buildSummaryRow('Advance (${safeStr(data['advancePercent'])}%)', safeDouble(data['advanceAmount']), color: PdfColors.green800, bold: true),
-                        _buildSummaryRow('Balance (${safeStr(data['balancePercent'])}%)', safeDouble(data['balanceAmount']), bold: true),
-                      ]
+                        pw.Divider(
+                          color: PdfColors.grey400,
+                          borderStyle: pw.BorderStyle.dashed,
+                        ),
+                        _buildSummaryRow(
+                          'Advance (${safeStr(data['advancePercent'])}%)',
+                          safeDouble(data['advanceAmount']),
+                          color: PdfColors.green800,
+                          bold: true,
+                        ),
+                        _buildSummaryRow(
+                          'Balance (${safeStr(data['balancePercent'])}%)',
+                          safeDouble(data['balanceAmount']),
+                          bold: true,
+                        ),
+                      ],
                     ],
                   ),
                 ),
@@ -337,13 +483,31 @@ Future<Uint8List> generateProformaPdf(Map<String, dynamic> data, List<ProformaLo
               pw.Column(
                 crossAxisAlignment: pw.CrossAxisAlignment.center,
                 children: [
-                  pw.Text('For ${safeStr(data['companyName'])}', style: pw.TextStyle(fontSize: 10, fontWeight: pw.FontWeight.bold)),
+                  pw.Text(
+                    'For ${safeStr(data['companyName'])}',
+                    style: pw.TextStyle(
+                      fontSize: 10,
+                      fontWeight: pw.FontWeight.bold,
+                    ),
+                  ),
                   pw.SizedBox(height: 40),
-                  pw.Text(safeStr(data['signatureName']), style: pw.TextStyle(fontSize: 10, fontWeight: pw.FontWeight.bold)),
+                  pw.Text(
+                    safeStr(data['signatureName']),
+                    style: pw.TextStyle(
+                      fontSize: 10,
+                      fontWeight: pw.FontWeight.bold,
+                    ),
+                  ),
                   if (safeStr(data['signatureDesignation']).isNotEmpty)
-                    pw.Text(safeStr(data['signatureDesignation']), style: const pw.TextStyle(fontSize: 9)),
+                    pw.Text(
+                      safeStr(data['signatureDesignation']),
+                      style: const pw.TextStyle(fontSize: 9),
+                    ),
                   if (safeStr(data['signaturePhone']).isNotEmpty)
-                    pw.Text(safeStr(data['signaturePhone']), style: const pw.TextStyle(fontSize: 9)),
+                    pw.Text(
+                      safeStr(data['signaturePhone']),
+                      style: const pw.TextStyle(fontSize: 9),
+                    ),
                 ],
               ),
             ],
@@ -364,21 +528,47 @@ pw.Widget _buildPdfRow(String label, String value) {
   return pw.Row(
     mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
     children: [
-      pw.Text(label, style: const pw.TextStyle(fontSize: 9, color: PdfColors.grey700)),
+      pw.Text(
+        label,
+        style: const pw.TextStyle(fontSize: 9, color: PdfColors.grey700),
+      ),
       pw.SizedBox(width: 8),
-      pw.Text(value, style: pw.TextStyle(fontSize: 9, fontWeight: pw.FontWeight.bold)),
+      pw.Text(
+        value,
+        style: pw.TextStyle(fontSize: 9, fontWeight: pw.FontWeight.bold),
+      ),
     ],
   );
 }
 
-pw.Widget _buildSummaryRow(String label, double amount, {bool bold = false, double size = 10, PdfColor? color}) {
+pw.Widget _buildSummaryRow(
+  String label,
+  double amount, {
+  bool bold = false,
+  double size = 10,
+  PdfColor? color,
+}) {
   return pw.Padding(
     padding: const pw.EdgeInsets.symmetric(vertical: 2),
     child: pw.Row(
       mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
       children: [
-        pw.Text(label, style: pw.TextStyle(fontSize: size, fontWeight: bold ? pw.FontWeight.bold : pw.FontWeight.normal, color: color)),
-        pw.Text(amount.toStringAsFixed(2), style: pw.TextStyle(fontSize: size, fontWeight: bold ? pw.FontWeight.bold : pw.FontWeight.normal, color: color)),
+        pw.Text(
+          label,
+          style: pw.TextStyle(
+            fontSize: size,
+            fontWeight: bold ? pw.FontWeight.bold : pw.FontWeight.normal,
+            color: color,
+          ),
+        ),
+        pw.Text(
+          amount.toStringAsFixed(2),
+          style: pw.TextStyle(
+            fontSize: size,
+            fontWeight: bold ? pw.FontWeight.bold : pw.FontWeight.normal,
+            color: color,
+          ),
+        ),
       ],
     ),
   );
@@ -394,7 +584,10 @@ pw.Widget _buildBankDetails(Map<String, dynamic> bank) {
   final String micr = bank['micr']?.toString().trim() ?? '';
   final String swift = bank['swift']?.toString().trim() ?? '';
 
-  if (accountName.isEmpty && bankName.isEmpty && accountNo.isEmpty && ifsc.isEmpty) {
+  if (accountName.isEmpty &&
+      bankName.isEmpty &&
+      accountNo.isEmpty &&
+      ifsc.isEmpty) {
     return pw.SizedBox();
   }
 
@@ -407,12 +600,20 @@ pw.Widget _buildBankDetails(Map<String, dynamic> bank) {
     child: pw.Column(
       crossAxisAlignment: pw.CrossAxisAlignment.start,
       children: [
-        pw.Text('Bank Details', style: pw.TextStyle(fontSize: 10, fontWeight: pw.FontWeight.bold, color: PdfColors.blue900)),
+        pw.Text(
+          'Bank Details',
+          style: pw.TextStyle(
+            fontSize: 10,
+            fontWeight: pw.FontWeight.bold,
+            color: PdfColors.blue900,
+          ),
+        ),
         pw.Divider(color: PdfColors.grey300),
         if (accountName.isNotEmpty) _buildPdfRow('Account Name:', accountName),
         if (bankName.isNotEmpty) _buildPdfRow('Bank Name:', bankName),
         if (branch.isNotEmpty) _buildPdfRow('Branch:', branch),
-        if (branchAddress.isNotEmpty) _buildPdfRow('Branch Address:', branchAddress),
+        if (branchAddress.isNotEmpty)
+          _buildPdfRow('Branch Address:', branchAddress),
         if (accountNo.isNotEmpty) _buildPdfRow('Account No:', accountNo),
         if (ifsc.isNotEmpty) _buildPdfRow('IFSC / RTGS Code:', ifsc),
         if (micr.isNotEmpty) _buildPdfRow('MICR Code:', micr),
@@ -428,7 +629,14 @@ pw.Widget _buildDynamicTerms(List<dynamic> terms) {
   return pw.Column(
     crossAxisAlignment: pw.CrossAxisAlignment.start,
     children: [
-      pw.Text('Terms & Conditions', style: pw.TextStyle(fontSize: 10, fontWeight: pw.FontWeight.bold, color: PdfColors.blue900)),
+      pw.Text(
+        'Terms & Conditions',
+        style: pw.TextStyle(
+          fontSize: 10,
+          fontWeight: pw.FontWeight.bold,
+          color: PdfColors.blue900,
+        ),
+      ),
       pw.SizedBox(height: 4),
       ...terms.map((t) {
         final title = t['title']?.toString().trim() ?? '';
@@ -440,13 +648,17 @@ pw.Widget _buildDynamicTerms(List<dynamic> terms) {
             text: pw.TextSpan(
               style: const pw.TextStyle(fontSize: 9, color: PdfColors.black),
               children: [
-                if (title.isNotEmpty) pw.TextSpan(text: '$title: ', style: pw.TextStyle(fontWeight: pw.FontWeight.bold)),
+                if (title.isNotEmpty)
+                  pw.TextSpan(
+                    text: '$title: ',
+                    style: pw.TextStyle(fontWeight: pw.FontWeight.bold),
+                  ),
                 pw.TextSpan(text: val),
               ],
             ),
           ),
         );
-      }).toList(),
+      }),
     ],
   );
 }

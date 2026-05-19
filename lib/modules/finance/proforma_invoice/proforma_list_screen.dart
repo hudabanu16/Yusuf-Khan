@@ -6,10 +6,7 @@ import 'package:QUIK/modules/finance/proforma_invoice/proforma_invoice_pdf_gener
 class ProformaListScreen extends StatefulWidget {
   final String companyId;
 
-  const ProformaListScreen({
-    Key? key,
-    required this.companyId,
-  }) : super(key: key);
+  const ProformaListScreen({super.key, required this.companyId});
 
   @override
   State<ProformaListScreen> createState() => _ProformaListScreenState();
@@ -87,29 +84,33 @@ class _ProformaListScreenState extends State<ProformaListScreen> {
     );
   }
 
-  Future<bool> _confirmAction(String title, String content,
-      {String confirmText = 'Confirm', bool isDestructive = false}) async {
+  Future<bool> _confirmAction(
+    String title,
+    String content, {
+    String confirmText = 'Confirm',
+    bool isDestructive = false,
+  }) async {
     return await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text(title),
-        content: Text(content),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Cancel'),
+          context: context,
+          builder: (ctx) => AlertDialog(
+            title: Text(title),
+            content: Text(content),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx, false),
+                child: const Text('Cancel'),
+              ),
+              ElevatedButton(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: isDestructive ? Colors.red : Colors.blue,
+                  foregroundColor: Colors.white,
+                ),
+                onPressed: () => Navigator.pop(ctx, true),
+                child: Text(confirmText),
+              ),
+            ],
           ),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(
-              backgroundColor: isDestructive ? Colors.red : Colors.blue,
-              foregroundColor: Colors.white,
-            ),
-            onPressed: () => Navigator.pop(ctx, true),
-            child: Text(confirmText),
-          ),
-        ],
-      ),
-    ) ??
+        ) ??
         false;
   }
 
@@ -118,7 +119,9 @@ class _ProformaListScreenState extends State<ProformaListScreen> {
   // ==========================================
 
   String _getCreatorName(Map<String, dynamic> data) {
-    final String createdByName = (data['createdByName'] ?? '').toString().trim();
+    final String createdByName = (data['createdByName'] ?? '')
+        .toString()
+        .trim();
     if (createdByName.isNotEmpty) return createdByName;
 
     final String uid = (data['createdBy'] ?? '').toString().trim();
@@ -143,7 +146,10 @@ class _ProformaListScreenState extends State<ProformaListScreen> {
           .get();
 
       if (doc.exists && doc.data() != null) {
-        final name = (doc.data()!['name'] ?? doc.data()!['fullName'] ?? 'Unknown').toString().trim();
+        final name =
+            (doc.data()!['name'] ?? doc.data()!['fullName'] ?? 'Unknown')
+                .toString()
+                .trim();
         if (mounted) {
           setState(() {
             _userNamesCache[uid] = name.isNotEmpty ? name : 'Unknown';
@@ -169,8 +175,11 @@ class _ProformaListScreenState extends State<ProformaListScreen> {
   // PROFORMA ACTION LOGIC (ENTERPRISE GRADE)
   // ==========================================
 
-  Future<void> _updateStatus(String docId, String newStatus,
-      {bool setApprovedAt = false}) async {
+  Future<void> _updateStatus(
+    String docId,
+    String newStatus, {
+    bool setApprovedAt = false,
+  }) async {
     try {
       _showLoading(true);
       final updates = <String, dynamic>{
@@ -205,9 +214,9 @@ class _ProformaListScreenState extends State<ProformaListScreen> {
           .collection('proforma_invoices')
           .doc(docId)
           .update({
-        'isDeleted': true,
-        'updatedAt': FieldValue.serverTimestamp(),
-      });
+            'isDeleted': true,
+            'updatedAt': FieldValue.serverTimestamp(),
+          });
       _showSnack('Proforma invoice deleted');
     } catch (e) {
       _showSnack('Error deleting: $e', isError: true);
@@ -256,7 +265,10 @@ class _ProformaListScreenState extends State<ProformaListScreen> {
     }
   }
 
-  Future<void> _convertToInvoice(String docId, Map<String, dynamic> data) async {
+  Future<void> _convertToInvoice(
+    String docId,
+    Map<String, dynamic> data,
+  ) async {
     try {
       _showLoading(true);
 
@@ -352,7 +364,9 @@ class _ProformaListScreenState extends State<ProformaListScreen> {
                         border: OutlineInputBorder(),
                       ),
                       items: _statuses
-                          .map((e) => DropdownMenuItem(value: e, child: Text(e)))
+                          .map(
+                            (e) => DropdownMenuItem(value: e, child: Text(e)),
+                          )
                           .toList(),
                       onChanged: (value) {
                         setModalState(() {
@@ -369,7 +383,9 @@ class _ProformaListScreenState extends State<ProformaListScreen> {
                         border: OutlineInputBorder(),
                       ),
                       items: _sortOptions
-                          .map((e) => DropdownMenuItem(value: e, child: Text(e)))
+                          .map(
+                            (e) => DropdownMenuItem(value: e, child: Text(e)),
+                          )
                           .toList(),
                       onChanged: (value) {
                         setModalState(() {
@@ -417,8 +433,8 @@ class _ProformaListScreenState extends State<ProformaListScreen> {
   }
 
   List<QueryDocumentSnapshot<Map<String, dynamic>>> _applyLocalFilters(
-      List<QueryDocumentSnapshot<Map<String, dynamic>>> docs,
-      ) {
+    List<QueryDocumentSnapshot<Map<String, dynamic>>> docs,
+  ) {
     final search = _searchText.trim().toLowerCase();
 
     var filtered = docs.where((doc) {
@@ -431,10 +447,12 @@ class _ProformaListScreenState extends State<ProformaListScreen> {
       final status = (data['status'] ?? 'Draft').toString();
       final isDeleted = data['isDeleted'] == true;
 
-      final matchesSearch = search.isEmpty ||
+      final matchesSearch =
+          search.isEmpty ||
           piNumber.contains(search) ||
           customer.contains(search);
-      final matchesStatus = _statusFilter == 'All' ||
+      final matchesStatus =
+          _statusFilter == 'All' ||
           status.toLowerCase() == _statusFilter.toLowerCase();
 
       return !isDeleted && matchesSearch && matchesStatus;
@@ -445,20 +463,24 @@ class _ProformaListScreenState extends State<ProformaListScreen> {
       final dataB = b.data();
 
       if (_sortOption.startsWith('Amount')) {
-        final amtA = double.tryParse(
-            (dataA['grandTotal'] ?? dataA['totalAmount'] ?? 0).toString()) ??
+        final amtA =
+            double.tryParse(
+              (dataA['grandTotal'] ?? dataA['totalAmount'] ?? 0).toString(),
+            ) ??
             0;
-        final amtB = double.tryParse(
-            (dataB['grandTotal'] ?? dataB['totalAmount'] ?? 0).toString()) ??
+        final amtB =
+            double.tryParse(
+              (dataB['grandTotal'] ?? dataB['totalAmount'] ?? 0).toString(),
+            ) ??
             0;
         return _sortOption.contains('High')
             ? amtB.compareTo(amtA)
             : amtA.compareTo(amtB);
       } else {
-        final dateA = (dataA['createdAt'] as Timestamp?)?.toDate() ??
-            DateTime(2000);
-        final dateB = (dataB['createdAt'] as Timestamp?)?.toDate() ??
-            DateTime(2000);
+        final dateA =
+            (dataA['createdAt'] as Timestamp?)?.toDate() ?? DateTime(2000);
+        final dateB =
+            (dataB['createdAt'] as Timestamp?)?.toDate() ?? DateTime(2000);
         return _sortOption.contains('Newest')
             ? dateB.compareTo(dateA)
             : dateA.compareTo(dateB);
@@ -524,8 +546,9 @@ class _ProformaListScreenState extends State<ProformaListScreen> {
               int approved = 0;
 
               for (final doc in filteredDocs) {
-                final status =
-                (doc.data()['status'] ?? '').toString().toLowerCase();
+                final status = (doc.data()['status'] ?? '')
+                    .toString()
+                    .toLowerCase();
                 if (status == 'draft') draft++;
                 if (status == 'sent') sent++;
                 if (status == 'approved') approved++;
@@ -554,15 +577,15 @@ class _ProformaListScreenState extends State<ProformaListScreen> {
                                 suffixIcon: _searchText.trim().isEmpty
                                     ? null
                                     : IconButton(
-                                  tooltip: 'Clear',
-                                  icon: const Icon(Icons.close, size: 17),
-                                  onPressed: () {
-                                    _searchController.clear();
-                                    setState(() {
-                                      _searchText = '';
-                                    });
-                                  },
-                                ),
+                                        tooltip: 'Clear',
+                                        icon: const Icon(Icons.close, size: 17),
+                                        onPressed: () {
+                                          _searchController.clear();
+                                          setState(() {
+                                            _searchText = '';
+                                          });
+                                        },
+                                      ),
                                 isDense: true,
                                 filled: true,
                                 fillColor: Colors.grey.shade100,
@@ -630,7 +653,9 @@ class _ProformaListScreenState extends State<ProformaListScreen> {
                         _MiniStatText(label: 'Sent', value: sent.toString()),
                         const SizedBox(width: 10),
                         _MiniStatText(
-                            label: 'Approved', value: approved.toString()),
+                          label: 'Approved',
+                          value: approved.toString(),
+                        ),
                       ],
                     ),
                   ),
@@ -659,306 +684,481 @@ class _ProformaListScreenState extends State<ProformaListScreen> {
                   Expanded(
                     child: filteredDocs.isEmpty
                         ? _EmptyProformaState(
-                      hasSearch: _searchText.trim().isNotEmpty ||
-                          _hasActiveFilters,
-                      onReset: () {
-                        _searchController.clear();
-                        setState(() {
-                          _searchText = '';
-                        });
-                        _resetFilters();
-                      },
-                    )
+                            hasSearch:
+                                _searchText.trim().isNotEmpty ||
+                                _hasActiveFilters,
+                            onReset: () {
+                              _searchController.clear();
+                              setState(() {
+                                _searchText = '';
+                              });
+                              _resetFilters();
+                            },
+                          )
                         : ListView.separated(
-                      padding: const EdgeInsets.fromLTRB(16, 4, 16, 90),
-                      itemCount: filteredDocs.length,
-                      separatorBuilder: (_, __) =>
-                      const SizedBox(height: 8),
-                      itemBuilder: (context, index) {
-                        final doc = filteredDocs[index];
-                        final data = doc.data();
+                            padding: const EdgeInsets.fromLTRB(16, 4, 16, 90),
+                            itemCount: filteredDocs.length,
+                            separatorBuilder: (_, __) =>
+                                const SizedBox(height: 8),
+                            itemBuilder: (context, index) {
+                              final doc = filteredDocs[index];
+                              final data = doc.data();
 
-                        final rawPINo =
-                        (data['proformaNumber'] ?? '').toString().trim();
-                        final proformaNo =
-                        rawPINo.isEmpty ? 'Draft' : rawPINo;
+                              final rawPINo = (data['proformaNumber'] ?? '')
+                                  .toString()
+                                  .trim();
+                              final proformaNo = rawPINo.isEmpty
+                                  ? 'Draft'
+                                  : rawPINo;
 
-                        final status =
-                        (data['status'] ?? 'Draft').toString();
-                        final customerName = (data['customerName'] ??
-                            data['clientName'] ??
-                            'Unknown Customer')
-                            .toString();
+                              final status = (data['status'] ?? 'Draft')
+                                  .toString();
+                              final customerName =
+                                  (data['customerName'] ??
+                                          data['clientName'] ??
+                                          'Unknown Customer')
+                                      .toString();
 
-                        final createdByName = _getCreatorName(data);
+                              final createdByName = _getCreatorName(data);
 
-                        String referenceRef = '';
-                        final refNumber = (data['referenceNumber'] ?? '').toString().trim();
-                        final qtNumber = (data['quotationNumber'] ?? '').toString().trim();
-                        final inqNumber = (data['inquiryNumber'] ?? '').toString().trim();
+                              String referenceRef = '';
+                              final refNumber = (data['referenceNumber'] ?? '')
+                                  .toString()
+                                  .trim();
+                              final qtNumber = (data['quotationNumber'] ?? '')
+                                  .toString()
+                                  .trim();
+                              final inqNumber = (data['inquiryNumber'] ?? '')
+                                  .toString()
+                                  .trim();
 
-                        if (refNumber.isNotEmpty) {
-                          referenceRef = refNumber;
-                        } else if (qtNumber.isNotEmpty) {
-                          referenceRef = qtNumber;
-                        } else if (inqNumber.isNotEmpty) {
-                          referenceRef = inqNumber;
-                        }
+                              if (refNumber.isNotEmpty) {
+                                referenceRef = refNumber;
+                              } else if (qtNumber.isNotEmpty) {
+                                referenceRef = qtNumber;
+                              } else if (inqNumber.isNotEmpty) {
+                                referenceRef = inqNumber;
+                              }
 
-                        final displayReference = referenceRef.isNotEmpty ? '# $referenceRef' : '';
+                              final displayReference = referenceRef.isNotEmpty
+                                  ? '# $referenceRef'
+                                  : '';
 
-                        final grandTotal = double.tryParse(
-                            (data['grandTotal'] ??
-                                data['totalAmount'] ??
-                                0)
-                                .toString()) ??
-                            0.0;
-                        final amountStr =
-                            '₹ ${grandTotal.toStringAsFixed(2)}';
+                              final grandTotal =
+                                  double.tryParse(
+                                    (data['grandTotal'] ??
+                                            data['totalAmount'] ??
+                                            0)
+                                        .toString(),
+                                  ) ??
+                                  0.0;
+                              final amountStr =
+                                  '₹ ${grandTotal.toStringAsFixed(2)}';
 
-                        DateTime? createdAt;
-                        if (data['createdAt'] is Timestamp) {
-                          createdAt =
-                              (data['createdAt'] as Timestamp).toDate();
-                        }
+                              DateTime? createdAt;
+                              if (data['createdAt'] is Timestamp) {
+                                createdAt = (data['createdAt'] as Timestamp)
+                                    .toDate();
+                              }
 
-                        DateTime? nextFollowUp;
-                        if (data['nextFollowUpDate'] is Timestamp) {
-                          nextFollowUp =
-                              (data['nextFollowUpDate'] as Timestamp)
-                                  .toDate();
-                        }
+                              DateTime? nextFollowUp;
+                              if (data['nextFollowUpDate'] is Timestamp) {
+                                nextFollowUp =
+                                    (data['nextFollowUpDate'] as Timestamp)
+                                        .toDate();
+                              }
 
-                        final statLw = status.toLowerCase();
+                              final statLw = status.toLowerCase();
 
-                        return Container(
-                          decoration: BoxDecoration(
-                            color: Colors.white,
-                            borderRadius: BorderRadius.circular(14),
-                            border: Border.all(
-                              color: Colors.grey.shade200,
-                              width: 0.8,
-                            ),
-                          ),
-                          child: Padding(
-                            padding: const EdgeInsets.all(10),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Row(
-                                  crossAxisAlignment:
-                                  CrossAxisAlignment.start,
-                                  children: [
-                                    CircleAvatar(
-                                      radius: 18,
-                                      backgroundColor: Colors.blue.shade50,
-                                      child: Text(
-                                        customerName.isNotEmpty
-                                            ? customerName[0].toUpperCase()
-                                            : '?',
-                                        style: TextStyle(
-                                          fontSize: 14,
-                                          fontWeight: FontWeight.w700,
-                                          color: Colors.blue.shade800,
-                                        ),
-                                      ),
-                                    ),
-                                    const SizedBox(width: 8),
-                                    Expanded(
-                                      child: Column(
-                                        crossAxisAlignment:
+                              return Container(
+                                decoration: BoxDecoration(
+                                  color: Colors.white,
+                                  borderRadius: BorderRadius.circular(14),
+                                  border: Border.all(
+                                    color: Colors.grey.shade200,
+                                    width: 0.8,
+                                  ),
+                                ),
+                                child: Padding(
+                                  padding: const EdgeInsets.all(10),
+                                  child: Column(
+                                    crossAxisAlignment:
                                         CrossAxisAlignment.start,
+                                    children: [
+                                      Row(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
                                         children: [
-                                          Text(
-                                            proformaNo,
-                                            maxLines: 1,
-                                            overflow: TextOverflow.ellipsis,
-                                            style: const TextStyle(
-                                              fontSize: 14.5,
-                                              fontWeight: FontWeight.w700,
+                                          CircleAvatar(
+                                            radius: 18,
+                                            backgroundColor:
+                                                Colors.blue.shade50,
+                                            child: Text(
+                                              customerName.isNotEmpty
+                                                  ? customerName[0]
+                                                        .toUpperCase()
+                                                  : '?',
+                                              style: TextStyle(
+                                                fontSize: 14,
+                                                fontWeight: FontWeight.w700,
+                                                color: Colors.blue.shade800,
+                                              ),
                                             ),
                                           ),
-                                          const SizedBox(height: 1),
-                                          Text(
-                                            customerName,
-                                            maxLines: 1,
-                                            overflow: TextOverflow.ellipsis,
-                                            style: TextStyle(
-                                              fontSize: 12.5,
-                                              color: Colors.grey.shade600,
-                                              fontWeight: FontWeight.w500,
+                                          const SizedBox(width: 8),
+                                          Expanded(
+                                            child: Column(
+                                              crossAxisAlignment:
+                                                  CrossAxisAlignment.start,
+                                              children: [
+                                                Text(
+                                                  proformaNo,
+                                                  maxLines: 1,
+                                                  overflow:
+                                                      TextOverflow.ellipsis,
+                                                  style: const TextStyle(
+                                                    fontSize: 14.5,
+                                                    fontWeight: FontWeight.w700,
+                                                  ),
+                                                ),
+                                                const SizedBox(height: 1),
+                                                Text(
+                                                  customerName,
+                                                  maxLines: 1,
+                                                  overflow:
+                                                      TextOverflow.ellipsis,
+                                                  style: TextStyle(
+                                                    fontSize: 12.5,
+                                                    color: Colors.grey.shade600,
+                                                    fontWeight: FontWeight.w500,
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
+                                          ),
+                                          SizedBox(
+                                            width: 28,
+                                            height: 28,
+                                            child: PopupMenuButton<String>(
+                                              padding: EdgeInsets.zero,
+                                              tooltip: 'Actions',
+                                              icon: Icon(
+                                                Icons.more_vert,
+                                                size: 20,
+                                                color: Colors.grey.shade600,
+                                              ),
+                                              onSelected: (value) async {
+                                                switch (value) {
+                                                  case 'edit':
+                                                    Navigator.push(
+                                                      context,
+                                                      MaterialPageRoute(
+                                                        builder: (_) =>
+                                                            ProformaScreen(
+                                                              companyId: widget
+                                                                  .companyId,
+                                                              proformaId:
+                                                                  doc.id,
+                                                            ),
+                                                      ),
+                                                    );
+                                                    break;
+                                                  case 'view_pdf':
+                                                    final previewData =
+                                                        Map<
+                                                          String,
+                                                          dynamic
+                                                        >.from(data);
+                                                    previewData['id'] = doc.id;
+
+                                                    // Safely parse the dynamic items into the strictly typed List<ProformaLocalItem> required by the preview screen
+                                                    List<ProformaLocalItem>
+                                                    parsedItems = [];
+                                                    if (previewData['items'] !=
+                                                            null &&
+                                                        previewData['items']
+                                                            is List) {
+                                                      try {
+                                                        parsedItems =
+                                                            (previewData['items']
+                                                                    as List)
+                                                                .map((e) {
+                                                                  return ProformaLocalItem.fromMap(
+                                                                    Map<
+                                                                      String,
+                                                                      dynamic
+                                                                    >.from(
+                                                                      e as Map,
+                                                                    ),
+                                                                  );
+                                                                })
+                                                                .toList();
+                                                      } catch (_) {
+                                                        // Silent catch to prevent crash if mapping fails
+                                                      }
+                                                    }
+
+                                                    Navigator.push(
+                                                      context,
+                                                      MaterialPageRoute(
+                                                        builder: (_) =>
+                                                            ProformaPreviewScreen(
+                                                              data: previewData,
+                                                              items:
+                                                                  parsedItems,
+                                                            ),
+                                                      ),
+                                                    );
+                                                    break;
+                                                  case 'approve':
+                                                    final confirm =
+                                                        await _confirmAction(
+                                                          'Approve Proforma',
+                                                          'Are you sure you want to approve this proforma invoice?',
+                                                        );
+                                                    if (confirm) {
+                                                      await _updateStatus(
+                                                        doc.id,
+                                                        'Approved',
+                                                        setApprovedAt: true,
+                                                      );
+                                                    }
+                                                    break;
+                                                  case 'reject':
+                                                    final confirm =
+                                                        await _confirmAction(
+                                                          'Reject Proforma',
+                                                          'Are you sure you want to reject this proforma invoice?',
+                                                        );
+                                                    if (confirm) {
+                                                      await _updateStatus(
+                                                        doc.id,
+                                                        'Rejected',
+                                                      );
+                                                    }
+                                                    break;
+                                                  case 'cancel':
+                                                    final confirm =
+                                                        await _confirmAction(
+                                                          'Cancel Proforma',
+                                                          'Are you sure you want to cancel this proforma invoice?',
+                                                        );
+                                                    if (confirm) {
+                                                      await _updateStatus(
+                                                        doc.id,
+                                                        'Cancelled',
+                                                      );
+                                                    }
+                                                    break;
+                                                  case 'revise':
+                                                    final confirm =
+                                                        await _confirmAction(
+                                                          'Create Revision',
+                                                          'Are you sure you want to create a new revision from this proforma?',
+                                                        );
+                                                    if (confirm) {
+                                                      await _createRevision(
+                                                        doc.id,
+                                                        data,
+                                                      );
+                                                    }
+                                                    break;
+                                                  case 'convert':
+                                                    final confirm =
+                                                        await _confirmAction(
+                                                          'Convert to Invoice',
+                                                          'Are you sure you want to convert this Proforma into a final Tax Invoice?',
+                                                        );
+                                                    if (confirm) {
+                                                      await _convertToInvoice(
+                                                        doc.id,
+                                                        data,
+                                                      );
+                                                    }
+                                                    break;
+                                                  case 'delete':
+                                                    final confirm =
+                                                        await _confirmAction(
+                                                          'Delete Proforma',
+                                                          'Are you sure you want to delete this proforma invoice?',
+                                                          confirmText: 'Delete',
+                                                          isDestructive: true,
+                                                        );
+                                                    if (confirm) {
+                                                      await _deleteProforma(
+                                                        doc.id,
+                                                      );
+                                                    }
+                                                    break;
+                                                }
+                                              },
+                                              itemBuilder: (context) {
+                                                final List<
+                                                  PopupMenuEntry<String>
+                                                >
+                                                menuItems = [];
+
+                                                // Dynamic View / Edit Option
+                                                if (statLw == 'draft' ||
+                                                    statLw == 'rejected') {
+                                                  menuItems.add(
+                                                    const PopupMenuItem(
+                                                      value: 'edit',
+                                                      child: Text('Edit'),
+                                                    ),
+                                                  );
+                                                } else if (statLw == 'sent') {
+                                                  menuItems.add(
+                                                    const PopupMenuItem(
+                                                      value: 'edit',
+                                                      child: Text(
+                                                        'View / Edit',
+                                                      ),
+                                                    ),
+                                                  );
+                                                } else if (statLw ==
+                                                        'approved' ||
+                                                    statLw == 'converted' ||
+                                                    statLw == 'cancelled') {
+                                                  menuItems.add(
+                                                    const PopupMenuItem(
+                                                      value: 'view_pdf',
+                                                      child: Text('View'),
+                                                    ),
+                                                  );
+                                                } else {
+                                                  menuItems.add(
+                                                    const PopupMenuItem(
+                                                      value: 'edit',
+                                                      child: Text(
+                                                        'View / Edit',
+                                                      ),
+                                                    ),
+                                                  );
+                                                }
+
+                                                // Action Options
+                                                if (statLw == 'draft' ||
+                                                    statLw == 'sent') {
+                                                  menuItems.add(
+                                                    const PopupMenuItem(
+                                                      value: 'approve',
+                                                      child: Text('Approve'),
+                                                    ),
+                                                  );
+                                                  menuItems.add(
+                                                    const PopupMenuItem(
+                                                      value: 'reject',
+                                                      child: Text('Reject'),
+                                                    ),
+                                                  );
+                                                }
+
+                                                if (statLw != 'cancelled' &&
+                                                    statLw != 'converted') {
+                                                  menuItems.add(
+                                                    const PopupMenuItem(
+                                                      value: 'cancel',
+                                                      child: Text('Cancel'),
+                                                    ),
+                                                  );
+                                                }
+
+                                                menuItems.add(
+                                                  const PopupMenuItem(
+                                                    value: 'revise',
+                                                    child: Text(
+                                                      'Create Revision',
+                                                    ),
+                                                  ),
+                                                );
+
+                                                if (statLw != 'converted' &&
+                                                    statLw != 'cancelled' &&
+                                                    statLw != 'rejected') {
+                                                  menuItems.add(
+                                                    const PopupMenuItem(
+                                                      value: 'convert',
+                                                      child: Text(
+                                                        'Convert to Invoice',
+                                                      ),
+                                                    ),
+                                                  );
+                                                }
+
+                                                // Delete Option
+                                                menuItems.add(
+                                                  const PopupMenuDivider(),
+                                                );
+                                                menuItems.add(
+                                                  const PopupMenuItem(
+                                                    value: 'delete',
+                                                    child: Text(
+                                                      'Delete',
+                                                      style: TextStyle(
+                                                        color: Colors.red,
+                                                      ),
+                                                    ),
+                                                  ),
+                                                );
+
+                                                return menuItems;
+                                              },
                                             ),
                                           ),
                                         ],
                                       ),
-                                    ),
-                                    SizedBox(
-                                      width: 28,
-                                      height: 28,
-                                      child: PopupMenuButton<String>(
-                                        padding: EdgeInsets.zero,
-                                        tooltip: 'Actions',
-                                        icon: Icon(Icons.more_vert,
-                                            size: 20,
-                                            color: Colors.grey.shade600),
-                                        onSelected: (value) async {
-                                          switch (value) {
-                                            case 'edit':
-                                              Navigator.push(
-                                                context,
-                                                MaterialPageRoute(
-                                                  builder: (_) => ProformaScreen(
-                                                    companyId: widget.companyId,
-                                                    proformaId: doc.id,
-                                                  ),
-                                                ),
-                                              );
-                                              break;
-                                            case 'view_pdf':
-                                              final previewData = Map<String, dynamic>.from(data);
-                                              previewData['id'] = doc.id;
-
-                                              // Safely parse the dynamic items into the strictly typed List<ProformaLocalItem> required by the preview screen
-                                              List<ProformaLocalItem> parsedItems = [];
-                                              if (previewData['items'] != null && previewData['items'] is List) {
-                                                try {
-                                                  parsedItems = (previewData['items'] as List).map((e) {
-                                                    return ProformaLocalItem.fromMap(Map<String, dynamic>.from(e as Map));
-                                                  }).toList();
-                                                } catch (_) {
-                                                  // Silent catch to prevent crash if mapping fails
-                                                }
-                                              }
-
-                                              Navigator.push(
-                                                context,
-                                                MaterialPageRoute(
-                                                  builder: (_) => ProformaPreviewScreen(
-                                                    data: previewData,
-                                                    items: parsedItems,
-                                                  ),
-                                                ),
-                                              );
-                                              break;
-                                            case 'approve':
-                                              final confirm = await _confirmAction('Approve Proforma', 'Are you sure you want to approve this proforma invoice?');
-                                              if (confirm) await _updateStatus(doc.id, 'Approved', setApprovedAt: true);
-                                              break;
-                                            case 'reject':
-                                              final confirm = await _confirmAction('Reject Proforma', 'Are you sure you want to reject this proforma invoice?');
-                                              if (confirm) await _updateStatus(doc.id, 'Rejected');
-                                              break;
-                                            case 'cancel':
-                                              final confirm = await _confirmAction('Cancel Proforma', 'Are you sure you want to cancel this proforma invoice?');
-                                              if (confirm) await _updateStatus(doc.id, 'Cancelled');
-                                              break;
-                                            case 'revise':
-                                              final confirm = await _confirmAction('Create Revision', 'Are you sure you want to create a new revision from this proforma?');
-                                              if (confirm) await _createRevision(doc.id, data);
-                                              break;
-                                            case 'convert':
-                                              final confirm = await _confirmAction('Convert to Invoice', 'Are you sure you want to convert this Proforma into a final Tax Invoice?');
-                                              if (confirm) await _convertToInvoice(doc.id, data);
-                                              break;
-                                            case 'delete':
-                                              final confirm = await _confirmAction('Delete Proforma', 'Are you sure you want to delete this proforma invoice?', confirmText: 'Delete', isDestructive: true);
-                                              if (confirm) await _deleteProforma(doc.id);
-                                              break;
-                                          }
-                                        },
-                                        itemBuilder: (context) {
-                                          final List<PopupMenuEntry<String>> menuItems = [];
-
-                                          // Dynamic View / Edit Option
-                                          if (statLw == 'draft' || statLw == 'rejected') {
-                                            menuItems.add(const PopupMenuItem(value: 'edit', child: Text('Edit')));
-                                          } else if (statLw == 'sent') {
-                                            menuItems.add(const PopupMenuItem(value: 'edit', child: Text('View / Edit')));
-                                          } else if (statLw == 'approved' || statLw == 'converted' || statLw == 'cancelled') {
-                                            menuItems.add(const PopupMenuItem(value: 'view_pdf', child: Text('View')));
-                                          } else {
-                                            menuItems.add(const PopupMenuItem(value: 'edit', child: Text('View / Edit')));
-                                          }
-
-                                          // Action Options
-                                          if (statLw == 'draft' || statLw == 'sent') {
-                                            menuItems.add(const PopupMenuItem(value: 'approve', child: Text('Approve')));
-                                            menuItems.add(const PopupMenuItem(value: 'reject', child: Text('Reject')));
-                                          }
-
-                                          if (statLw != 'cancelled' && statLw != 'converted') {
-                                            menuItems.add(const PopupMenuItem(value: 'cancel', child: Text('Cancel')));
-                                          }
-
-                                          menuItems.add(const PopupMenuItem(value: 'revise', child: Text('Create Revision')));
-
-                                          if (statLw != 'converted' && statLw != 'cancelled' && statLw != 'rejected') {
-                                            menuItems.add(const PopupMenuItem(value: 'convert', child: Text('Convert to Invoice')));
-                                          }
-
-                                          // Delete Option
-                                          menuItems.add(const PopupMenuDivider());
-                                          menuItems.add(const PopupMenuItem(
-                                              value: 'delete',
-                                              child: Text('Delete', style: TextStyle(color: Colors.red))));
-
-                                          return menuItems;
-                                        },
+                                      const SizedBox(height: 8),
+                                      Wrap(
+                                        spacing: 6,
+                                        runSpacing: 6,
+                                        children: [
+                                          _InfoChip(
+                                            label: status,
+                                            backgroundColor: _statusBg(status),
+                                            textColor: _statusFg(status),
+                                          ),
+                                        ],
                                       ),
-                                    ),
-                                  ],
-                                ),
-                                const SizedBox(height: 8),
-                                Wrap(
-                                  spacing: 6,
-                                  runSpacing: 6,
-                                  children: [
-                                    _InfoChip(
-                                      label: status,
-                                      backgroundColor: _statusBg(status),
-                                      textColor: _statusFg(status),
-                                    ),
-                                  ],
-                                ),
-                                const SizedBox(height: 8),
-                                Wrap(
-                                  spacing: 12,
-                                  runSpacing: 6,
-                                  crossAxisAlignment:
-                                  WrapCrossAlignment.center,
-                                  children: [
-                                    if (displayReference.isNotEmpty)
-                                      _InlineInfo(
-                                        icon: Icons.tag_outlined,
-                                        text: displayReference,
+                                      const SizedBox(height: 8),
+                                      Wrap(
+                                        spacing: 12,
+                                        runSpacing: 6,
+                                        crossAxisAlignment:
+                                            WrapCrossAlignment.center,
+                                        children: [
+                                          if (displayReference.isNotEmpty)
+                                            _InlineInfo(
+                                              icon: Icons.tag_outlined,
+                                              text: displayReference,
+                                            ),
+                                          _InlineInfo(
+                                            icon: Icons.person_outline,
+                                            text: createdByName,
+                                          ),
+                                          _InlineInfo(
+                                            icon: Icons.currency_rupee_outlined,
+                                            text: amountStr,
+                                          ),
+                                          _InlineInfo(
+                                            icon: Icons.add_circle_outline,
+                                            text:
+                                                'Created: ${_formatCompactDate(createdAt)}',
+                                          ),
+                                          if (nextFollowUp != null)
+                                            _InlineInfo(
+                                              icon: Icons.event_repeat_outlined,
+                                              text:
+                                                  'Next: ${_formatCompactDate(nextFollowUp)}',
+                                            ),
+                                        ],
                                       ),
-                                    _InlineInfo(
-                                      icon: Icons.person_outline,
-                                      text: createdByName,
-                                    ),
-                                    _InlineInfo(
-                                      icon: Icons.currency_rupee_outlined,
-                                      text: amountStr,
-                                    ),
-                                    _InlineInfo(
-                                      icon: Icons.add_circle_outline,
-                                      text:
-                                      'Created: ${_formatCompactDate(createdAt)}',
-                                    ),
-                                    if (nextFollowUp != null)
-                                      _InlineInfo(
-                                        icon: Icons.event_repeat_outlined,
-                                        text:
-                                        'Next: ${_formatCompactDate(nextFollowUp)}',
-                                      ),
-                                  ],
+                                    ],
+                                  ),
                                 ),
-                              ],
-                            ),
+                              );
+                            },
                           ),
-                        );
-                      },
-                    ),
                   ),
                 ],
               );
@@ -969,7 +1169,7 @@ class _ProformaListScreenState extends State<ProformaListScreen> {
         // GLOBAL LOADING OVERLAY
         if (_isLoading)
           Container(
-            color: Colors.black.withOpacity(0.3),
+            color: Colors.black.withValues(alpha: 0.3),
             child: const Center(
               child: CircularProgressIndicator(color: Colors.blue),
             ),

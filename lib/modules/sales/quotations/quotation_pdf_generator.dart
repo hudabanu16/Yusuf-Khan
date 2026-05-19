@@ -150,7 +150,10 @@ class QuotationDataService {
 
       final rootData = userDoc.data() ?? <String, dynamic>{};
 
-      final companyId = (rootData['activeCompanyId'] ?? rootData['companyId'] ?? '').toString().trim();
+      final companyId =
+          (rootData['activeCompanyId'] ?? rootData['companyId'] ?? '')
+              .toString()
+              .trim();
       if (companyId.isEmpty || companyId == 'null') return <String, dynamic>{};
 
       DocumentSnapshot compDoc = await FirebaseFirestore.instance
@@ -165,13 +168,15 @@ class QuotationDataService {
             .get();
       }
 
-      final Map<String, dynamic> workspaceData = compDoc.exists && compDoc.data() != null
+      final Map<String, dynamic> workspaceData =
+          compDoc.exists && compDoc.data() != null
           ? Map<String, dynamic>.from(compDoc.data() as Map)
           : <String, dynamic>{};
 
       Map<String, dynamic>? membershipData;
       if (rootData['memberships'] != null) {
-        membershipData = rootData['memberships'][companyId] as Map<String, dynamic>?;
+        membershipData =
+            rootData['memberships'][companyId] as Map<String, dynamic>?;
       }
 
       Map<String, dynamic> compUserData = <String, dynamic>{};
@@ -189,53 +194,66 @@ class QuotationDataService {
       final authName = user.displayName ?? '';
       final authPhone = user.phoneNumber ?? '';
 
-      final sigName = (
-          compUserData['name'] ?? compUserData['fullName'] ??
-              membershipData?['name'] ??
-              rootData['name'] ?? rootData['fullName'] ??
-              authName
-      ).toString().trim();
+      final sigName =
+          (compUserData['name'] ??
+                  compUserData['fullName'] ??
+                  membershipData?['name'] ??
+                  rootData['name'] ??
+                  rootData['fullName'] ??
+                  authName)
+              .toString()
+              .trim();
 
-      String sigDesignation = (
-          compUserData['designation'] ??
-              membershipData?['designation'] ??
-              rootData['designation'] ??
-              ''
-      ).toString().trim();
+      String sigDesignation =
+          (compUserData['designation'] ??
+                  membershipData?['designation'] ??
+                  rootData['designation'] ??
+                  '')
+              .toString()
+              .trim();
 
-      String userDepartment = (
-          compUserData['department'] ??
-              membershipData?['department'] ??
-              rootData['department'] ??
-              ''
-      ).toString().trim();
+      String userDepartment =
+          (compUserData['department'] ??
+                  membershipData?['department'] ??
+                  rootData['department'] ??
+                  '')
+              .toString()
+              .trim();
 
-      String userRole = (
-          membershipData?['role'] ??
-              rootData['role'] ??
-              'Sales'
-      ).toString().trim();
+      String userRole = (membershipData?['role'] ?? rootData['role'] ?? 'Sales')
+          .toString()
+          .trim();
 
       if (sigDesignation.isEmpty) {
-        sigDesignation = userDepartment.isNotEmpty ? userDepartment : userRole.toUpperCase();
+        sigDesignation = userDepartment.isNotEmpty
+            ? userDepartment
+            : userRole.toUpperCase();
       }
 
-      final sigPhone = (
-          compUserData['phone'] ?? compUserData['mobile'] ??
-              membershipData?['phone'] ?? membershipData?['mobile'] ??
-              rootData['phone'] ?? rootData['mobile'] ??
-              authPhone
-      ).toString().trim();
+      final sigPhone =
+          (compUserData['phone'] ??
+                  compUserData['mobile'] ??
+                  membershipData?['phone'] ??
+                  membershipData?['mobile'] ??
+                  rootData['phone'] ??
+                  rootData['mobile'] ??
+                  authPhone)
+              .toString()
+              .trim();
 
       String buildCompleteAddress(Map<String, dynamic> data) {
         List<String> addressLines = [];
 
-        final street = (data['streetAddress'] ?? data['address'] ?? '').toString().trim();
+        final street = (data['streetAddress'] ?? data['address'] ?? '')
+            .toString()
+            .trim();
         if (street.isNotEmpty) addressLines.add(street);
 
         final city = (data['city'] ?? '').toString().trim();
         final state = (data['state'] ?? '').toString().trim();
-        final zip = (data['postalCode'] ?? data['pincode'] ?? data['zip'] ?? '').toString().trim();
+        final zip = (data['postalCode'] ?? data['pincode'] ?? data['zip'] ?? '')
+            .toString()
+            .trim();
 
         List<String> localityParts = [];
         if (city.isNotEmpty) localityParts.add(city);
@@ -257,9 +275,17 @@ class QuotationDataService {
       final fullAddress = buildCompleteAddress(workspaceData);
 
       return {
-        'companyName': workspaceData['companyName'] ?? workspaceData['name'] ?? workspaceData['entityName'] ?? '',
+        'companyName':
+            workspaceData['companyName'] ??
+            workspaceData['name'] ??
+            workspaceData['entityName'] ??
+            '',
         'companyAddress': fullAddress,
-        'companyGst': workspaceData['gstin'] ?? workspaceData['gstNo'] ?? workspaceData['gst'] ?? '',
+        'companyGst':
+            workspaceData['gstin'] ??
+            workspaceData['gstNo'] ??
+            workspaceData['gst'] ??
+            '',
         'companyPan': workspaceData['pan']?.toString() ?? '',
         'companyIec': workspaceData['iec']?.toString() ?? '',
         'companyPhone': workspaceData['phone'] ?? workspaceData['mobile'] ?? '',
@@ -317,14 +343,24 @@ class QuotationPdfGenerator {
   }
 
   // Premium Corporate Gold Theme
-  static final PdfColor _primaryColor = PdfColor.fromInt(0xFF111827); // Charcoal black
+  static final PdfColor _primaryColor = PdfColor.fromInt(
+    0xFF111827,
+  ); // Charcoal black
   static final PdfColor _accentColor = PdfColor.fromInt(0xFFC8A951); // Gold
-  static final PdfColor _bgColor = PdfColor.fromInt(0xFFF9FAFB); // Very light grey
+  static final PdfColor _bgColor = PdfColor.fromInt(
+    0xFFF9FAFB,
+  ); // Very light grey
   static final PdfColor _cardBgColor = PdfColors.white;
-  static final PdfColor _borderColor = PdfColor.fromInt(0xFFE5E7EB); // Light grey border
-  static final PdfColor _textMain = PdfColor.fromInt(0xFF111827); // Charcoal black
+  static final PdfColor _borderColor = PdfColor.fromInt(
+    0xFFE5E7EB,
+  ); // Light grey border
+  static final PdfColor _textMain = PdfColor.fromInt(
+    0xFF111827,
+  ); // Charcoal black
   static final PdfColor _textMuted = PdfColor.fromInt(0xFF6B7280); // Muted grey
-  static final PdfColor _zebraColor = PdfColor.fromInt(0xFFF3F4F6); // Very subtle grey
+  static final PdfColor _zebraColor = PdfColor.fromInt(
+    0xFFF3F4F6,
+  ); // Very subtle grey
 
   static pw.Widget _buildCard({required pw.Widget child}) {
     return pw.Container(
@@ -340,10 +376,10 @@ class QuotationPdfGenerator {
   }
 
   static Future<Uint8List> buildPdf(
-      PdfPageFormat format,
-      Map<String, dynamic> quotation,
-      List<QuotationLineItem> items,
-      ) async {
+    PdfPageFormat format,
+    Map<String, dynamic> quotation,
+    List<QuotationLineItem> items,
+  ) async {
     final doc = pw.Document();
 
     pw.ImageProvider? logoImage;
@@ -359,7 +395,9 @@ class QuotationPdfGenerator {
 
     final documentType = _safeString(quotation['documentType']);
     final isSO = _isSalesOrder(documentType);
-    final displayDocumentType = documentType.isNotEmpty ? documentType : 'Quotation';
+    final displayDocumentType = documentType.isNotEmpty
+        ? documentType
+        : 'Quotation';
 
     // Determine Document Numbers securely
     String soNumber = _safeString(quotation['salesOrderNumberDisplay']);
@@ -368,18 +406,19 @@ class QuotationPdfGenerator {
     if (soNumber.isEmpty) soNumber = _safeString(quotation['orderNumber']);
 
     String quoteNumber = _safeString(quotation['quoteNumber']);
-    if (quoteNumber.isEmpty) quoteNumber = _safeString(quotation['quotationNumber']);
+    if (quoteNumber.isEmpty) {
+      quoteNumber = _safeString(quotation['quotationNumber']);
+    }
 
     // Determine the correct date
     String docDateStr = '';
     dynamic dateVal;
     if (isSO) {
-      dateVal = quotation['soDate'] ?? quotation['date'] ?? quotation['createdAt'];
+      dateVal =
+          quotation['soDate'] ?? quotation['date'] ?? quotation['createdAt'];
     }
 
-    if (dateVal == null) {
-      dateVal = quotation['quoteDate'];
-    }
+    dateVal ??= quotation['quoteDate'];
 
     if (dateVal != null) {
       try {
@@ -389,7 +428,9 @@ class QuotationPdfGenerator {
           if (dateVal.contains('/')) {
             docDateStr = dateVal;
           } else {
-            docDateStr = DateFormat('dd/MM/yyyy').format(DateTime.parse(dateVal));
+            docDateStr = DateFormat(
+              'dd/MM/yyyy',
+            ).format(DateTime.parse(dateVal));
           }
         }
       } catch (e) {
@@ -403,11 +444,15 @@ class QuotationPdfGenerator {
 
     // For Preview Check logic
     final checkNum = isSO && soNumber.isNotEmpty ? soNumber : quoteNumber;
-    final isPreview = checkNum.toUpperCase().contains('PREVIEW') || checkNum.toUpperCase().contains('AUTO-GENERATED');
+    final isPreview =
+        checkNum.toUpperCase().contains('PREVIEW') ||
+        checkNum.toUpperCase().contains('AUTO-GENERATED');
 
     String subjectStr = _safeString(quotation['subject']);
     if (subjectStr.isEmpty) {
-      subjectStr = isSO ? 'Sales Order for supplied items' : 'Quotation for your requirement';
+      subjectStr = isSO
+          ? 'Sales Order for supplied items'
+          : 'Quotation for your requirement';
     }
 
     doc.addPage(
@@ -417,16 +462,33 @@ class QuotationPdfGenerator {
           margin: const pw.EdgeInsets.all(36),
           buildBackground: (context) => pw.FullPage(
             ignoreMargins: true,
-            child: pw.Container(color: _bgColor), // Clean soft background, no watermark
+            child: pw.Container(
+              color: _bgColor,
+            ), // Clean soft background, no watermark
           ),
         ),
         build: (context) {
           return [
-            _buildEnterpriseHeader(quotation, logoImage, isPreview, displayDocumentType),
+            _buildEnterpriseHeader(
+              quotation,
+              logoImage,
+              isPreview,
+              displayDocumentType,
+            ),
             pw.SizedBox(height: 12),
-            pw.Container(height: 1.5, width: double.infinity, color: _accentColor), // Thin GOLD divider
+            pw.Container(
+              height: 1.5,
+              width: double.infinity,
+              color: _accentColor,
+            ), // Thin GOLD divider
             pw.SizedBox(height: 24),
-            _buildTwoColumnInfo(quotation, soNumber, quoteNumber, docDateStr, isSO),
+            _buildTwoColumnInfo(
+              quotation,
+              soNumber,
+              quoteNumber,
+              docDateStr,
+              isSO,
+            ),
             pw.SizedBox(height: 20),
 
             _buildSubjectBar(subjectStr),
@@ -447,11 +509,11 @@ class QuotationPdfGenerator {
   }
 
   static pw.Widget _buildEnterpriseHeader(
-      Map<String, dynamic> quotation,
-      pw.ImageProvider? logoImage,
-      bool isPreview,
-      String displayDocumentType,
-      ) {
+    Map<String, dynamic> quotation,
+    pw.ImageProvider? logoImage,
+    bool isPreview,
+    String displayDocumentType,
+  ) {
     List<String> legalIds = [];
     final gst = _safeString(quotation['companyGst']);
     final pan = _safeString(quotation['companyPan']);
@@ -521,7 +583,8 @@ class QuotationPdfGenerator {
                         style: pw.TextStyle(
                           fontSize: 9,
                           color: _textMuted,
-                          lineSpacing: 1.4, // Essential for multi-line formatting
+                          lineSpacing:
+                              1.4, // Essential for multi-line formatting
                         ),
                       ),
                       pw.SizedBox(height: 6),
@@ -595,12 +658,12 @@ class QuotationPdfGenerator {
   }
 
   static pw.Widget _buildTwoColumnInfo(
-      Map<String, dynamic> quotation,
-      String soNumber,
-      String quoteNumber,
-      String docDateStr,
-      bool isSO,
-      ) {
+    Map<String, dynamic> quotation,
+    String soNumber,
+    String quoteNumber,
+    String docDateStr,
+    bool isSO,
+  ) {
     final clientName = _safeString(quotation['clientName']);
     final clientAddress = _safeString(quotation['clientAddress']);
     final customerState = _safeString(quotation['customerState']);
@@ -652,7 +715,11 @@ class QuotationPdfGenerator {
                 if (customerState.isNotEmpty)
                   pw.Text(
                     'State: $customerState',
-                    style: pw.TextStyle(fontSize: 10, color: _textMain, lineSpacing: 1.5),
+                    style: pw.TextStyle(
+                      fontSize: 10,
+                      color: _textMain,
+                      lineSpacing: 1.5,
+                    ),
                   ),
                 pw.SizedBox(height: 8),
                 if (gstNo.isNotEmpty)
@@ -725,13 +792,7 @@ class QuotationPdfGenerator {
       child: pw.Row(
         mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
         children: [
-          pw.Text(
-            label,
-            style: pw.TextStyle(
-              fontSize: 10,
-              color: _textMuted,
-            ),
-          ),
+          pw.Text(label, style: pw.TextStyle(fontSize: 10, color: _textMuted)),
           pw.Text(
             value,
             style: pw.TextStyle(
@@ -780,9 +841,9 @@ class QuotationPdfGenerator {
   }
 
   static pw.Widget _buildProductsTable(
-      List<QuotationLineItem> items,
-      bool isInterState,
-      ) {
+    List<QuotationLineItem> items,
+    bool isInterState,
+  ) {
     if (items.isEmpty) {
       return pw.Container(
         padding: const pw.EdgeInsets.all(32),
@@ -828,40 +889,40 @@ class QuotationPdfGenerator {
               ),
             ),
             children:
-            [
-              'S.No',
-              'Item Description',
-              'HSN/SAC',
-              'Qty',
-              'Rate',
-              'Tax',
-              'Amount',
-            ].map((text) {
-              return pw.Container(
-                padding: const pw.EdgeInsets.symmetric(
-                  vertical: 12,
-                  horizontal: 10,
-                ),
-                alignment:
-                (text == 'S.No' ||
-                    text == 'Qty' ||
-                    text == 'HSN/SAC' ||
-                    text == 'Tax')
-                    ? pw.Alignment.center
-                    : (text == 'Item Description'
-                    ? pw.Alignment.centerLeft
-                    : pw.Alignment.centerRight),
-                child: pw.Text(
-                  text,
-                  style: pw.TextStyle(
-                    color: PdfColors.white, // White header text
-                    fontSize: 10,
-                    fontWeight: pw.FontWeight.bold,
-                    letterSpacing: 0.5,
-                  ),
-                ),
-              );
-            }).toList(),
+                [
+                  'S.No',
+                  'Item Description',
+                  'HSN/SAC',
+                  'Qty',
+                  'Rate',
+                  'Tax',
+                  'Amount',
+                ].map((text) {
+                  return pw.Container(
+                    padding: const pw.EdgeInsets.symmetric(
+                      vertical: 12,
+                      horizontal: 10,
+                    ),
+                    alignment:
+                        (text == 'S.No' ||
+                            text == 'Qty' ||
+                            text == 'HSN/SAC' ||
+                            text == 'Tax')
+                        ? pw.Alignment.center
+                        : (text == 'Item Description'
+                              ? pw.Alignment.centerLeft
+                              : pw.Alignment.centerRight),
+                    child: pw.Text(
+                      text,
+                      style: pw.TextStyle(
+                        color: PdfColors.white, // White header text
+                        fontSize: 10,
+                        fontWeight: pw.FontWeight.bold,
+                        letterSpacing: 0.5,
+                      ),
+                    ),
+                  );
+                }).toList(),
           ),
 
           ...List.generate(items.length, (i) {
@@ -916,9 +977,9 @@ class QuotationPdfGenerator {
             }
 
             pw.Widget cell(
-                pw.Widget child, {
-                  pw.Alignment align = pw.Alignment.centerRight,
-                }) {
+              pw.Widget child, {
+              pw.Alignment align = pw.Alignment.centerRight,
+            }) {
               return pw.Container(
                 padding: const pw.EdgeInsets.symmetric(
                   vertical: 14,
@@ -930,10 +991,10 @@ class QuotationPdfGenerator {
             }
 
             pw.Widget textCell(
-                String text, {
-                  pw.Alignment align = pw.Alignment.centerRight,
-                  bool bold = false,
-                }) {
+              String text, {
+              pw.Alignment align = pw.Alignment.centerRight,
+              bool bold = false,
+            }) {
               return cell(
                 pw.Text(
                   text,
@@ -950,7 +1011,9 @@ class QuotationPdfGenerator {
 
             return pw.TableRow(
               decoration: pw.BoxDecoration(
-                color: i % 2 == 1 ? _zebraColor : _cardBgColor, // Subtle grey zebra
+                color: i % 2 == 1
+                    ? _zebraColor
+                    : _cardBgColor, // Subtle grey zebra
                 border: pw.Border(
                   bottom: pw.BorderSide(
                     color: i == items.length - 1
@@ -976,7 +1039,10 @@ class QuotationPdfGenerator {
                 ),
                 textCell(_currency(item.unitPrice)),
                 textCell(taxStr, align: pw.Alignment.centerRight),
-                textCell(_currency(item.totalAmount), bold: true), // Amount column bold
+                textCell(
+                  _currency(item.totalAmount),
+                  bold: true,
+                ), // Amount column bold
               ],
             );
           }),
@@ -986,10 +1052,10 @@ class QuotationPdfGenerator {
   }
 
   static pw.Widget _buildTotalSummaryCard(
-      Map<String, dynamic> quotation,
-      bool isInterState,
-      double roundOff,
-      ) {
+    Map<String, dynamic> quotation,
+    bool isInterState,
+    double roundOff,
+  ) {
     pw.Widget calcRow(String label, String value, {bool bold = false}) {
       return pw.Padding(
         padding: const pw.EdgeInsets.symmetric(vertical: 8, horizontal: 16),
@@ -1023,7 +1089,9 @@ class QuotationPdfGenerator {
     final cgst = _toDouble(quotation['totalCgst']);
     final sgst = _toDouble(quotation['totalSgst']);
     final igst = _toDouble(quotation['totalIgst']);
-    final finalTotal = _toDouble(quotation['finalTotal'] ?? quotation['grandTotal']);
+    final finalTotal = _toDouble(
+      quotation['finalTotal'] ?? quotation['grandTotal'],
+    );
 
     return pw.Row(
       mainAxisAlignment: pw.MainAxisAlignment.end,
@@ -1290,20 +1358,38 @@ class QuotationPreviewScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final String documentType = QuotationPdfGenerator._safeString(quotation['documentType']);
-    final String displayDocumentType = documentType.isNotEmpty ? documentType : 'Quotation';
+    final String documentType = QuotationPdfGenerator._safeString(
+      quotation['documentType'],
+    );
+    final String displayDocumentType = documentType.isNotEmpty
+        ? documentType
+        : 'Quotation';
     final bool isSO = QuotationPdfGenerator._isSalesOrder(displayDocumentType);
 
     String docNumber = '';
     if (isSO) {
-      docNumber = QuotationPdfGenerator._safeString(quotation['salesOrderNumberDisplay']);
-      if (docNumber.isEmpty) docNumber = QuotationPdfGenerator._safeString(quotation['salesOrderNumber']);
-      if (docNumber.isEmpty) docNumber = QuotationPdfGenerator._safeString(quotation['soNumber']);
-      if (docNumber.isEmpty) docNumber = QuotationPdfGenerator._safeString(quotation['orderNumber']);
+      docNumber = QuotationPdfGenerator._safeString(
+        quotation['salesOrderNumberDisplay'],
+      );
+      if (docNumber.isEmpty) {
+        docNumber = QuotationPdfGenerator._safeString(
+          quotation['salesOrderNumber'],
+        );
+      }
+      if (docNumber.isEmpty) {
+        docNumber = QuotationPdfGenerator._safeString(quotation['soNumber']);
+      }
+      if (docNumber.isEmpty) {
+        docNumber = QuotationPdfGenerator._safeString(quotation['orderNumber']);
+      }
     }
     if (docNumber.isEmpty) {
       docNumber = QuotationPdfGenerator._safeString(quotation['quoteNumber']);
-      if (docNumber.isEmpty) docNumber = QuotationPdfGenerator._safeString(quotation['quotationNumber']);
+      if (docNumber.isEmpty) {
+        docNumber = QuotationPdfGenerator._safeString(
+          quotation['quotationNumber'],
+        );
+      }
     }
     if (docNumber.isEmpty) docNumber = 'N/A';
 
@@ -1322,10 +1408,10 @@ class QuotationPreviewScreen extends StatelessWidget {
           displayTitle,
           // 🔥 FIX: Explicitly set the Title Text to pure white
           style: const TextStyle(
-              color: Colors.white,
-              fontWeight: FontWeight.w600,
-              fontSize: 16,
-              letterSpacing: 0.5
+            color: Colors.white,
+            fontWeight: FontWeight.w600,
+            fontSize: 16,
+            letterSpacing: 0.5,
           ),
         ),
         elevation: 0,
@@ -1334,25 +1420,34 @@ class QuotationPreviewScreen extends StatelessWidget {
       // Wrapping in a Theme forces the internal PdfPreview toolbar to blend flawlessly with the AppBar
       body: Theme(
         data: Theme.of(context).copyWith(
-          primaryColor: headerBgColor, // Matches the internal toolbar to the AppBar
+          primaryColor:
+              headerBgColor, // Matches the internal toolbar to the AppBar
           appBarTheme: const AppBarTheme(
             backgroundColor: headerBgColor,
             foregroundColor: Colors.white,
             iconTheme: IconThemeData(color: Colors.white),
             actionsIconTheme: IconThemeData(color: Colors.white),
           ),
-          iconTheme: const IconThemeData(color: Colors.white), // Forces toolbar buttons to be visible
+          iconTheme: const IconThemeData(
+            color: Colors.white,
+          ), // Forces toolbar buttons to be visible
         ),
         child: PdfPreview(
-          build: (format) => QuotationPdfGenerator.buildPdf(format, quotation, items),
+          build: (format) =>
+              QuotationPdfGenerator.buildPdf(format, quotation, items),
           initialPageFormat: PdfPageFormat.a4,
           canChangeOrientation: false,
           canChangePageFormat: false,
           allowPrinting: true,
           allowSharing: true,
-          pdfFileName: '${displayDocumentType}_$docNumber.pdf'.replaceAll(' ', '_'),
+          pdfFileName: '${displayDocumentType}_$docNumber.pdf'.replaceAll(
+            ' ',
+            '_',
+          ),
           scrollViewDecoration: const BoxDecoration(
-            color: Color(0xFFF1F5F9), // Subtle grey background so the white paper pops
+            color: Color(
+              0xFFF1F5F9,
+            ), // Subtle grey background so the white paper pops
           ),
           // maxPageWidth prevents the PDF from rendering too huge on desktop, forcing it to fit nicely
           maxPageWidth: 800,

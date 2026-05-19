@@ -148,25 +148,42 @@ class _ScreensProductListState extends State<ScreensProductList> {
       case 'all':
         return 'All';
       default:
-        return value.split('_').map((e) => e.isNotEmpty ? '${e[0].toUpperCase()}${e.substring(1)}' : '').join(' ');
+        return value
+            .split('_')
+            .map(
+              (e) =>
+                  e.isNotEmpty ? '${e[0].toUpperCase()}${e.substring(1)}' : '',
+            )
+            .join(' ');
     }
   }
 
-  String _machineHierarchy(Map<String, dynamic> data, int compatCount, Map<String, String> subcategoryNameCache) {
-    final nature = _normalizedNature(data['productNatureLower'] ?? data['productNature'] ?? data['nature']);
+  String _machineHierarchy(
+    Map<String, dynamic> data,
+    int compatCount,
+    Map<String, String> subcategoryNameCache,
+  ) {
+    final nature = _normalizedNature(
+      data['productNatureLower'] ?? data['productNature'] ?? data['nature'],
+    );
 
     if (_isMachine(nature)) {
       final cat = (data['category'] ?? '').toString().trim();
       final sub = (data['subcategory'] ?? '').toString().trim();
-      final type = (data['machineType'] ?? data['type'] ?? '').toString().trim();
+      final type = (data['machineType'] ?? data['type'] ?? '')
+          .toString()
+          .trim();
       final parts = [cat, sub, type].where((e) => e.isNotEmpty).toList();
       return parts.isEmpty ? '—' : parts.join(' → ');
     } else if (_isAccessory(nature)) {
-      final group = (data['accessoryGroupName'] ?? data['accessoryGroup'] ?? '').toString().trim();
+      final group = (data['accessoryGroupName'] ?? data['accessoryGroup'] ?? '')
+          .toString()
+          .trim();
       final main = group.isEmpty ? 'Accessory' : group;
 
       List<String> supportedSubs = [];
-      if (data['compatibleSubcategoryNames'] is List && (data['compatibleSubcategoryNames'] as List).isNotEmpty) {
+      if (data['compatibleSubcategoryNames'] is List &&
+          (data['compatibleSubcategoryNames'] as List).isNotEmpty) {
         supportedSubs = List<String>.from(data['compatibleSubcategoryNames']);
       } else if (data['compatibleSubcategories'] is List) {
         supportedSubs = (data['compatibleSubcategories'] as List).map((id) {
@@ -174,17 +191,25 @@ class _ScreensProductListState extends State<ScreensProductList> {
         }).toList();
       }
 
-      String supportsText = supportedSubs.isNotEmpty ? '\n• Supports: ${_formatSupportedCategories(supportedSubs)}' : '';
-      String compatText = compatCount > 0 ? '\n• ${_machineCountLabel(compatCount, usedIn: true)}' : '';
+      String supportsText = supportedSubs.isNotEmpty
+          ? '\n• Supports: ${_formatSupportedCategories(supportedSubs)}'
+          : '';
+      String compatText = compatCount > 0
+          ? '\n• ${_machineCountLabel(compatCount, usedIn: true)}'
+          : '';
 
       return '$main$supportsText$compatText';
     } else if (_isSpare(nature)) {
-      final group = (data['spareGroupName'] ?? data['spareGroup'] ?? '').toString().trim();
+      final group = (data['spareGroupName'] ?? data['spareGroup'] ?? '')
+          .toString()
+          .trim();
       final main = group.isEmpty ? 'Spare Part' : group;
       final type = (data['compatibleMachineType'] ?? '').toString().trim();
 
       String typeText = type.isNotEmpty ? '\n• Type: $type' : '';
-      String compatText = compatCount > 0 ? '\n• ${_machineCountLabel(compatCount, usedIn: false)}' : '';
+      String compatText = compatCount > 0
+          ? '\n• ${_machineCountLabel(compatCount, usedIn: false)}'
+          : '';
 
       return '$main$typeText$compatText';
     }
@@ -192,10 +217,10 @@ class _ScreensProductListState extends State<ScreensProductList> {
   }
 
   List<Map<String, String>> _resolveCompatibleMachines(
-      Map<String, dynamic> data,
-      Map<String, QueryDocumentSnapshot<Map<String, dynamic>>> productMapById,
-      Map<String, QueryDocumentSnapshot<Map<String, dynamic>>> productMapByName,
-      ) {
+    Map<String, dynamic> data,
+    Map<String, QueryDocumentSnapshot<Map<String, dynamic>>> productMapById,
+    Map<String, QueryDocumentSnapshot<Map<String, dynamic>>> productMapByName,
+  ) {
     final List<Map<String, String>> result = [];
 
     final ids = data['compatibleProductIds'];
@@ -203,7 +228,10 @@ class _ScreensProductListState extends State<ScreensProductList> {
 
     List<String> parsedIds = [];
     if (ids is List) {
-      parsedIds = ids.map((e) => e.toString().trim()).where((e) => e.isNotEmpty).toList();
+      parsedIds = ids
+          .map((e) => e.toString().trim())
+          .where((e) => e.isNotEmpty)
+          .toList();
     }
 
     List<dynamic> parsedNamesOrMaps = [];
@@ -223,7 +251,8 @@ class _ScreensProductListState extends State<ScreensProductList> {
             'name': (dData['name'] ?? '').toString(),
             'category': (dData['category'] ?? '').toString(),
             'subcategory': (dData['subcategory'] ?? '').toString(),
-            'machineType': (dData['machineType'] ?? dData['type'] ?? '').toString(),
+            'machineType': (dData['machineType'] ?? dData['type'] ?? '')
+                .toString(),
           });
         } else {
           // Safe Fallback using available legacy names if document is missing
@@ -233,14 +262,17 @@ class _ScreensProductListState extends State<ScreensProductList> {
             if (fallbackItem is String && fallbackItem.trim().isNotEmpty) {
               fallbackName = fallbackItem.trim();
             } else if (fallbackItem is Map) {
-              fallbackName = (fallbackItem['name'] ?? fallbackItem['id'] ?? fallbackName).toString().trim();
+              fallbackName =
+                  (fallbackItem['name'] ?? fallbackItem['id'] ?? fallbackName)
+                      .toString()
+                      .trim();
             }
           }
           result.add({
             'name': fallbackName,
             'category': '',
             'subcategory': '',
-            'machineType': ''
+            'machineType': '',
           });
         }
       }
@@ -260,10 +292,16 @@ class _ScreensProductListState extends State<ScreensProductList> {
               'name': (dData['name'] ?? '').toString(),
               'category': (dData['category'] ?? '').toString(),
               'subcategory': (dData['subcategory'] ?? '').toString(),
-              'machineType': (dData['machineType'] ?? dData['type'] ?? '').toString(),
+              'machineType': (dData['machineType'] ?? dData['type'] ?? '')
+                  .toString(),
             });
           } else {
-            result.add({'name': e.trim(), 'category': '', 'subcategory': '', 'machineType': ''});
+            result.add({
+              'name': e.trim(),
+              'category': '',
+              'subcategory': '',
+              'machineType': '',
+            });
           }
         } else if (e is Map) {
           final nameStr = (e['name'] ?? e['id'] ?? '').toString().trim();
@@ -275,14 +313,17 @@ class _ScreensProductListState extends State<ScreensProductList> {
               'name': (dData['name'] ?? '').toString(),
               'category': (dData['category'] ?? '').toString(),
               'subcategory': (dData['subcategory'] ?? '').toString(),
-              'machineType': (dData['machineType'] ?? dData['type'] ?? '').toString(),
+              'machineType': (dData['machineType'] ?? dData['type'] ?? '')
+                  .toString(),
             });
           } else {
             result.add({
               'name': nameStr,
               'category': (e['category'] ?? '').toString().trim(),
               'subcategory': (e['subcategory'] ?? '').toString().trim(),
-              'machineType': (e['machineType'] ?? e['type'] ?? '').toString().trim(),
+              'machineType': (e['machineType'] ?? e['type'] ?? '')
+                  .toString()
+                  .trim(),
             });
           }
         }
@@ -293,56 +334,85 @@ class _ScreensProductListState extends State<ScreensProductList> {
 
   bool _matchesNature(Map<String, dynamic> data, String selectedNature) {
     if (selectedNature == 'all') return true;
-    final docNature = _natureLabel(data['productNatureLower'] ?? data['productNature'] ?? data['nature']);
+    final docNature = _natureLabel(
+      data['productNatureLower'] ?? data['productNature'] ?? data['nature'],
+    );
     return docNature.toLowerCase() == selectedNature.toLowerCase();
   }
 
-  void _showCompatibleModelsDialog(String productName, List<Map<String, String>> models, {required bool isAccessory}) {
+  void _showCompatibleModelsDialog(
+    String productName,
+    List<Map<String, String>> models, {
+    required bool isAccessory,
+  }) {
     String dialogSearch = '';
 
     // Performance Optimization: Cache lowercase strings once
     final List<Map<String, dynamic>> cachedModels = models.map((m) {
-      final combined = '${m['name']} ${m['category']} ${m['subcategory']} ${m['machineType']}'.toLowerCase();
-      return {
-        'data': m,
-        'searchKey': combined,
-      };
+      final combined =
+          '${m['name']} ${m['category']} ${m['subcategory']} ${m['machineType']}'
+              .toLowerCase();
+      return {'data': m, 'searchKey': combined};
     }).toList();
 
     showDialog(
       context: context,
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setDialogState) {
-          final filtered = cachedModels.where((m) {
-            if (dialogSearch.isEmpty) return true;
-            return (m['searchKey'] as String).contains(dialogSearch);
-          }).map((m) => m['data'] as Map<String, String>).toList();
+          final filtered = cachedModels
+              .where((m) {
+                if (dialogSearch.isEmpty) return true;
+                return (m['searchKey'] as String).contains(dialogSearch);
+              })
+              .map((m) => m['data'] as Map<String, String>)
+              .toList();
 
-          final titlePrefix = isAccessory ? 'Used In Equipment' : 'Compatible Equipment';
+          final titlePrefix = isAccessory
+              ? 'Used In Equipment'
+              : 'Compatible Equipment';
 
           return AlertDialog(
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+            ),
             titlePadding: const EdgeInsets.fromLTRB(20, 20, 20, 10),
             contentPadding: const EdgeInsets.symmetric(horizontal: 20),
-            actionsPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+            actionsPadding: const EdgeInsets.symmetric(
+              horizontal: 20,
+              vertical: 10,
+            ),
             title: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               mainAxisSize: MainAxisSize.min,
               children: [
                 Row(
                   children: [
-                    const Icon(Icons.precision_manufacturing_outlined, color: Colors.blueGrey, size: 20),
+                    const Icon(
+                      Icons.precision_manufacturing_outlined,
+                      color: Colors.blueGrey,
+                      size: 20,
+                    ),
                     const SizedBox(width: 8),
                     Expanded(
                       child: Text(
                         '$titlePrefix (${models.length})',
-                        style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                        style: const TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                        ),
                       ),
                     ),
                   ],
                 ),
                 const SizedBox(height: 6),
-                Text(productName, style: const TextStyle(fontSize: 12, color: Colors.blueGrey, fontWeight: FontWeight.normal)),
+                Text(
+                  productName,
+                  style: const TextStyle(
+                    fontSize: 12,
+                    color: Colors.blueGrey,
+                    fontWeight: FontWeight.normal,
+                  ),
+                ),
                 const SizedBox(height: 14),
                 SizedBox(
                   height: 36,
@@ -353,67 +423,109 @@ class _ScreensProductListState extends State<ScreensProductList> {
                       isDense: true,
                       filled: true,
                       fillColor: const Color(0xFFF8FAFC),
-                      contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 0),
-                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(6), borderSide: const BorderSide(color: Color(0xFFE4E7EC))),
-                      enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(6), borderSide: const BorderSide(color: Color(0xFFE4E7EC))),
-                      focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(6), borderSide: const BorderSide(color: Colors.blue)),
+                      contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 0,
+                      ),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(6),
+                        borderSide: const BorderSide(color: Color(0xFFE4E7EC)),
+                      ),
+                      enabledBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(6),
+                        borderSide: const BorderSide(color: Color(0xFFE4E7EC)),
+                      ),
+                      focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(6),
+                        borderSide: const BorderSide(color: Colors.blue),
+                      ),
                     ),
-                    onChanged: (val) => setDialogState(() => dialogSearch = val.toLowerCase()),
+                    onChanged: (val) =>
+                        setDialogState(() => dialogSearch = val.toLowerCase()),
                   ),
                 ),
               ],
             ),
             content: SizedBox(
-              width: MediaQuery.of(ctx).size.width > 600 ? 480 : MediaQuery.of(ctx).size.width * 0.92,
+              width: MediaQuery.of(ctx).size.width > 600
+                  ? 480
+                  : MediaQuery.of(ctx).size.width * 0.92,
               height: 400,
               child: filtered.isEmpty
-                  ? const Center(child: Text('No compatible equipment found', style: TextStyle(color: Colors.grey, fontSize: 13)))
+                  ? const Center(
+                      child: Text(
+                        'No compatible equipment found',
+                        style: TextStyle(color: Colors.grey, fontSize: 13),
+                      ),
+                    )
                   : ListView.separated(
-                itemCount: filtered.length,
-                separatorBuilder: (_, __) => const Divider(height: 1, color: Color(0xFFE2E8F0)),
-                itemBuilder: (context, index) {
-                  final m = filtered[index];
-                  final mName = m['name'] ?? 'Unknown';
-                  final mCat = m['category'] ?? '';
-                  final mSub = m['subcategory'] ?? '';
-                  final mType = m['machineType'] ?? '';
+                      itemCount: filtered.length,
+                      separatorBuilder: (_, __) =>
+                          const Divider(height: 1, color: Color(0xFFE2E8F0)),
+                      itemBuilder: (context, index) {
+                        final m = filtered[index];
+                        final mName = m['name'] ?? 'Unknown';
+                        final mCat = m['category'] ?? '';
+                        final mSub = m['subcategory'] ?? '';
+                        final mType = m['machineType'] ?? '';
 
-                  final hierarchyParts = [mCat, mSub, mType].where((e) => e.isNotEmpty).toList();
-                  final hierarchyStr = hierarchyParts.join(' → ');
+                        final hierarchyParts = [
+                          mCat,
+                          mSub,
+                          mType,
+                        ].where((e) => e.isNotEmpty).toList();
+                        final hierarchyStr = hierarchyParts.join(' → ');
 
-                  return Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 8),
-                    child: Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Padding(
-                          padding: EdgeInsets.only(top: 2),
-                          child: Icon(Icons.precision_manufacturing, size: 14, color: Color(0xFF64748B)),
-                        ),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: Column(
+                        return Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 8),
+                          child: Row(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              Text(mName, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: Color(0xFF1E293B))),
-                              if (hierarchyStr.isNotEmpty) ...[
-                                const SizedBox(height: 2),
-                                Text(hierarchyStr, style: const TextStyle(fontSize: 11, color: Color(0xFF64748B))),
-                              ]
+                              const Padding(
+                                padding: EdgeInsets.only(top: 2),
+                                child: Icon(
+                                  Icons.precision_manufacturing,
+                                  size: 14,
+                                  color: Color(0xFF64748B),
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      mName,
+                                      style: const TextStyle(
+                                        fontSize: 13,
+                                        fontWeight: FontWeight.w600,
+                                        color: Color(0xFF1E293B),
+                                      ),
+                                    ),
+                                    if (hierarchyStr.isNotEmpty) ...[
+                                      const SizedBox(height: 2),
+                                      Text(
+                                        hierarchyStr,
+                                        style: const TextStyle(
+                                          fontSize: 11,
+                                          color: Color(0xFF64748B),
+                                        ),
+                                      ),
+                                    ],
+                                  ],
+                                ),
+                              ),
                             ],
                           ),
-                        ),
-                      ],
+                        );
+                      },
                     ),
-                  );
-                },
-              ),
             ),
             actions: [
               TextButton(
                 onPressed: () => Navigator.pop(ctx),
                 child: const Text('Close', style: TextStyle(fontSize: 13)),
-              )
+              ),
             ],
           );
         },
@@ -445,14 +557,39 @@ class _ScreensProductListState extends State<ScreensProductList> {
     String newAcc = _accessoryGroupFilter;
     String newSpare = _spareGroupFilter;
 
-    if (newCat != 'all' && !categoryOptions.contains(newCat)) { newCat = 'all'; newSub = 'all'; needsUpdate = true; }
-    if (newSub != 'all' && !validSubOptions.contains(newSub)) { newSub = 'all'; needsUpdate = true; }
-    if (newNature != 'all' && !natureOptions.contains(newNature)) { newNature = 'all'; needsUpdate = true; }
-    if (newMachine != 'all' && !machineTypeOptions.contains(newMachine)) { newMachine = 'all'; needsUpdate = true; }
-    if (newFamily != 'all' && !familyOptions.contains(newFamily)) { newFamily = 'all'; needsUpdate = true; }
-    if (newMake != 'all' && !makeOptions.contains(newMake)) { newMake = 'all'; needsUpdate = true; }
-    if (newAcc != 'all' && !accessoryGroupOptions.contains(newAcc)) { newAcc = 'all'; needsUpdate = true; }
-    if (newSpare != 'all' && !spareGroupOptions.contains(newSpare)) { newSpare = 'all'; needsUpdate = true; }
+    if (newCat != 'all' && !categoryOptions.contains(newCat)) {
+      newCat = 'all';
+      newSub = 'all';
+      needsUpdate = true;
+    }
+    if (newSub != 'all' && !validSubOptions.contains(newSub)) {
+      newSub = 'all';
+      needsUpdate = true;
+    }
+    if (newNature != 'all' && !natureOptions.contains(newNature)) {
+      newNature = 'all';
+      needsUpdate = true;
+    }
+    if (newMachine != 'all' && !machineTypeOptions.contains(newMachine)) {
+      newMachine = 'all';
+      needsUpdate = true;
+    }
+    if (newFamily != 'all' && !familyOptions.contains(newFamily)) {
+      newFamily = 'all';
+      needsUpdate = true;
+    }
+    if (newMake != 'all' && !makeOptions.contains(newMake)) {
+      newMake = 'all';
+      needsUpdate = true;
+    }
+    if (newAcc != 'all' && !accessoryGroupOptions.contains(newAcc)) {
+      newAcc = 'all';
+      needsUpdate = true;
+    }
+    if (newSpare != 'all' && !spareGroupOptions.contains(newSpare)) {
+      newSpare = 'all';
+      needsUpdate = true;
+    }
 
     if (needsUpdate) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -473,7 +610,9 @@ class _ScreensProductListState extends State<ScreensProductList> {
   }
 
   void _refreshCategoryMaster() {
-    if (!mounted || _currentCompanyId == null || _currentCompanyId!.isEmpty) return;
+    if (!mounted || _currentCompanyId == null || _currentCompanyId!.isEmpty) {
+      return;
+    }
     setState(() {
       _categoryMasterFuture = _loadCategoryMaster(_currentCompanyId!);
     });
@@ -505,13 +644,15 @@ class _ScreensProductListState extends State<ScreensProductList> {
                   child: CircularProgressIndicator(
                     strokeWidth: 2,
                     value: loadingProgress.expectedTotalBytes != null
-                        ? loadingProgress.cumulativeBytesLoaded / loadingProgress.expectedTotalBytes!
+                        ? loadingProgress.cumulativeBytesLoaded /
+                              loadingProgress.expectedTotalBytes!
                         : null,
                   ),
                 ),
               );
             },
-            errorBuilder: (context, error, stackTrace) => _buildInitialsFallback(name, size),
+            errorBuilder: (context, error, stackTrace) =>
+                _buildInitialsFallback(name, size),
           ),
         ),
       );
@@ -569,11 +710,7 @@ class _ScreensProductListState extends State<ScreensProductList> {
 
     final companyData = companyUserDoc.data() ?? <String, dynamic>{};
 
-    return {
-      ...globalData,
-      ...companyData,
-      'companyId': companyId,
-    };
+    return {...globalData, ...companyData, 'companyId': companyId};
   }
 
   bool _isAdminOrManager(String role) {
@@ -586,7 +723,10 @@ class _ScreensProductListState extends State<ScreensProductList> {
         r == 'manager';
   }
 
-  bool _hasProductPermission(Map<String, dynamic> userData, {String action = 'view'}) {
+  bool _hasProductPermission(
+    Map<String, dynamic> userData, {
+    String action = 'view',
+  }) {
     final role = (userData['role'] ?? '').toString();
     if (_isAdminOrManager(role)) return true;
 
@@ -602,7 +742,10 @@ class _ScreensProductListState extends State<ScreensProductList> {
     }
 
     if (permissions['products'] == true && action == 'view') return true;
-    if (permissions['products'] is Map && permissions['products'][action] == true) return true;
+    if (permissions['products'] is Map &&
+        permissions['products'][action] == true) {
+      return true;
+    }
 
     return false;
   }
@@ -641,13 +784,19 @@ class _ScreensProductListState extends State<ScreensProductList> {
   }
 
   double _reorderLevel(Map<String, dynamic> data) {
-    if (data.containsKey('reorderLevel')) return _toDouble(data['reorderLevel']);
-    if (data.containsKey('minStockLevel')) return _toDouble(data['minStockLevel']);
+    if (data.containsKey('reorderLevel')) {
+      return _toDouble(data['reorderLevel']);
+    }
+    if (data.containsKey('minStockLevel')) {
+      return _toDouble(data['minStockLevel']);
+    }
     return 0;
   }
 
   double _minStockLevel(Map<String, dynamic> data) {
-    if (data.containsKey('minStockLevel')) return _toDouble(data['minStockLevel']);
+    if (data.containsKey('minStockLevel')) {
+      return _toDouble(data['minStockLevel']);
+    }
     return _reorderLevel(data);
   }
 
@@ -659,7 +808,12 @@ class _ScreensProductListState extends State<ScreensProductList> {
     return (data['subcategory'] ?? '').toString().trim();
   }
 
-  bool _matchesSearch(Map<String, dynamic> data, List<Map<String, String>> cachedCompatDetails, String cachedHierarchy, String cachedNatureLabel) {
+  bool _matchesSearch(
+    Map<String, dynamic> data,
+    List<Map<String, String>> cachedCompatDetails,
+    String cachedHierarchy,
+    String cachedNatureLabel,
+  ) {
     if (_searchText.isEmpty) return true;
 
     final subNames = data['compatibleSubcategoryNames'];
@@ -681,7 +835,7 @@ class _ScreensProductListState extends State<ScreensProductList> {
     ];
 
     return fields.any(
-          (e) => (e ?? '').toString().toLowerCase().contains(_searchText),
+      (e) => (e ?? '').toString().toLowerCase().contains(_searchText),
     );
   }
 
@@ -699,7 +853,9 @@ class _ScreensProductListState extends State<ScreensProductList> {
 
   bool _matchesStockFilter(Map<String, dynamic> data) {
     final stock = _stockOnHand(data);
-    final threshold = _minStockLevel(data) > 0 ? _minStockLevel(data) : _reorderLevel(data);
+    final threshold = _minStockLevel(data) > 0
+        ? _minStockLevel(data)
+        : _reorderLevel(data);
 
     switch (_stockFilter) {
       case 'in_stock':
@@ -722,11 +878,16 @@ class _ScreensProductListState extends State<ScreensProductList> {
     if (_subcategoryFilter == 'all') return true;
 
     final filter = _subcategoryFilter.toLowerCase();
-    final nature = _normalizedNature(data['productNatureLower'] ?? data['productNature'] ?? data['nature']);
+    final nature = _normalizedNature(
+      data['productNatureLower'] ?? data['productNature'] ?? data['nature'],
+    );
 
     if (_isAccessory(nature)) {
       final subNames = data['compatibleSubcategoryNames'];
-      if (subNames is List && subNames.any((e) => e.toString().toLowerCase() == filter)) return true;
+      if (subNames is List &&
+          subNames.any((e) => e.toString().toLowerCase() == filter)) {
+        return true;
+      }
       return false;
     }
 
@@ -736,14 +897,33 @@ class _ScreensProductListState extends State<ScreensProductList> {
   bool _matchesIndustrialFilters(Map<String, dynamic> data, int compatCount) {
     if (!_matchesNature(data, _natureFilter)) return false;
 
-    if (_familyFilter != 'all' && (data['family'] ?? '').toString().trim() != _familyFilter) return false;
-    if (_machineTypeFilter != 'all' && (data['machineType'] ?? data['type'] ?? '').toString().trim() != _machineTypeFilter) return false;
+    if (_familyFilter != 'all' &&
+        (data['family'] ?? '').toString().trim() != _familyFilter) {
+      return false;
+    }
+    if (_machineTypeFilter != 'all' &&
+        (data['machineType'] ?? data['type'] ?? '').toString().trim() !=
+            _machineTypeFilter) {
+      return false;
+    }
 
     final make = (data['make'] ?? data['brand'] ?? '').toString().trim();
     if (_makeFilter != 'all' && make != _makeFilter) return false;
 
-    if (_accessoryGroupFilter != 'all' && (data['accessoryGroupName'] ?? data['accessoryGroup'] ?? '').toString().trim() != _accessoryGroupFilter) return false;
-    if (_spareGroupFilter != 'all' && (data['spareGroupName'] ?? data['spareGroup'] ?? '').toString().trim() != _spareGroupFilter) return false;
+    if (_accessoryGroupFilter != 'all' &&
+        (data['accessoryGroupName'] ?? data['accessoryGroup'] ?? '')
+                .toString()
+                .trim() !=
+            _accessoryGroupFilter) {
+      return false;
+    }
+    if (_spareGroupFilter != 'all' &&
+        (data['spareGroupName'] ?? data['spareGroup'] ?? '')
+                .toString()
+                .trim() !=
+            _spareGroupFilter) {
+      return false;
+    }
 
     if (_compatibilityFilter == 'has_compatibility') return compatCount > 0;
     if (_compatibilityFilter == 'no_compatibility') return compatCount == 0;
@@ -753,7 +933,9 @@ class _ScreensProductListState extends State<ScreensProductList> {
 
   String _stockStatus(Map<String, dynamic> data) {
     final stock = _stockOnHand(data);
-    final threshold = _minStockLevel(data) > 0 ? _minStockLevel(data) : _reorderLevel(data);
+    final threshold = _minStockLevel(data) > 0
+        ? _minStockLevel(data)
+        : _reorderLevel(data);
 
     if (stock <= 0) return 'Out of Stock';
     if (threshold > 0 && stock <= threshold) return 'Low Stock';
@@ -781,8 +963,9 @@ class _ScreensProductListState extends State<ScreensProductList> {
   }
 
   Future<List<_CategoryMaster>> _loadCategoryMaster(String companyId) async {
-    final categorySnap =
-    await _categoriesRef(companyId).orderBy('nameLower').get();
+    final categorySnap = await _categoriesRef(
+      companyId,
+    ).orderBy('nameLower').get();
 
     final List<_CategoryMaster> result = [];
 
@@ -790,18 +973,13 @@ class _ScreensProductListState extends State<ScreensProductList> {
       final catData = catDoc.data();
       final catName = (catData['name'] ?? '').toString();
 
-      final subSnap = await _categoriesRef(companyId)
-          .doc(catDoc.id)
-          .collection('subcategories')
-          .orderBy('nameLower')
-          .get();
+      final subSnap = await _categoriesRef(
+        companyId,
+      ).doc(catDoc.id).collection('subcategories').orderBy('nameLower').get();
 
       final subs = subSnap.docs.map((s) {
         final d = s.data();
-        return _SubcategoryMaster(
-          id: s.id,
-          name: (d['name'] ?? '').toString(),
-        );
+        return _SubcategoryMaster(id: s.id, name: (d['name'] ?? '').toString());
       }).toList();
 
       result.add(
@@ -861,27 +1039,28 @@ class _ScreensProductListState extends State<ScreensProductList> {
     required String productName,
     required String currentUserUid,
   }) async {
-    final confirm = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Delete Product', style: TextStyle(fontSize: 16)),
-        content: Text(
-          'Are you sure you want to delete "$productName"?\n\nThis action cannot be undone.',
-          style: const TextStyle(fontSize: 14),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Cancel'),
+    final confirm =
+        await showDialog<bool>(
+          context: context,
+          builder: (ctx) => AlertDialog(
+            title: const Text('Delete Product', style: TextStyle(fontSize: 16)),
+            content: Text(
+              'Are you sure you want to delete "$productName"?\n\nThis action cannot be undone.',
+              style: const TextStyle(fontSize: 14),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx, false),
+                child: const Text('Cancel'),
+              ),
+              FilledButton(
+                style: FilledButton.styleFrom(backgroundColor: Colors.red),
+                onPressed: () => Navigator.pop(ctx, true),
+                child: const Text('Delete'),
+              ),
+            ],
           ),
-          FilledButton(
-            style: FilledButton.styleFrom(backgroundColor: Colors.red),
-            onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Delete'),
-          ),
-        ],
-      ),
-    ) ??
+        ) ??
         false;
 
     if (!confirm) return;
@@ -893,11 +1072,11 @@ class _ScreensProductListState extends State<ScreensProductList> {
           .collection('products')
           .doc(productId)
           .update({
-        'isDeleted': true,
-        'isActive': false,
-        'updatedAt': FieldValue.serverTimestamp(),
-        'updatedByUid': currentUserUid,
-      });
+            'isDeleted': true,
+            'isActive': false,
+            'updatedAt': FieldValue.serverTimestamp(),
+            'updatedByUid': currentUserUid,
+          });
 
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -956,19 +1135,27 @@ class _ScreensProductListState extends State<ScreensProductList> {
 
             return SafeArea(
               child: Container(
-                constraints: BoxConstraints(maxHeight: MediaQuery.of(context).size.height * 0.85),
+                constraints: BoxConstraints(
+                  maxHeight: MediaQuery.of(context).size.height * 0.85,
+                ),
                 padding: const EdgeInsets.fromLTRB(20, 20, 20, 24),
                 child: Column(
                   children: [
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        const Text('Advanced Filters', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                        const Text(
+                          'Advanced Filters',
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
                         IconButton(
-                            padding: EdgeInsets.zero,
-                            constraints: const BoxConstraints(),
-                            onPressed: () => Navigator.pop(context),
-                            icon: const Icon(Icons.close, size: 20)
+                          padding: EdgeInsets.zero,
+                          constraints: const BoxConstraints(),
+                          onPressed: () => Navigator.pop(context),
+                          icon: const Icon(Icons.close, size: 20),
                         ),
                       ],
                     ),
@@ -978,31 +1165,86 @@ class _ScreensProductListState extends State<ScreensProductList> {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            const Text('A. Product Classification', style: TextStyle(fontWeight: FontWeight.w600, color: Colors.blueGrey, fontSize: 13)),
+                            const Text(
+                              'A. Product Classification',
+                              style: TextStyle(
+                                fontWeight: FontWeight.w600,
+                                color: Colors.blueGrey,
+                                fontSize: 13,
+                              ),
+                            ),
                             const SizedBox(height: 10),
                             Row(
                               children: [
                                 Expanded(
                                   child: DropdownButtonFormField<String>(
                                     value: tempNature,
-                                    decoration: InputDecoration(labelText: 'Product Nature', border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)), isDense: true),
+                                    decoration: InputDecoration(
+                                      labelText: 'Product Nature',
+                                      border: OutlineInputBorder(
+                                        borderRadius: BorderRadius.circular(8),
+                                      ),
+                                      isDense: true,
+                                    ),
                                     items: [
-                                      const DropdownMenuItem(value: 'all', child: Text('All Natures', style: TextStyle(fontSize: 13))),
-                                      ...natureOptions.map((e) => DropdownMenuItem(value: e, child: Text(e, style: const TextStyle(fontSize: 13)))),
+                                      const DropdownMenuItem(
+                                        value: 'all',
+                                        child: Text(
+                                          'All Natures',
+                                          style: TextStyle(fontSize: 13),
+                                        ),
+                                      ),
+                                      ...natureOptions.map(
+                                        (e) => DropdownMenuItem(
+                                          value: e,
+                                          child: Text(
+                                            e,
+                                            style: const TextStyle(
+                                              fontSize: 13,
+                                            ),
+                                          ),
+                                        ),
+                                      ),
                                     ],
-                                    onChanged: (value) => modalSetState(() => tempNature = value ?? 'all'),
+                                    onChanged: (value) => modalSetState(
+                                      () => tempNature = value ?? 'all',
+                                    ),
                                   ),
                                 ),
                                 const SizedBox(width: 12),
                                 Expanded(
                                   child: DropdownButtonFormField<String>(
                                     value: tempFamily,
-                                    decoration: InputDecoration(labelText: 'Product Family', border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)), isDense: true),
+                                    decoration: InputDecoration(
+                                      labelText: 'Product Family',
+                                      border: OutlineInputBorder(
+                                        borderRadius: BorderRadius.circular(8),
+                                      ),
+                                      isDense: true,
+                                    ),
                                     items: [
-                                      const DropdownMenuItem(value: 'all', child: Text('All Families', style: TextStyle(fontSize: 13))),
-                                      ...familyOptions.map((e) => DropdownMenuItem(value: e, child: Text(e, style: const TextStyle(fontSize: 13)))),
+                                      const DropdownMenuItem(
+                                        value: 'all',
+                                        child: Text(
+                                          'All Families',
+                                          style: TextStyle(fontSize: 13),
+                                        ),
+                                      ),
+                                      ...familyOptions.map(
+                                        (e) => DropdownMenuItem(
+                                          value: e,
+                                          child: Text(
+                                            e,
+                                            style: const TextStyle(
+                                              fontSize: 13,
+                                            ),
+                                          ),
+                                        ),
+                                      ),
                                     ],
-                                    onChanged: (value) => modalSetState(() => tempFamily = value ?? 'all'),
+                                    onChanged: (value) => modalSetState(
+                                      () => tempFamily = value ?? 'all',
+                                    ),
                                   ),
                                 ),
                               ],
@@ -1013,10 +1255,32 @@ class _ScreensProductListState extends State<ScreensProductList> {
                                 Expanded(
                                   child: DropdownButtonFormField<String>(
                                     value: tempCategory,
-                                    decoration: InputDecoration(labelText: 'Category', border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)), isDense: true),
+                                    decoration: InputDecoration(
+                                      labelText: 'Category',
+                                      border: OutlineInputBorder(
+                                        borderRadius: BorderRadius.circular(8),
+                                      ),
+                                      isDense: true,
+                                    ),
                                     items: [
-                                      const DropdownMenuItem(value: 'all', child: Text('All Categories', style: TextStyle(fontSize: 13))),
-                                      ...categoryOptions.map((e) => DropdownMenuItem(value: e, child: Text(e, style: const TextStyle(fontSize: 13)))),
+                                      const DropdownMenuItem(
+                                        value: 'all',
+                                        child: Text(
+                                          'All Categories',
+                                          style: TextStyle(fontSize: 13),
+                                        ),
+                                      ),
+                                      ...categoryOptions.map(
+                                        (e) => DropdownMenuItem(
+                                          value: e,
+                                          child: Text(
+                                            e,
+                                            style: const TextStyle(
+                                              fontSize: 13,
+                                            ),
+                                          ),
+                                        ),
+                                      ),
                                     ],
                                     onChanged: (value) {
                                       modalSetState(() {
@@ -1030,74 +1294,208 @@ class _ScreensProductListState extends State<ScreensProductList> {
                                 Expanded(
                                   child: DropdownButtonFormField<String>(
                                     value: tempSubcategory,
-                                    decoration: InputDecoration(labelText: 'Subcategory', border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)), isDense: true),
+                                    decoration: InputDecoration(
+                                      labelText: 'Subcategory',
+                                      border: OutlineInputBorder(
+                                        borderRadius: BorderRadius.circular(8),
+                                      ),
+                                      isDense: true,
+                                    ),
                                     items: [
-                                      const DropdownMenuItem(value: 'all', child: Text('All Subcategories', style: TextStyle(fontSize: 13))),
-                                      ...availableSubs.map((e) => DropdownMenuItem(value: e, child: Text(e, style: const TextStyle(fontSize: 13)))),
+                                      const DropdownMenuItem(
+                                        value: 'all',
+                                        child: Text(
+                                          'All Subcategories',
+                                          style: TextStyle(fontSize: 13),
+                                        ),
+                                      ),
+                                      ...availableSubs.map(
+                                        (e) => DropdownMenuItem(
+                                          value: e,
+                                          child: Text(
+                                            e,
+                                            style: const TextStyle(
+                                              fontSize: 13,
+                                            ),
+                                          ),
+                                        ),
+                                      ),
                                     ],
-                                    onChanged: (value) => modalSetState(() => tempSubcategory = value ?? 'all'),
+                                    onChanged: (value) => modalSetState(
+                                      () => tempSubcategory = value ?? 'all',
+                                    ),
                                   ),
                                 ),
                               ],
                             ),
                             const SizedBox(height: 20),
 
-                            const Text('B. Machine Structure', style: TextStyle(fontWeight: FontWeight.w600, color: Colors.blueGrey, fontSize: 13)),
+                            const Text(
+                              'B. Machine Structure',
+                              style: TextStyle(
+                                fontWeight: FontWeight.w600,
+                                color: Colors.blueGrey,
+                                fontSize: 13,
+                              ),
+                            ),
                             const SizedBox(height: 10),
                             Row(
                               children: [
                                 Expanded(
                                   child: DropdownButtonFormField<String>(
                                     value: tempMachineType,
-                                    decoration: InputDecoration(labelText: 'Machine Series', border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)), isDense: true),
+                                    decoration: InputDecoration(
+                                      labelText: 'Machine Series',
+                                      border: OutlineInputBorder(
+                                        borderRadius: BorderRadius.circular(8),
+                                      ),
+                                      isDense: true,
+                                    ),
                                     items: [
-                                      const DropdownMenuItem(value: 'all', child: Text('All Series', style: TextStyle(fontSize: 13))),
-                                      ...machineTypeOptions.map((e) => DropdownMenuItem(value: e, child: Text(e, style: const TextStyle(fontSize: 13)))),
+                                      const DropdownMenuItem(
+                                        value: 'all',
+                                        child: Text(
+                                          'All Series',
+                                          style: TextStyle(fontSize: 13),
+                                        ),
+                                      ),
+                                      ...machineTypeOptions.map(
+                                        (e) => DropdownMenuItem(
+                                          value: e,
+                                          child: Text(
+                                            e,
+                                            style: const TextStyle(
+                                              fontSize: 13,
+                                            ),
+                                          ),
+                                        ),
+                                      ),
                                     ],
-                                    onChanged: (value) => modalSetState(() => tempMachineType = value ?? 'all'),
+                                    onChanged: (value) => modalSetState(
+                                      () => tempMachineType = value ?? 'all',
+                                    ),
                                   ),
                                 ),
                                 const SizedBox(width: 12),
                                 Expanded(
                                   child: DropdownButtonFormField<String>(
                                     value: tempMake,
-                                    decoration: InputDecoration(labelText: 'Manufacturer', border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)), isDense: true),
+                                    decoration: InputDecoration(
+                                      labelText: 'Manufacturer',
+                                      border: OutlineInputBorder(
+                                        borderRadius: BorderRadius.circular(8),
+                                      ),
+                                      isDense: true,
+                                    ),
                                     items: [
-                                      const DropdownMenuItem(value: 'all', child: Text('All Manufacturers', style: TextStyle(fontSize: 13))),
-                                      ...makeOptions.map((e) => DropdownMenuItem(value: e, child: Text(e, style: const TextStyle(fontSize: 13)))),
+                                      const DropdownMenuItem(
+                                        value: 'all',
+                                        child: Text(
+                                          'All Manufacturers',
+                                          style: TextStyle(fontSize: 13),
+                                        ),
+                                      ),
+                                      ...makeOptions.map(
+                                        (e) => DropdownMenuItem(
+                                          value: e,
+                                          child: Text(
+                                            e,
+                                            style: const TextStyle(
+                                              fontSize: 13,
+                                            ),
+                                          ),
+                                        ),
+                                      ),
                                     ],
-                                    onChanged: (value) => modalSetState(() => tempMake = value ?? 'all'),
+                                    onChanged: (value) => modalSetState(
+                                      () => tempMake = value ?? 'all',
+                                    ),
                                   ),
                                 ),
                               ],
                             ),
                             const SizedBox(height: 20),
 
-                            const Text('C. Compatibility Mapping', style: TextStyle(fontWeight: FontWeight.w600, color: Colors.blueGrey, fontSize: 13)),
+                            const Text(
+                              'C. Compatibility Mapping',
+                              style: TextStyle(
+                                fontWeight: FontWeight.w600,
+                                color: Colors.blueGrey,
+                                fontSize: 13,
+                              ),
+                            ),
                             const SizedBox(height: 10),
                             Row(
                               children: [
                                 Expanded(
                                   child: DropdownButtonFormField<String>(
                                     value: tempAccessoryGroup,
-                                    decoration: InputDecoration(labelText: 'Accessory Group', border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)), isDense: true),
+                                    decoration: InputDecoration(
+                                      labelText: 'Accessory Group',
+                                      border: OutlineInputBorder(
+                                        borderRadius: BorderRadius.circular(8),
+                                      ),
+                                      isDense: true,
+                                    ),
                                     items: [
-                                      const DropdownMenuItem(value: 'all', child: Text('All Acc. Groups', style: TextStyle(fontSize: 13))),
-                                      ...accessoryGroupOptions.map((e) => DropdownMenuItem(value: e, child: Text(e, style: const TextStyle(fontSize: 13)))),
+                                      const DropdownMenuItem(
+                                        value: 'all',
+                                        child: Text(
+                                          'All Acc. Groups',
+                                          style: TextStyle(fontSize: 13),
+                                        ),
+                                      ),
+                                      ...accessoryGroupOptions.map(
+                                        (e) => DropdownMenuItem(
+                                          value: e,
+                                          child: Text(
+                                            e,
+                                            style: const TextStyle(
+                                              fontSize: 13,
+                                            ),
+                                          ),
+                                        ),
+                                      ),
                                     ],
-                                    onChanged: (value) => modalSetState(() => tempAccessoryGroup = value ?? 'all'),
+                                    onChanged: (value) => modalSetState(
+                                      () => tempAccessoryGroup = value ?? 'all',
+                                    ),
                                   ),
                                 ),
                                 const SizedBox(width: 12),
                                 Expanded(
                                   child: DropdownButtonFormField<String>(
                                     value: tempSpareGroup,
-                                    decoration: InputDecoration(labelText: 'Spare Group', border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)), isDense: true),
+                                    decoration: InputDecoration(
+                                      labelText: 'Spare Group',
+                                      border: OutlineInputBorder(
+                                        borderRadius: BorderRadius.circular(8),
+                                      ),
+                                      isDense: true,
+                                    ),
                                     items: [
-                                      const DropdownMenuItem(value: 'all', child: Text('All Spare Groups', style: TextStyle(fontSize: 13))),
-                                      ...spareGroupOptions.map((e) => DropdownMenuItem(value: e, child: Text(e, style: const TextStyle(fontSize: 13)))),
+                                      const DropdownMenuItem(
+                                        value: 'all',
+                                        child: Text(
+                                          'All Spare Groups',
+                                          style: TextStyle(fontSize: 13),
+                                        ),
+                                      ),
+                                      ...spareGroupOptions.map(
+                                        (e) => DropdownMenuItem(
+                                          value: e,
+                                          child: Text(
+                                            e,
+                                            style: const TextStyle(
+                                              fontSize: 13,
+                                            ),
+                                          ),
+                                        ),
+                                      ),
                                     ],
-                                    onChanged: (value) => modalSetState(() => tempSpareGroup = value ?? 'all'),
+                                    onChanged: (value) => modalSetState(
+                                      () => tempSpareGroup = value ?? 'all',
+                                    ),
                                   ),
                                 ),
                               ],
@@ -1108,47 +1506,138 @@ class _ScreensProductListState extends State<ScreensProductList> {
                                 Expanded(
                                   child: DropdownButtonFormField<String>(
                                     value: tempCompatibility,
-                                    decoration: InputDecoration(labelText: 'Compatibility Status', border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)), isDense: true),
+                                    decoration: InputDecoration(
+                                      labelText: 'Compatibility Status',
+                                      border: OutlineInputBorder(
+                                        borderRadius: BorderRadius.circular(8),
+                                      ),
+                                      isDense: true,
+                                    ),
                                     items: const [
-                                      DropdownMenuItem(value: 'all', child: Text('All', style: TextStyle(fontSize: 13))),
-                                      DropdownMenuItem(value: 'has_compatibility', child: Text('Compatible', style: TextStyle(fontSize: 13))),
-                                      DropdownMenuItem(value: 'no_compatibility', child: Text('No Compatibility', style: TextStyle(fontSize: 13))),
+                                      DropdownMenuItem(
+                                        value: 'all',
+                                        child: Text(
+                                          'All',
+                                          style: TextStyle(fontSize: 13),
+                                        ),
+                                      ),
+                                      DropdownMenuItem(
+                                        value: 'has_compatibility',
+                                        child: Text(
+                                          'Compatible',
+                                          style: TextStyle(fontSize: 13),
+                                        ),
+                                      ),
+                                      DropdownMenuItem(
+                                        value: 'no_compatibility',
+                                        child: Text(
+                                          'No Compatibility',
+                                          style: TextStyle(fontSize: 13),
+                                        ),
+                                      ),
                                     ],
-                                    onChanged: (value) => modalSetState(() => tempCompatibility = value ?? 'all'),
+                                    onChanged: (value) => modalSetState(
+                                      () => tempCompatibility = value ?? 'all',
+                                    ),
                                   ),
                                 ),
                               ],
                             ),
                             const SizedBox(height: 20),
 
-                            const Text('D. Inventory Controls', style: TextStyle(fontWeight: FontWeight.w600, color: Colors.blueGrey, fontSize: 13)),
+                            const Text(
+                              'D. Inventory Controls',
+                              style: TextStyle(
+                                fontWeight: FontWeight.w600,
+                                color: Colors.blueGrey,
+                                fontSize: 13,
+                              ),
+                            ),
                             const SizedBox(height: 10),
                             Row(
                               children: [
                                 Expanded(
                                   child: DropdownButtonFormField<String>(
                                     value: tempStatus,
-                                    decoration: InputDecoration(labelText: 'Product Status', border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)), isDense: true),
+                                    decoration: InputDecoration(
+                                      labelText: 'Product Status',
+                                      border: OutlineInputBorder(
+                                        borderRadius: BorderRadius.circular(8),
+                                      ),
+                                      isDense: true,
+                                    ),
                                     items: const [
-                                      DropdownMenuItem(value: 'all', child: Text('All Status', style: TextStyle(fontSize: 13))),
-                                      DropdownMenuItem(value: 'active', child: Text('Active', style: TextStyle(fontSize: 13))),
-                                      DropdownMenuItem(value: 'inactive', child: Text('Inactive', style: TextStyle(fontSize: 13))),
+                                      DropdownMenuItem(
+                                        value: 'all',
+                                        child: Text(
+                                          'All Status',
+                                          style: TextStyle(fontSize: 13),
+                                        ),
+                                      ),
+                                      DropdownMenuItem(
+                                        value: 'active',
+                                        child: Text(
+                                          'Active',
+                                          style: TextStyle(fontSize: 13),
+                                        ),
+                                      ),
+                                      DropdownMenuItem(
+                                        value: 'inactive',
+                                        child: Text(
+                                          'Inactive',
+                                          style: TextStyle(fontSize: 13),
+                                        ),
+                                      ),
                                     ],
-                                    onChanged: (value) => modalSetState(() => tempStatus = value ?? 'all'),
+                                    onChanged: (value) => modalSetState(
+                                      () => tempStatus = value ?? 'all',
+                                    ),
                                   ),
                                 ),
                                 const SizedBox(width: 12),
                                 Expanded(
                                   child: DropdownButtonFormField<String>(
                                     value: tempStock,
-                                    decoration: InputDecoration(labelText: 'Inventory Status', border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)), isDense: true),
+                                    decoration: InputDecoration(
+                                      labelText: 'Inventory Status',
+                                      border: OutlineInputBorder(
+                                        borderRadius: BorderRadius.circular(8),
+                                      ),
+                                      isDense: true,
+                                    ),
                                     items: const [
-                                      DropdownMenuItem(value: 'all', child: Text('All Stock', style: TextStyle(fontSize: 13))),
-                                      DropdownMenuItem(value: 'in_stock', child: Text('In Stock', style: TextStyle(fontSize: 13))),
-                                      DropdownMenuItem(value: 'low_stock', child: Text('Low Stock', style: TextStyle(fontSize: 13))),
-                                      DropdownMenuItem(value: 'out_of_stock', child: Text('Out of Stock', style: TextStyle(fontSize: 13))),
+                                      DropdownMenuItem(
+                                        value: 'all',
+                                        child: Text(
+                                          'All Stock',
+                                          style: TextStyle(fontSize: 13),
+                                        ),
+                                      ),
+                                      DropdownMenuItem(
+                                        value: 'in_stock',
+                                        child: Text(
+                                          'In Stock',
+                                          style: TextStyle(fontSize: 13),
+                                        ),
+                                      ),
+                                      DropdownMenuItem(
+                                        value: 'low_stock',
+                                        child: Text(
+                                          'Low Stock',
+                                          style: TextStyle(fontSize: 13),
+                                        ),
+                                      ),
+                                      DropdownMenuItem(
+                                        value: 'out_of_stock',
+                                        child: Text(
+                                          'Out of Stock',
+                                          style: TextStyle(fontSize: 13),
+                                        ),
+                                      ),
                                     ],
-                                    onChanged: (value) => modalSetState(() => tempStock = value ?? 'all'),
+                                    onChanged: (value) => modalSetState(
+                                      () => tempStock = value ?? 'all',
+                                    ),
                                   ),
                                 ),
                               ],
@@ -1164,7 +1653,9 @@ class _ScreensProductListState extends State<ScreensProductList> {
                           child: OutlinedButton(
                             style: OutlinedButton.styleFrom(
                               padding: const EdgeInsets.symmetric(vertical: 14),
-                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(8),
+                              ),
                             ),
                             onPressed: () {
                               setState(() {
@@ -1190,7 +1681,9 @@ class _ScreensProductListState extends State<ScreensProductList> {
                           child: FilledButton(
                             style: FilledButton.styleFrom(
                               padding: const EdgeInsets.symmetric(vertical: 14),
-                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(8),
+                              ),
                             ),
                             onPressed: () {
                               setState(() {
@@ -1243,8 +1736,9 @@ class _ScreensProductListState extends State<ScreensProductList> {
             controller: controller,
             autofocus: true,
             decoration: InputDecoration(
-              labelText:
-              categoryId == null ? 'Category Name' : 'Subcategory Name',
+              labelText: categoryId == null
+                  ? 'Category Name'
+                  : 'Subcategory Name',
               border: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(8),
               ),
@@ -1273,10 +1767,9 @@ class _ScreensProductListState extends State<ScreensProductList> {
                       'updatedBy': currentUserUid,
                     });
                   } else {
-                    await _categoriesRef(companyId)
-                        .doc(categoryId)
-                        .collection('subcategories')
-                        .add({
+                    await _categoriesRef(
+                      companyId,
+                    ).doc(categoryId).collection('subcategories').add({
                       'name': name,
                       'nameLower': name.toLowerCase(),
                       'categoryId': categoryId,
@@ -1365,11 +1858,11 @@ class _ScreensProductListState extends State<ScreensProductList> {
                   });
 
                   // Update subcategories' reference to categoryName
-                  final subsSnap = await catRef.collection('subcategories').get();
+                  final subsSnap = await catRef
+                      .collection('subcategories')
+                      .get();
                   for (final subDoc in subsSnap.docs) {
-                    batch.update(subDoc.reference, {
-                      'categoryName': name,
-                    });
+                    batch.update(subDoc.reference, {'categoryName': name});
                   }
 
                   await batch.commit();
@@ -1430,7 +1923,10 @@ class _ScreensProductListState extends State<ScreensProductList> {
       context: context,
       builder: (context) {
         return AlertDialog(
-          title: const Text('Rename Subcategory', style: TextStyle(fontSize: 16)),
+          title: const Text(
+            'Rename Subcategory',
+            style: TextStyle(fontSize: 16),
+          ),
           content: TextField(
             controller: controller,
             autofocus: true,
@@ -1458,11 +1954,11 @@ class _ScreensProductListState extends State<ScreensProductList> {
                       .collection('subcategories')
                       .doc(subcategoryId)
                       .update({
-                    'name': name,
-                    'nameLower': name.toLowerCase(),
-                    'updatedAt': FieldValue.serverTimestamp(),
-                    'updatedBy': currentUserUid,
-                  });
+                        'name': name,
+                        'nameLower': name.toLowerCase(),
+                        'updatedAt': FieldValue.serverTimestamp(),
+                        'updatedBy': currentUserUid,
+                      });
 
                   // Cascade to products
                   final productsSnap = await FirebaseFirestore.instance
@@ -1512,28 +2008,27 @@ class _ScreensProductListState extends State<ScreensProductList> {
     required String message,
     required Future<void> Function() onConfirm,
   }) async {
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (context) {
-        return AlertDialog(
-          title: Text(title, style: const TextStyle(fontSize: 16)),
-          content: Text(message, style: const TextStyle(fontSize: 14)),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context, false),
-              child: const Text('Cancel'),
-            ),
-            FilledButton(
-              style: FilledButton.styleFrom(
-                backgroundColor: Colors.red,
-              ),
-              onPressed: () => Navigator.pop(context, true),
-              child: const Text('Delete'),
-            ),
-          ],
-        );
-      },
-    ) ??
+    final ok =
+        await showDialog<bool>(
+          context: context,
+          builder: (context) {
+            return AlertDialog(
+              title: Text(title, style: const TextStyle(fontSize: 16)),
+              content: Text(message, style: const TextStyle(fontSize: 14)),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context, false),
+                  child: const Text('Cancel'),
+                ),
+                FilledButton(
+                  style: FilledButton.styleFrom(backgroundColor: Colors.red),
+                  onPressed: () => Navigator.pop(context, true),
+                  child: const Text('Delete'),
+                ),
+              ],
+            );
+          },
+        ) ??
         false;
 
     if (ok) {
@@ -1552,10 +2047,14 @@ class _ScreensProductListState extends State<ScreensProductList> {
         .collection('products');
 
     // Filtering isDeleted locally prevents silent crashes caused by missing composite indexes
-    final byId = await productsRef.where('categoryId', isEqualTo: categoryId).get();
+    final byId = await productsRef
+        .where('categoryId', isEqualTo: categoryId)
+        .get();
     if (byId.docs.any((d) => d.data()['isDeleted'] != true)) return true;
 
-    final byName = await productsRef.where('category', isEqualTo: categoryName).get();
+    final byName = await productsRef
+        .where('category', isEqualTo: categoryName)
+        .get();
     if (byName.docs.any((d) => d.data()['isDeleted'] != true)) return true;
 
     return false;
@@ -1571,10 +2070,14 @@ class _ScreensProductListState extends State<ScreensProductList> {
         .doc(companyId)
         .collection('products');
 
-    final byId = await productsRef.where('subcategoryId', isEqualTo: subcategoryId).get();
+    final byId = await productsRef
+        .where('subcategoryId', isEqualTo: subcategoryId)
+        .get();
     if (byId.docs.any((d) => d.data()['isDeleted'] != true)) return true;
 
-    final byName = await productsRef.where('subcategory', isEqualTo: subcategoryName).get();
+    final byName = await productsRef
+        .where('subcategory', isEqualTo: subcategoryName)
+        .get();
     if (byName.docs.any((d) => d.data()['isDeleted'] != true)) return true;
 
     return false;
@@ -1605,10 +2108,9 @@ class _ScreensProductListState extends State<ScreensProductList> {
         return;
       }
 
-      final subsSnap = await _categoriesRef(companyId)
-          .doc(categoryId)
-          .collection('subcategories')
-          .get();
+      final subsSnap = await _categoriesRef(
+        companyId,
+      ).doc(categoryId).collection('subcategories').get();
 
       for (final subDoc in subsSnap.docs) {
         final subName = (subDoc.data()['name'] ?? '').toString();
@@ -1681,11 +2183,9 @@ class _ScreensProductListState extends State<ScreensProductList> {
         return;
       }
 
-      await _categoriesRef(companyId)
-          .doc(categoryId)
-          .collection('subcategories')
-          .doc(subcategoryId)
-          .delete();
+      await _categoriesRef(
+        companyId,
+      ).doc(categoryId).collection('subcategories').doc(subcategoryId).delete();
 
       if (!mounted) return;
       _refreshCategoryMaster();
@@ -1747,10 +2247,18 @@ class _ScreensProductListState extends State<ScreensProductList> {
                         Icons.create_new_folder_outlined,
                         size: 16,
                       ),
-                      label: const Text('New Category', style: TextStyle(fontSize: 13)),
+                      label: const Text(
+                        'New Category',
+                        style: TextStyle(fontSize: 13),
+                      ),
                       style: OutlinedButton.styleFrom(
-                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8))
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 8,
+                        ),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(8),
+                        ),
                       ),
                     ),
                     const SizedBox(width: 8),
@@ -1765,8 +2273,9 @@ class _ScreensProductListState extends State<ScreensProductList> {
                 const SizedBox(height: 12),
                 Expanded(
                   child: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-                    stream:
-                    _categoriesRef(companyId).orderBy('nameLower').snapshots(),
+                    stream: _categoriesRef(
+                      companyId,
+                    ).orderBy('nameLower').snapshots(),
                     builder: (context, snap) {
                       if (snap.connectionState == ConnectionState.waiting) {
                         return const Center(child: CircularProgressIndicator());
@@ -1783,7 +2292,15 @@ class _ScreensProductListState extends State<ScreensProductList> {
 
                       final docs = snap.data?.docs ?? [];
                       if (docs.isEmpty) {
-                        return const Center(child: Text('No categories yet', style: TextStyle(fontSize: 13, color: Colors.blueGrey)));
+                        return const Center(
+                          child: Text(
+                            'No categories yet',
+                            style: TextStyle(
+                              fontSize: 13,
+                              color: Colors.blueGrey,
+                            ),
+                          ),
+                        );
                       }
 
                       return ListView.separated(
@@ -1835,11 +2352,17 @@ class _ScreensProductListState extends State<ScreensProductList> {
                                         Icons.add_circle_outline,
                                         size: 14,
                                       ),
-                                      label: const Text('Add Subcategory', style: TextStyle(fontSize: 12)),
+                                      label: const Text(
+                                        'Add Subcategory',
+                                        style: TextStyle(fontSize: 12),
+                                      ),
                                       style: TextButton.styleFrom(
-                                        padding: const EdgeInsets.symmetric(horizontal: 8),
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 8,
+                                        ),
                                         minimumSize: Size.zero,
-                                        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                                        tapTargetSize:
+                                            MaterialTapTargetSize.shrinkWrap,
                                       ),
                                     ),
                                     PopupMenuButton<String>(
@@ -1857,7 +2380,7 @@ class _ScreensProductListState extends State<ScreensProductList> {
                                           await _confirmDeleteDialog(
                                             title: 'Delete Category',
                                             message:
-                                            'Delete "$categoryName"? This will remove the category only if it is not linked to any product.',
+                                                'Delete "$categoryName"? This will remove the category only if it is not linked to any product.',
                                             onConfirm: () => _deleteCategory(
                                               companyId: companyId,
                                               categoryId: doc.id,
@@ -1873,8 +2396,14 @@ class _ScreensProductListState extends State<ScreensProductList> {
                                           child: ListTile(
                                             dense: true,
                                             contentPadding: EdgeInsets.zero,
-                                            leading: Icon(Icons.edit_outlined, size: 16),
-                                            title: Text('Rename', style: TextStyle(fontSize: 13)),
+                                            leading: Icon(
+                                              Icons.edit_outlined,
+                                              size: 16,
+                                            ),
+                                            title: Text(
+                                              'Rename',
+                                              style: TextStyle(fontSize: 13),
+                                            ),
                                           ),
                                         ),
                                         PopupMenuItem(
@@ -1890,7 +2419,10 @@ class _ScreensProductListState extends State<ScreensProductList> {
                                             ),
                                             title: Text(
                                               'Delete',
-                                              style: TextStyle(color: Colors.red, fontSize: 13),
+                                              style: TextStyle(
+                                                color: Colors.red,
+                                                fontSize: 13,
+                                              ),
                                             ),
                                           ),
                                         ),
@@ -1899,7 +2431,9 @@ class _ScreensProductListState extends State<ScreensProductList> {
                                   ],
                                 ),
                                 const SizedBox(height: 6),
-                                StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+                                StreamBuilder<
+                                  QuerySnapshot<Map<String, dynamic>>
+                                >(
                                   stream: _categoriesRef(companyId)
                                       .doc(doc.id)
                                       .collection('subcategories')
@@ -1943,28 +2477,32 @@ class _ScreensProductListState extends State<ScreensProductList> {
                                     return Align(
                                       alignment: Alignment.centerLeft,
                                       child: Padding(
-                                        padding: const EdgeInsets.only(left: 26),
+                                        padding: const EdgeInsets.only(
+                                          left: 26,
+                                        ),
                                         child: Wrap(
                                           spacing: 6,
                                           runSpacing: 6,
                                           children: subs.map((s) {
                                             final subData = s.data();
                                             final subName =
-                                            (subData['name'] ?? '').toString();
+                                                (subData['name'] ?? '')
+                                                    .toString();
 
                                             return Container(
                                               padding:
-                                              const EdgeInsets.symmetric(
-                                                horizontal: 8,
-                                                vertical: 4,
-                                              ),
+                                                  const EdgeInsets.symmetric(
+                                                    horizontal: 8,
+                                                    vertical: 4,
+                                                  ),
                                               decoration: BoxDecoration(
                                                 color: Colors.white,
                                                 borderRadius:
-                                                BorderRadius.circular(16),
+                                                    BorderRadius.circular(16),
                                                 border: Border.all(
-                                                  color:
-                                                  const Color(0xFFE4E7EC),
+                                                  color: const Color(
+                                                    0xFFE4E7EC,
+                                                  ),
                                                 ),
                                               ),
                                               child: Row(
@@ -1982,7 +2520,7 @@ class _ScreensProductListState extends State<ScreensProductList> {
                                                     style: const TextStyle(
                                                       fontSize: 11,
                                                       fontWeight:
-                                                      FontWeight.w500,
+                                                          FontWeight.w500,
                                                     ),
                                                   ),
                                                   const SizedBox(width: 2),
@@ -1990,7 +2528,7 @@ class _ScreensProductListState extends State<ScreensProductList> {
                                                     padding: EdgeInsets.zero,
                                                     iconSize: 14,
                                                     constraints:
-                                                    const BoxConstraints(),
+                                                        const BoxConstraints(),
                                                     onSelected: (value) async {
                                                       if (value == 'rename') {
                                                         await _renameSubcategory(
@@ -1999,40 +2537,47 @@ class _ScreensProductListState extends State<ScreensProductList> {
                                                           subcategoryId: s.id,
                                                           currentName: subName,
                                                           currentUserUid:
-                                                          currentUserUid,
+                                                              currentUserUid,
                                                         );
                                                       } else if (value ==
                                                           'delete') {
                                                         await _confirmDeleteDialog(
                                                           title:
-                                                          'Delete Subcategory',
+                                                              'Delete Subcategory',
                                                           message:
-                                                          'Delete "$subName"? This will remove the subcategory only if it is not linked to any product.',
+                                                              'Delete "$subName"? This will remove the subcategory only if it is not linked to any product.',
                                                           onConfirm: () =>
                                                               _deleteSubcategory(
-                                                                companyId: companyId,
-                                                                categoryId: doc.id,
-                                                                subcategoryId: s.id,
+                                                                companyId:
+                                                                    companyId,
+                                                                categoryId:
+                                                                    doc.id,
+                                                                subcategoryId:
+                                                                    s.id,
                                                                 subcategoryName:
-                                                                subName,
+                                                                    subName,
                                                               ),
                                                         );
                                                       }
                                                     },
-                                                    itemBuilder: (context) =>
-                                                    const [
+                                                    itemBuilder: (context) => const [
                                                       PopupMenuItem(
                                                         value: 'rename',
                                                         height: 32,
                                                         child: ListTile(
                                                           dense: true,
                                                           contentPadding:
-                                                          EdgeInsets.zero,
+                                                              EdgeInsets.zero,
                                                           leading: Icon(
                                                             Icons.edit_outlined,
                                                             size: 14,
                                                           ),
-                                                          title: Text('Rename', style: TextStyle(fontSize: 12)),
+                                                          title: Text(
+                                                            'Rename',
+                                                            style: TextStyle(
+                                                              fontSize: 12,
+                                                            ),
+                                                          ),
                                                         ),
                                                       ),
                                                       PopupMenuItem(
@@ -2041,9 +2586,10 @@ class _ScreensProductListState extends State<ScreensProductList> {
                                                         child: ListTile(
                                                           dense: true,
                                                           contentPadding:
-                                                          EdgeInsets.zero,
+                                                              EdgeInsets.zero,
                                                           leading: Icon(
-                                                            Icons.delete_outline,
+                                                            Icons
+                                                                .delete_outline,
                                                             color: Colors.red,
                                                             size: 14,
                                                           ),
@@ -2083,10 +2629,7 @@ class _ScreensProductListState extends State<ScreensProductList> {
     );
   }
 
-  Widget _iconBoxButton({
-    required IconData icon,
-    required VoidCallback onTap,
-  }) {
+  Widget _iconBoxButton({required IconData icon, required VoidCallback onTap}) {
     return OutlinedButton(
       onPressed: onTap,
       style: OutlinedButton.styleFrom(
@@ -2095,9 +2638,7 @@ class _ScreensProductListState extends State<ScreensProductList> {
         foregroundColor: const Color(0xFF111827),
         side: const BorderSide(color: Color(0xFFE4E7EC)),
         padding: EdgeInsets.zero,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(8),
-        ),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
       ),
       child: Icon(icon, size: 18),
     );
@@ -2129,26 +2670,26 @@ class _ScreensProductListState extends State<ScreensProductList> {
 
     final categoryButton = canCreate
         ? SizedBox(
-      height: rowHeight,
-      child: OutlinedButton.icon(
-        onPressed: () => _showCategoryManager(
-          companyId: companyId,
-          currentUserUid: currentUserUid,
-        ),
-        icon: const Icon(Icons.create_new_folder_outlined, size: 14),
-        label: const Text('Categories', style: TextStyle(fontSize: 12)),
-        style: OutlinedButton.styleFrom(
-          elevation: 0,
-          backgroundColor: Colors.white,
-          foregroundColor: const Color(0xFF111827),
-          side: const BorderSide(color: Color(0xFFE4E7EC)),
-          padding: const EdgeInsets.symmetric(horizontal: 10),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(8),
-          ),
-        ),
-      ),
-    )
+            height: rowHeight,
+            child: OutlinedButton.icon(
+              onPressed: () => _showCategoryManager(
+                companyId: companyId,
+                currentUserUid: currentUserUid,
+              ),
+              icon: const Icon(Icons.create_new_folder_outlined, size: 14),
+              label: const Text('Categories', style: TextStyle(fontSize: 12)),
+              style: OutlinedButton.styleFrom(
+                elevation: 0,
+                backgroundColor: Colors.white,
+                foregroundColor: const Color(0xFF111827),
+                side: const BorderSide(color: Color(0xFFE4E7EC)),
+                padding: const EdgeInsets.symmetric(horizontal: 10),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(8),
+                ),
+              ),
+            ),
+          )
         : const SizedBox.shrink();
 
     final statsText = Text.rich(
@@ -2162,22 +2703,34 @@ class _ScreensProductListState extends State<ScreensProductList> {
           const TextSpan(text: 'Products: '),
           TextSpan(
             text: '$totalProducts  |  ',
-            style: const TextStyle(color: Color(0xFF111827), fontWeight: FontWeight.bold),
+            style: const TextStyle(
+              color: Color(0xFF111827),
+              fontWeight: FontWeight.bold,
+            ),
           ),
           const TextSpan(text: 'Active: '),
           TextSpan(
             text: '$activeProducts  |  ',
-            style: const TextStyle(color: Colors.green, fontWeight: FontWeight.bold),
+            style: const TextStyle(
+              color: Colors.green,
+              fontWeight: FontWeight.bold,
+            ),
           ),
           const TextSpan(text: 'Low Stock: '),
           TextSpan(
             text: '$lowStockProducts  |  ',
-            style: const TextStyle(color: Colors.orange, fontWeight: FontWeight.bold),
+            style: const TextStyle(
+              color: Colors.orange,
+              fontWeight: FontWeight.bold,
+            ),
           ),
           const TextSpan(text: 'OOS: '),
           TextSpan(
             text: '$outOfStockProducts',
-            style: const TextStyle(color: Colors.red, fontWeight: FontWeight.bold),
+            style: const TextStyle(
+              color: Colors.red,
+              fontWeight: FontWeight.bold,
+            ),
           ),
         ],
       ),
@@ -2187,11 +2740,7 @@ class _ScreensProductListState extends State<ScreensProductList> {
 
     final innerContent = Row(
       children: [
-        SizedBox(
-          width: 260,
-          height: rowHeight,
-          child: _searchField(),
-        ),
+        SizedBox(width: 260, height: rowHeight, child: _searchField()),
         const SizedBox(width: 8),
         SizedBox(
           width: rowHeight,
@@ -2213,10 +2762,7 @@ class _ScreensProductListState extends State<ScreensProductList> {
           ),
         ),
         const SizedBox(width: 8),
-        if (canCreate) ...[
-          categoryButton,
-          const SizedBox(width: 8),
-        ],
+        if (canCreate) ...[categoryButton, const SizedBox(width: 8)],
         SizedBox(
           width: rowHeight,
           height: rowHeight,
@@ -2245,9 +2791,9 @@ class _ScreensProductListState extends State<ScreensProductList> {
       child: isWide
           ? innerContent
           : SingleChildScrollView(
-        scrollDirection: Axis.horizontal,
-        child: innerContent,
-      ),
+              scrollDirection: Axis.horizontal,
+              child: innerContent,
+            ),
     );
   }
 
@@ -2263,19 +2809,18 @@ class _ScreensProductListState extends State<ScreensProductList> {
         suffixIcon: _searchText.isEmpty
             ? null
             : IconButton(
-          icon: const Icon(Icons.close, size: 16),
-          onPressed: () {
-            _searchController.clear();
-            setState(() {
-              _searchText = '';
-            });
-          },
-        ),
+                icon: const Icon(Icons.close, size: 16),
+                onPressed: () {
+                  _searchController.clear();
+                  setState(() {
+                    _searchText = '';
+                  });
+                },
+              ),
         isDense: true,
         filled: true,
         fillColor: const Color(0xFFF8FAFC),
-        contentPadding:
-        const EdgeInsets.symmetric(horizontal: 10, vertical: 0),
+        contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 0),
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(8),
           borderSide: const BorderSide(color: Color(0xFFE4E7EC)),
@@ -2296,47 +2841,66 @@ class _ScreensProductListState extends State<ScreensProductList> {
     final chips = <Widget>[];
 
     if (_statusFilter != 'all') {
-      chips.add(_filterChip('Product Status: ${_formatFilterLabel(_statusFilter)}', () {
-        setState(() => _statusFilter = 'all');
-      }));
+      chips.add(
+        _filterChip('Product Status: ${_formatFilterLabel(_statusFilter)}', () {
+          setState(() => _statusFilter = 'all');
+        }),
+      );
     }
     if (_stockFilter != 'all') {
-      chips.add(_filterChip('Inventory: ${_formatFilterLabel(_stockFilter)}', () {
-        setState(() => _stockFilter = 'all');
-      }));
+      chips.add(
+        _filterChip('Inventory: ${_formatFilterLabel(_stockFilter)}', () {
+          setState(() => _stockFilter = 'all');
+        }),
+      );
     }
     if (_natureFilter != 'all') {
-      chips.add(_filterChip('Nature: $_natureFilter', () {
-        setState(() => _natureFilter = 'all');
-      }));
+      chips.add(
+        _filterChip('Nature: $_natureFilter', () {
+          setState(() => _natureFilter = 'all');
+        }),
+      );
     }
     if (_machineTypeFilter != 'all') {
-      chips.add(_filterChip('Series: $_machineTypeFilter', () {
-        setState(() => _machineTypeFilter = 'all');
-      }));
+      chips.add(
+        _filterChip('Series: $_machineTypeFilter', () {
+          setState(() => _machineTypeFilter = 'all');
+        }),
+      );
     }
     if (_makeFilter != 'all') {
-      chips.add(_filterChip('Manufacturer: $_makeFilter', () {
-        setState(() => _makeFilter = 'all');
-      }));
+      chips.add(
+        _filterChip('Manufacturer: $_makeFilter', () {
+          setState(() => _makeFilter = 'all');
+        }),
+      );
     }
     if (_categoryFilter != 'all') {
-      chips.add(_filterChip('Category: $_categoryFilter', () {
-        setState(() {
-          _categoryFilter = 'all';
-          _subcategoryFilter = 'all';
-        });
-      }));
+      chips.add(
+        _filterChip('Category: $_categoryFilter', () {
+          setState(() {
+            _categoryFilter = 'all';
+            _subcategoryFilter = 'all';
+          });
+        }),
+      );
     }
     if (_subcategoryFilter != 'all') {
-      chips.add(_filterChip('Subcategory: $_subcategoryFilter', () {
-        setState(() => _subcategoryFilter = 'all');
-      }));
+      chips.add(
+        _filterChip('Subcategory: $_subcategoryFilter', () {
+          setState(() => _subcategoryFilter = 'all');
+        }),
+      );
     }
     if (_compatibilityFilter != 'all') {
-      chips.add(_filterChip('Compatibility: ${_formatFilterLabel(_compatibilityFilter)}', () {
-        setState(() => _compatibilityFilter = 'all');
-      }));
+      chips.add(
+        _filterChip(
+          'Compatibility: ${_formatFilterLabel(_compatibilityFilter)}',
+          () {
+            setState(() => _compatibilityFilter = 'all');
+          },
+        ),
+      );
     }
 
     if (chips.isEmpty) return const SizedBox.shrink();
@@ -2405,41 +2969,51 @@ class _ScreensProductListState extends State<ScreensProductList> {
       ),
       child: docs.isEmpty
           ? Padding(
-        padding: const EdgeInsets.symmetric(vertical: 40),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: const [
-            Text('No products found for the selected filters.', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
-            SizedBox(height: 10),
-            Text('Try:\n• Changing filter criteria\n• Clearing filters\n• Searching different keywords', style: TextStyle(color: Colors.blueGrey, fontSize: 13, height: 1.5)),
-          ],
-        ),
-      )
+              padding: const EdgeInsets.symmetric(vertical: 40),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: const [
+                  Text(
+                    'No products found for the selected filters.',
+                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                  ),
+                  SizedBox(height: 10),
+                  Text(
+                    'Try:\n• Changing filter criteria\n• Clearing filters\n• Searching different keywords',
+                    style: TextStyle(
+                      color: Colors.blueGrey,
+                      fontSize: 13,
+                      height: 1.5,
+                    ),
+                  ),
+                ],
+              ),
+            )
           : showTable
           ? _buildTableView(
-        docs: docs,
-        compatDetailsCache: compatDetailsCache,
-        hierarchyCache: hierarchyCache,
-        natureLabelCache: natureLabelCache,
-        canEdit: canEdit,
-        canDelete: canDelete,
-        companyId: companyId,
-        firebaseUserUid: firebaseUserUid,
-        role: role,
-        subcategoryNameCache: subcategoryNameCache,
-      )
+              docs: docs,
+              compatDetailsCache: compatDetailsCache,
+              hierarchyCache: hierarchyCache,
+              natureLabelCache: natureLabelCache,
+              canEdit: canEdit,
+              canDelete: canDelete,
+              companyId: companyId,
+              firebaseUserUid: firebaseUserUid,
+              role: role,
+              subcategoryNameCache: subcategoryNameCache,
+            )
           : _buildCardView(
-        docs: docs,
-        compatDetailsCache: compatDetailsCache,
-        hierarchyCache: hierarchyCache,
-        natureLabelCache: natureLabelCache,
-        canEdit: canEdit,
-        canDelete: canDelete,
-        companyId: companyId,
-        firebaseUserUid: firebaseUserUid,
-        role: role,
-        subcategoryNameCache: subcategoryNameCache,
-      ),
+              docs: docs,
+              compatDetailsCache: compatDetailsCache,
+              hierarchyCache: hierarchyCache,
+              natureLabelCache: natureLabelCache,
+              canEdit: canEdit,
+              canDelete: canDelete,
+              companyId: companyId,
+              firebaseUserUid: firebaseUserUid,
+              role: role,
+              subcategoryNameCache: subcategoryNameCache,
+            ),
     );
   }
 
@@ -2467,15 +3041,60 @@ class _ScreensProductListState extends State<ScreensProductList> {
           columnSpacing: 16,
           headingRowColor: MaterialStateProperty.all(const Color(0xFFF8FAFC)),
           columns: const [
-            DataColumn(label: Text('Product', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold))),
-            DataColumn(label: Text('Nature', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold))),
-            DataColumn(label: Text('Machine / Compatibility Structure', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold))),
-            DataColumn(label: Text('Manufacturer', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold))),
-            DataColumn(label: Text('SKU', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold))),
-            DataColumn(label: Text('Price', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold))),
-            DataColumn(label: Text('Stock', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold))),
-            DataColumn(label: Text('Status', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold))),
-            DataColumn(label: Text('', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold))),
+            DataColumn(
+              label: Text(
+                'Product',
+                style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
+              ),
+            ),
+            DataColumn(
+              label: Text(
+                'Nature',
+                style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
+              ),
+            ),
+            DataColumn(
+              label: Text(
+                'Machine / Compatibility Structure',
+                style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
+              ),
+            ),
+            DataColumn(
+              label: Text(
+                'Manufacturer',
+                style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
+              ),
+            ),
+            DataColumn(
+              label: Text(
+                'SKU',
+                style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
+              ),
+            ),
+            DataColumn(
+              label: Text(
+                'Price',
+                style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
+              ),
+            ),
+            DataColumn(
+              label: Text(
+                'Stock',
+                style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
+              ),
+            ),
+            DataColumn(
+              label: Text(
+                'Status',
+                style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
+              ),
+            ),
+            DataColumn(
+              label: Text(
+                '',
+                style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
+              ),
+            ),
           ],
           rows: docs.map((doc) {
             final data = doc.data();
@@ -2494,7 +3113,11 @@ class _ScreensProductListState extends State<ScreensProductList> {
             final compatDetails = compatDetailsCache[doc.id] ?? [];
             final int compatCount = compatDetails.length;
 
-            final isAccessory = _isAccessory(data['productNatureLower'] ?? data['productNature'] ?? data['nature']);
+            final isAccessory = _isAccessory(
+              data['productNatureLower'] ??
+                  data['productNature'] ??
+                  data['nature'],
+            );
 
             return DataRow(
               cells: [
@@ -2514,14 +3137,20 @@ class _ScreensProductListState extends State<ScreensProductList> {
                                 name.isEmpty ? '(No name)' : name,
                                 maxLines: 2,
                                 overflow: TextOverflow.ellipsis,
-                                style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.w600,
+                                  fontSize: 13,
+                                ),
                               ),
                               if (description.isNotEmpty)
                                 Text(
                                   description,
                                   maxLines: 1,
                                   overflow: TextOverflow.ellipsis,
-                                  style: const TextStyle(fontSize: 11, color: Color(0xFF667085)),
+                                  style: const TextStyle(
+                                    fontSize: 11,
+                                    color: Color(0xFF667085),
+                                  ),
                                 ),
                             ],
                           ),
@@ -2530,7 +3159,15 @@ class _ScreensProductListState extends State<ScreensProductList> {
                     ),
                   ),
                 ),
-                DataCell(SizedBox(width: 90, child: Align(alignment: Alignment.centerLeft, child: _buildNatureBadge(natureName)))),
+                DataCell(
+                  SizedBox(
+                    width: 90,
+                    child: Align(
+                      alignment: Alignment.centerLeft,
+                      child: _buildNatureBadge(natureName),
+                    ),
+                  ),
+                ),
                 DataCell(
                   SizedBox(
                     width: 260,
@@ -2540,27 +3177,56 @@ class _ScreensProductListState extends State<ScreensProductList> {
                       children: [
                         Text(
                           hierarchy,
-                          style: const TextStyle(fontWeight: FontWeight.w500, fontSize: 12),
+                          style: const TextStyle(
+                            fontWeight: FontWeight.w500,
+                            fontSize: 12,
+                          ),
                           softWrap: true,
                         ),
                         if (compatCount > 0)
                           Padding(
                             padding: const EdgeInsets.only(top: 4),
                             child: InkWell(
-                              onTap: () => _showCompatibleModelsDialog(name, compatDetails, isAccessory: isAccessory),
+                              onTap: () => _showCompatibleModelsDialog(
+                                name,
+                                compatDetails,
+                                isAccessory: isAccessory,
+                              ),
                               child: Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                decoration: BoxDecoration(color: Colors.blue.shade50, borderRadius: BorderRadius.circular(4), border: Border.all(color: Colors.blue.shade200)),
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 6,
+                                  vertical: 2,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: Colors.blue.shade50,
+                                  borderRadius: BorderRadius.circular(4),
+                                  border: Border.all(
+                                    color: Colors.blue.shade200,
+                                  ),
+                                ),
                                 child: Row(
                                   mainAxisSize: MainAxisSize.min,
                                   children: [
-                                    Icon(Icons.link_outlined, size: 12, color: Colors.blue.shade700),
+                                    Icon(
+                                      Icons.link_outlined,
+                                      size: 12,
+                                      color: Colors.blue.shade700,
+                                    ),
                                     const SizedBox(width: 4),
                                     ConstrainedBox(
-                                      constraints: const BoxConstraints(maxWidth: 160),
+                                      constraints: const BoxConstraints(
+                                        maxWidth: 160,
+                                      ),
                                       child: Text(
-                                        _machineCountLabel(compatCount, usedIn: isAccessory),
-                                        style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.blue.shade700),
+                                        _machineCountLabel(
+                                          compatCount,
+                                          usedIn: isAccessory,
+                                        ),
+                                        style: TextStyle(
+                                          fontSize: 10,
+                                          fontWeight: FontWeight.bold,
+                                          color: Colors.blue.shade700,
+                                        ),
                                         maxLines: 1,
                                         overflow: TextOverflow.ellipsis,
                                       ),
@@ -2574,70 +3240,123 @@ class _ScreensProductListState extends State<ScreensProductList> {
                     ),
                   ),
                 ),
-                DataCell(SizedBox(width: 120, child: Text(make.isEmpty ? '—' : make, style: const TextStyle(fontSize: 12), maxLines: 2, overflow: TextOverflow.ellipsis))),
-                DataCell(SizedBox(width: 120, child: Text(sku.isEmpty ? '—' : sku, style: const TextStyle(fontSize: 12), maxLines: 2, overflow: TextOverflow.ellipsis))),
-                DataCell(SizedBox(width: 100, child: Text(_formatCurrency(price), style: const TextStyle(fontSize: 12)))),
-                DataCell(SizedBox(width: 90, child: Text(_formatNumber(stock), style: const TextStyle(fontSize: 12)))),
-                DataCell(SizedBox(width: 90, child: Align(alignment: Alignment.centerLeft, child: _buildStatusChip(isActive ? 'Active' : 'Inactive')))),
+                DataCell(
+                  SizedBox(
+                    width: 120,
+                    child: Text(
+                      make.isEmpty ? '—' : make,
+                      style: const TextStyle(fontSize: 12),
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                ),
+                DataCell(
+                  SizedBox(
+                    width: 120,
+                    child: Text(
+                      sku.isEmpty ? '—' : sku,
+                      style: const TextStyle(fontSize: 12),
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                ),
+                DataCell(
+                  SizedBox(
+                    width: 100,
+                    child: Text(
+                      _formatCurrency(price),
+                      style: const TextStyle(fontSize: 12),
+                    ),
+                  ),
+                ),
+                DataCell(
+                  SizedBox(
+                    width: 90,
+                    child: Text(
+                      _formatNumber(stock),
+                      style: const TextStyle(fontSize: 12),
+                    ),
+                  ),
+                ),
+                DataCell(
+                  SizedBox(
+                    width: 90,
+                    child: Align(
+                      alignment: Alignment.centerLeft,
+                      child: _buildStatusChip(isActive ? 'Active' : 'Inactive'),
+                    ),
+                  ),
+                ),
                 DataCell(
                   SizedBox(
                     width: 60,
                     child: (canEdit || canDelete)
                         ? PopupMenuButton<String>(
-                      tooltip: 'Actions',
-                      iconSize: 18,
-                      padding: EdgeInsets.zero,
-                      onSelected: (value) async {
-                        if (value == 'edit' && canEdit) {
-                          _openEditProduct(
-                            productId: doc.id,
-                            initialData: data,
-                            companyId: companyId,
-                            currentUserUid: firebaseUserUid,
-                            currentUserRole: role,
-                          );
-                        } else if (value == 'delete' && canDelete) {
-                          await _deleteProduct(
-                            companyId: companyId,
-                            productId: doc.id,
-                            productName: name.isEmpty ? 'Product' : name,
-                            currentUserUid: firebaseUserUid,
-                          );
-                        }
-                      },
-                      itemBuilder: (context) => [
-                        if (canEdit)
-                          const PopupMenuItem(
-                            value: 'edit',
-                            height: 32,
-                            child: ListTile(
-                              dense: true,
-                              contentPadding: EdgeInsets.zero,
-                              leading: Icon(Icons.edit_outlined, size: 16),
-                              title: Text('Edit', style: TextStyle(fontSize: 13)),
-                            ),
-                          ),
-                        if (canDelete) const PopupMenuDivider(),
-                        if (canDelete)
-                          const PopupMenuItem(
-                            value: 'delete',
-                            height: 32,
-                            child: ListTile(
-                              dense: true,
-                              contentPadding: EdgeInsets.zero,
-                              leading: Icon(
-                                Icons.delete_outline,
-                                color: Colors.red,
-                                size: 16,
-                              ),
-                              title: Text(
-                                'Delete',
-                                style: TextStyle(color: Colors.red, fontSize: 13),
-                              ),
-                            ),
-                          ),
-                      ],
-                    )
+                            tooltip: 'Actions',
+                            iconSize: 18,
+                            padding: EdgeInsets.zero,
+                            onSelected: (value) async {
+                              if (value == 'edit' && canEdit) {
+                                _openEditProduct(
+                                  productId: doc.id,
+                                  initialData: data,
+                                  companyId: companyId,
+                                  currentUserUid: firebaseUserUid,
+                                  currentUserRole: role,
+                                );
+                              } else if (value == 'delete' && canDelete) {
+                                await _deleteProduct(
+                                  companyId: companyId,
+                                  productId: doc.id,
+                                  productName: name.isEmpty ? 'Product' : name,
+                                  currentUserUid: firebaseUserUid,
+                                );
+                              }
+                            },
+                            itemBuilder: (context) => [
+                              if (canEdit)
+                                const PopupMenuItem(
+                                  value: 'edit',
+                                  height: 32,
+                                  child: ListTile(
+                                    dense: true,
+                                    contentPadding: EdgeInsets.zero,
+                                    leading: Icon(
+                                      Icons.edit_outlined,
+                                      size: 16,
+                                    ),
+                                    title: Text(
+                                      'Edit',
+                                      style: TextStyle(fontSize: 13),
+                                    ),
+                                  ),
+                                ),
+                              if (canDelete) const PopupMenuDivider(),
+                              if (canDelete)
+                                const PopupMenuItem(
+                                  value: 'delete',
+                                  height: 32,
+                                  child: ListTile(
+                                    dense: true,
+                                    contentPadding: EdgeInsets.zero,
+                                    leading: Icon(
+                                      Icons.delete_outline,
+                                      color: Colors.red,
+                                      size: 16,
+                                    ),
+                                    title: Text(
+                                      'Delete',
+                                      style: TextStyle(
+                                        color: Colors.red,
+                                        fontSize: 13,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                            ],
+                          )
                         : const SizedBox.shrink(),
                   ),
                 ),
@@ -2683,7 +3402,9 @@ class _ScreensProductListState extends State<ScreensProductList> {
         final compatDetails = compatDetailsCache[doc.id] ?? [];
         final int compatCount = compatDetails.length;
 
-        final isAccessory = _isAccessory(data['productNatureLower'] ?? data['productNature'] ?? data['nature']);
+        final isAccessory = _isAccessory(
+          data['productNatureLower'] ?? data['productNature'] ?? data['nature'],
+        );
 
         return Container(
           margin: const EdgeInsets.only(bottom: 8),
@@ -2710,13 +3431,21 @@ class _ScreensProductListState extends State<ScreensProductList> {
                             name.isEmpty ? '(No name)' : name,
                             maxLines: 2,
                             overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14, color: Color(0xFF111827)),
+                            style: const TextStyle(
+                              fontWeight: FontWeight.w700,
+                              fontSize: 14,
+                              color: Color(0xFF111827),
+                            ),
                           ),
                         ),
                         const SizedBox(width: 8),
                         Text(
                           _formatCurrency(price),
-                          style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14, color: Color(0xFF111827)),
+                          style: const TextStyle(
+                            fontWeight: FontWeight.w800,
+                            fontSize: 14,
+                            color: Color(0xFF111827),
+                          ),
                         ),
                         if (canEdit || canDelete) ...[
                           const SizedBox(width: 4),
@@ -2739,18 +3468,39 @@ class _ScreensProductListState extends State<ScreensProductList> {
                                   await _deleteProduct(
                                     companyId: companyId,
                                     productId: doc.id,
-                                    productName: name.isEmpty ? 'Product' : name,
+                                    productName: name.isEmpty
+                                        ? 'Product'
+                                        : name,
                                     currentUserUid: firebaseUserUid,
                                   );
                                 }
                               },
                               itemBuilder: (context) => [
-                                if (canEdit) const PopupMenuItem(value: 'edit', height: 32, child: Text('Edit', style: TextStyle(fontSize: 13))),
-                                if (canDelete) const PopupMenuItem(value: 'delete', height: 32, child: Text('Delete', style: TextStyle(color: Colors.red, fontSize: 13))),
+                                if (canEdit)
+                                  const PopupMenuItem(
+                                    value: 'edit',
+                                    height: 32,
+                                    child: Text(
+                                      'Edit',
+                                      style: TextStyle(fontSize: 13),
+                                    ),
+                                  ),
+                                if (canDelete)
+                                  const PopupMenuItem(
+                                    value: 'delete',
+                                    height: 32,
+                                    child: Text(
+                                      'Delete',
+                                      style: TextStyle(
+                                        color: Colors.red,
+                                        fontSize: 13,
+                                      ),
+                                    ),
+                                  ),
                               ],
                             ),
                           ),
-                        ]
+                        ],
                       ],
                     ),
                     if (description.isNotEmpty) ...[
@@ -2759,7 +3509,10 @@ class _ScreensProductListState extends State<ScreensProductList> {
                         description,
                         maxLines: 2,
                         overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(color: Color(0xFF667085), fontSize: 11),
+                        style: const TextStyle(
+                          color: Color(0xFF667085),
+                          fontSize: 11,
+                        ),
                       ),
                     ],
                     const SizedBox(height: 8),
@@ -2772,7 +3525,14 @@ class _ScreensProductListState extends State<ScreensProductList> {
                         _buildStatusChip(isActive ? 'Active' : 'Inactive'),
                         _buildStockChip(stockStatus),
                         if (stock > 0 || stockStatus == 'Low Stock')
-                          Text('${_formatNumber(stock)} in stock', style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: Color(0xFF475467))),
+                          Text(
+                            '${_formatNumber(stock)} in stock',
+                            style: const TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w600,
+                              color: Color(0xFF475467),
+                            ),
+                          ),
                       ],
                     ),
                     const SizedBox(height: 8),
@@ -2792,13 +3552,21 @@ class _ScreensProductListState extends State<ScreensProductList> {
                             children: [
                               const Padding(
                                 padding: EdgeInsets.only(top: 2),
-                                child: Icon(Icons.account_tree_outlined, size: 12, color: Colors.blueGrey),
+                                child: Icon(
+                                  Icons.account_tree_outlined,
+                                  size: 12,
+                                  color: Colors.blueGrey,
+                                ),
                               ),
                               const SizedBox(width: 6),
                               Expanded(
                                 child: Text(
                                   hierarchy,
-                                  style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: Color(0xFF344054)),
+                                  style: const TextStyle(
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w600,
+                                    color: Color(0xFF344054),
+                                  ),
                                   softWrap: true,
                                 ),
                               ),
@@ -2813,8 +3581,16 @@ class _ScreensProductListState extends State<ScreensProductList> {
                               _pill('SKU', sku.isEmpty ? '—' : sku),
                               if (compatCount > 0)
                                 InkWell(
-                                  onTap: () => _showCompatibleModelsDialog(name, compatDetails, isAccessory: isAccessory),
-                                  child: _pill(isAccessory ? 'Used In' : 'Compatible', '$compatCount ${compatCount == 1 ? 'Equipment' : 'Equipment'}', isLink: true),
+                                  onTap: () => _showCompatibleModelsDialog(
+                                    name,
+                                    compatDetails,
+                                    isAccessory: isAccessory,
+                                  ),
+                                  child: _pill(
+                                    isAccessory ? 'Used In' : 'Compatible',
+                                    '$compatCount ${compatCount == 1 ? 'Equipment' : 'Equipment'}',
+                                    isLink: true,
+                                  ),
                                 ),
                             ],
                           ),
@@ -2877,7 +3653,9 @@ class _ScreensProductListState extends State<ScreensProductList> {
       decoration: BoxDecoration(
         color: isLink ? Colors.blue.shade50 : const Color(0xFFF9FAFB),
         borderRadius: BorderRadius.circular(4),
-        border: Border.all(color: isLink ? Colors.blue.shade200 : const Color(0xFFE4E7EC)),
+        border: Border.all(
+          color: isLink ? Colors.blue.shade200 : const Color(0xFFE4E7EC),
+        ),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -2970,25 +3748,31 @@ class _ScreensProductListState extends State<ScreensProductList> {
               .snapshots();
         }
 
-        final bool canCreate = _hasProductPermission(userData, action: 'create');
+        final bool canCreate = _hasProductPermission(
+          userData,
+          action: 'create',
+        );
         final bool canEdit = _hasProductPermission(userData, action: 'edit');
-        final bool canDelete = _hasProductPermission(userData, action: 'delete');
+        final bool canDelete = _hasProductPermission(
+          userData,
+          action: 'delete',
+        );
 
         return Scaffold(
           backgroundColor: const Color(0xFFF6F8FB),
 
           floatingActionButton: canCreate
               ? FloatingActionButton(
-            key: _fabKey,
-            onPressed: () {
-              _openAddProduct(
-                companyId: companyId,
-                currentUserUid: firebaseUser.uid,
-                currentUserRole: role,
-              );
-            },
-            child: const Icon(Icons.add),
-          )
+                  key: _fabKey,
+                  onPressed: () {
+                    _openAddProduct(
+                      companyId: companyId,
+                      currentUserUid: firebaseUser.uid,
+                      currentUserRole: role,
+                    );
+                  },
+                  child: const Icon(Icons.add),
+                )
               : null,
 
           body: FutureBuilder<List<_CategoryMaster>>(
@@ -3009,32 +3793,38 @@ class _ScreensProductListState extends State<ScreensProductList> {
 
               final categoryMasters = masterSnap.data ?? [];
 
-              final categoryOptions = categoryMasters
-                  .where((e) => e.name.trim().isNotEmpty)
-                  .map((e) => e.name)
-                  .toList()
-                ..sort((a, b) => a.toLowerCase().compareTo(b.toLowerCase()));
+              final categoryOptions =
+                  categoryMasters
+                      .where((e) => e.name.trim().isNotEmpty)
+                      .map((e) => e.name)
+                      .toList()
+                    ..sort(
+                      (a, b) => a.toLowerCase().compareTo(b.toLowerCase()),
+                    );
 
               final Map<String, List<String>> subcategoryMap = {
                 for (final cat in categoryMasters)
-                  cat.name: (cat.subcategories
-                    ..sort(
-                          (a, b) => a.name.toLowerCase().compareTo(
-                        b.name.toLowerCase(),
-                      ),
-                    ))
-                      .where((s) => s.name.trim().isNotEmpty)
-                      .map((s) => s.name)
-                      .toList(),
+                  cat.name:
+                      (cat.subcategories..sort(
+                            (a, b) => a.name.toLowerCase().compareTo(
+                              b.name.toLowerCase(),
+                            ),
+                          ))
+                          .where((s) => s.name.trim().isNotEmpty)
+                          .map((s) => s.name)
+                          .toList(),
               };
 
-              final subcategoryOptions = categoryMasters
-                  .expand((e) => e.subcategories)
-                  .map((e) => e.name)
-                  .where((e) => e.trim().isNotEmpty)
-                  .toSet()
-                  .toList()
-                ..sort((a, b) => a.toLowerCase().compareTo(b.toLowerCase()));
+              final subcategoryOptions =
+                  categoryMasters
+                      .expand((e) => e.subcategories)
+                      .map((e) => e.name)
+                      .where((e) => e.trim().isNotEmpty)
+                      .toSet()
+                      .toList()
+                    ..sort(
+                      (a, b) => a.toLowerCase().compareTo(b.toLowerCase()),
+                    );
 
               final Map<String, String> subcategoryNameCache = {};
               for (final cat in categoryMasters) {
@@ -3042,12 +3832,6 @@ class _ScreensProductListState extends State<ScreensProductList> {
                   subcategoryNameCache[sub.id] = sub.name;
                 }
               }
-
-              final totalCategories = categoryMasters.length;
-              final totalSubcategories = categoryMasters.fold<int>(
-                0,
-                    (total, e) => total + e.subcategories.length,
-              );
 
               return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
                 stream: _productsStream,
@@ -3065,10 +3849,12 @@ class _ScreensProductListState extends State<ScreensProductList> {
                     return const Center(child: CircularProgressIndicator());
                   }
 
-                  final allDocs = productSnap.data?.docs.where((doc) {
-                    final data = doc.data();
-                    return data['isDeleted'] != true;
-                  }).toList() ?? <QueryDocumentSnapshot<Map<String, dynamic>>>[];
+                  final allDocs =
+                      productSnap.data?.docs.where((doc) {
+                        final data = doc.data();
+                        return data['isDeleted'] != true;
+                      }).toList() ??
+                      <QueryDocumentSnapshot<Map<String, dynamic>>>[];
 
                   allDocs.sort((a, b) {
                     final aTs = a.data()['createdAt'] as Timestamp?;
@@ -3084,32 +3870,125 @@ class _ScreensProductListState extends State<ScreensProductList> {
                   // HIGH PERFORMANCE LOOKUP MAPS & LOCAL DATA CACHE
                   // ---------------------------------------------------------
                   final Map<String, Map<String, dynamic>> dataCache = {};
-                  final Map<String, QueryDocumentSnapshot<Map<String, dynamic>>> productMapById = {};
-                  final Map<String, QueryDocumentSnapshot<Map<String, dynamic>>> productMapByName = {};
+                  final Map<String, QueryDocumentSnapshot<Map<String, dynamic>>>
+                  productMapById = {};
+                  final Map<String, QueryDocumentSnapshot<Map<String, dynamic>>>
+                  productMapByName = {};
 
                   for (final d in allDocs) {
                     final data = d.data();
                     dataCache[d.id] = data;
                     productMapById[d.id] = d;
 
-                    final name = (data['name'] ?? '').toString().trim().toLowerCase();
+                    final name = (data['name'] ?? '')
+                        .toString()
+                        .trim()
+                        .toLowerCase();
                     if (name.isNotEmpty) {
                       productMapByName[name] = d;
                     }
                   }
 
                   // EXTRACT DYNAMIC OPTIONS FOR INDUSTRIAL FILTERS (Auto Sorted Case-Insensitive)
-                  final natureOptions = allDocs.map((d) => _natureLabel(dataCache[d.id]!['productNatureLower'] ?? dataCache[d.id]!['productNature'] ?? dataCache[d.id]!['nature'])).where((e) => e.isNotEmpty && e != 'Standard').toSet().toList()..sort((a, b) => a.toLowerCase().compareTo(b.toLowerCase()));
-                  final familyOptions = allDocs.map((d) => (dataCache[d.id]!['family'] ?? '').toString().trim()).where((e) => e.isNotEmpty).toSet().toList()..sort((a, b) => a.toLowerCase().compareTo(b.toLowerCase()));
-                  final machineTypeOptions = allDocs.map((d) => (dataCache[d.id]!['machineType'] ?? dataCache[d.id]!['type'] ?? '').toString().trim()).where((e) => e.isNotEmpty).toSet().toList()..sort((a, b) => a.toLowerCase().compareTo(b.toLowerCase()));
-                  final makeOptions = allDocs.map((d) => (dataCache[d.id]!['make'] ?? dataCache[d.id]!['brand'] ?? '').toString().trim()).where((e) => e.isNotEmpty).toSet().toList()..sort((a, b) => a.toLowerCase().compareTo(b.toLowerCase()));
-                  final accessoryGroupOptions = allDocs.map((d) => (dataCache[d.id]!['accessoryGroupName'] ?? dataCache[d.id]!['accessoryGroup'] ?? '').toString().trim()).where((e) => e.isNotEmpty).toSet().toList()..sort((a, b) => a.toLowerCase().compareTo(b.toLowerCase()));
-                  final spareGroupOptions = allDocs.map((d) => (dataCache[d.id]!['spareGroupName'] ?? dataCache[d.id]!['spareGroup'] ?? '').toString().trim()).where((e) => e.isNotEmpty).toSet().toList()..sort((a, b) => a.toLowerCase().compareTo(b.toLowerCase()));
+                  final natureOptions =
+                      allDocs
+                          .map(
+                            (d) => _natureLabel(
+                              dataCache[d.id]!['productNatureLower'] ??
+                                  dataCache[d.id]!['productNature'] ??
+                                  dataCache[d.id]!['nature'],
+                            ),
+                          )
+                          .where((e) => e.isNotEmpty && e != 'Standard')
+                          .toSet()
+                          .toList()
+                        ..sort(
+                          (a, b) => a.toLowerCase().compareTo(b.toLowerCase()),
+                        );
+                  final familyOptions =
+                      allDocs
+                          .map(
+                            (d) => (dataCache[d.id]!['family'] ?? '')
+                                .toString()
+                                .trim(),
+                          )
+                          .where((e) => e.isNotEmpty)
+                          .toSet()
+                          .toList()
+                        ..sort(
+                          (a, b) => a.toLowerCase().compareTo(b.toLowerCase()),
+                        );
+                  final machineTypeOptions =
+                      allDocs
+                          .map(
+                            (d) =>
+                                (dataCache[d.id]!['machineType'] ??
+                                        dataCache[d.id]!['type'] ??
+                                        '')
+                                    .toString()
+                                    .trim(),
+                          )
+                          .where((e) => e.isNotEmpty)
+                          .toSet()
+                          .toList()
+                        ..sort(
+                          (a, b) => a.toLowerCase().compareTo(b.toLowerCase()),
+                        );
+                  final makeOptions =
+                      allDocs
+                          .map(
+                            (d) =>
+                                (dataCache[d.id]!['make'] ??
+                                        dataCache[d.id]!['brand'] ??
+                                        '')
+                                    .toString()
+                                    .trim(),
+                          )
+                          .where((e) => e.isNotEmpty)
+                          .toSet()
+                          .toList()
+                        ..sort(
+                          (a, b) => a.toLowerCase().compareTo(b.toLowerCase()),
+                        );
+                  final accessoryGroupOptions =
+                      allDocs
+                          .map(
+                            (d) =>
+                                (dataCache[d.id]!['accessoryGroupName'] ??
+                                        dataCache[d.id]!['accessoryGroup'] ??
+                                        '')
+                                    .toString()
+                                    .trim(),
+                          )
+                          .where((e) => e.isNotEmpty)
+                          .toSet()
+                          .toList()
+                        ..sort(
+                          (a, b) => a.toLowerCase().compareTo(b.toLowerCase()),
+                        );
+                  final spareGroupOptions =
+                      allDocs
+                          .map(
+                            (d) =>
+                                (dataCache[d.id]!['spareGroupName'] ??
+                                        dataCache[d.id]!['spareGroup'] ??
+                                        '')
+                                    .toString()
+                                    .trim(),
+                          )
+                          .where((e) => e.isNotEmpty)
+                          .toSet()
+                          .toList()
+                        ..sort(
+                          (a, b) => a.toLowerCase().compareTo(b.toLowerCase()),
+                        );
 
                   // ---------------------------------------------------------
                   // SANITIZE ACTIVE FILTERS (CENTRALIZED)
                   // ---------------------------------------------------------
-                  final validSubOptions = _categoryFilter == 'all' ? subcategoryOptions : (subcategoryMap[_categoryFilter] ?? []);
+                  final validSubOptions = _categoryFilter == 'all'
+                      ? subcategoryOptions
+                      : (subcategoryMap[_categoryFilter] ?? []);
                   _sanitizeActiveFilters(
                     categoryOptions: categoryOptions,
                     validSubOptions: validSubOptions,
@@ -3122,24 +4001,42 @@ class _ScreensProductListState extends State<ScreensProductList> {
                   );
 
                   // CACHED COLLECTIONS TO AVOID REPEATED PARSING
-                  final Map<String, List<Map<String, String>>> compatDetailsCache = {};
+                  final Map<String, List<Map<String, String>>>
+                  compatDetailsCache = {};
                   final Map<String, String> hierarchyCache = {};
                   final Map<String, String> natureLabelCache = {};
 
                   final filteredDocs = allDocs.where((doc) {
                     final data = dataCache[doc.id]!;
 
-                    final compatDetails = _resolveCompatibleMachines(data, productMapById, productMapByName);
+                    final compatDetails = _resolveCompatibleMachines(
+                      data,
+                      productMapById,
+                      productMapByName,
+                    );
                     final compatCount = compatDetails.length;
 
-                    final hierarchy = _machineHierarchy(data, compatCount, subcategoryNameCache);
-                    final natureLabel = _natureLabel(data['productNatureLower'] ?? data['productNature'] ?? data['nature']);
+                    final hierarchy = _machineHierarchy(
+                      data,
+                      compatCount,
+                      subcategoryNameCache,
+                    );
+                    final natureLabel = _natureLabel(
+                      data['productNatureLower'] ??
+                          data['productNature'] ??
+                          data['nature'],
+                    );
 
                     compatDetailsCache[doc.id] = compatDetails;
                     hierarchyCache[doc.id] = hierarchy;
                     natureLabelCache[doc.id] = natureLabel;
 
-                    return _matchesSearch(data, compatDetails, hierarchy, natureLabel) &&
+                    return _matchesSearch(
+                          data,
+                          compatDetails,
+                          hierarchy,
+                          natureLabel,
+                        ) &&
                         _matchesStatusFilter(data) &&
                         _matchesStockFilter(data) &&
                         _matchesCategoryFilter(data) &&
@@ -3148,24 +4045,30 @@ class _ScreensProductListState extends State<ScreensProductList> {
                   }).toList();
 
                   final totalProducts = allDocs.length;
-                  final activeProducts =
-                      allDocs.where((e) => _isProductActive(dataCache[e.id]!)).length;
+                  final activeProducts = allDocs
+                      .where((e) => _isProductActive(dataCache[e.id]!))
+                      .length;
 
                   final lowStockProducts = allDocs.where((e) {
                     final data = dataCache[e.id]!;
                     final stock = _stockOnHand(data);
-                    final threshold = _minStockLevel(data) > 0 ? _minStockLevel(data) : _reorderLevel(data);
+                    final threshold = _minStockLevel(data) > 0
+                        ? _minStockLevel(data)
+                        : _reorderLevel(data);
                     return stock > 0 && threshold > 0 && stock <= threshold;
                   }).length;
 
-                  final outOfStockProducts =
-                      allDocs.where((e) => _stockOnHand(dataCache[e.id]!) <= 0).length;
+                  final outOfStockProducts = allDocs
+                      .where((e) => _stockOnHand(dataCache[e.id]!) <= 0)
+                      .length;
 
                   return LayoutBuilder(
                     builder: (context, constraints) {
                       final isWide = constraints.maxWidth >= 768;
                       final allowTableView = constraints.maxWidth >= 1100;
-                      final effectiveTableView = allowTableView ? _showTableView : false;
+                      final effectiveTableView = allowTableView
+                          ? _showTableView
+                          : false;
                       final activeFiltersBar = _buildActiveFiltersBar();
                       final hasFilters = activeFiltersBar is! SizedBox;
 
@@ -3244,8 +4147,5 @@ class _SubcategoryMaster {
   final String id;
   final String name;
 
-  _SubcategoryMaster({
-    required this.id,
-    required this.name,
-  });
+  _SubcategoryMaster({required this.id, required this.name});
 }

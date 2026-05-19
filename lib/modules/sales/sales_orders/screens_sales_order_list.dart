@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'dart:io';
-import 'dart:typed_data';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -41,10 +40,7 @@ String _parseSafeString(dynamic val, {String fallback = '-'}) {
 class SalesOrderListScreen extends StatefulWidget {
   final String companyId;
 
-  const SalesOrderListScreen({
-    Key? key,
-    required this.companyId,
-  }) : super(key: key);
+  const SalesOrderListScreen({super.key, required this.companyId});
 
   @override
   State<SalesOrderListScreen> createState() => _SalesOrderListScreenState();
@@ -62,8 +58,19 @@ class _SalesOrderListScreenState extends State<SalesOrderListScreen> {
   String _selectedStatus = 'All';
   String _selectedSort = 'Latest';
 
-  final List<String> _statusOptions = ['All', 'Draft', 'Confirmed', 'Completed', 'Cancelled'];
-  final List<String> _sortOptions = ['Latest', 'Oldest', 'Highest Amount', 'Lowest Amount'];
+  final List<String> _statusOptions = [
+    'All',
+    'Draft',
+    'Confirmed',
+    'Completed',
+    'Cancelled',
+  ];
+  final List<String> _sortOptions = [
+    'Latest',
+    'Oldest',
+    'Highest Amount',
+    'Lowest Amount',
+  ];
 
   final List<QueryDocumentSnapshot<Map<String, dynamic>>> _salesOrders = [];
   DocumentSnapshot? _lastDocument;
@@ -127,8 +134,10 @@ class _SalesOrderListScreenState extends State<SalesOrderListScreen> {
 
           if (globalUserDoc.exists && globalUserDoc.data() != null) {
             final data = globalUserDoc.data()!;
-            if (data['memberships'] is Map && data['memberships'][widget.companyId] is Map) {
-              _currentUserRole = data['memberships'][widget.companyId]['role']?.toString();
+            if (data['memberships'] is Map &&
+                data['memberships'][widget.companyId] is Map) {
+              _currentUserRole = data['memberships'][widget.companyId]['role']
+                  ?.toString();
             }
             _currentUserRole ??= data['role']?.toString();
           }
@@ -247,7 +256,8 @@ class _SalesOrderListScreenState extends State<SalesOrderListScreen> {
       if (e.code == 'unavailable' || e.code == 'network-request-failed') {
         _errorMessage = 'Network error. Please check your internet connection.';
       } else if (e.code == 'permission-denied') {
-        _errorMessage = 'Access denied. You do not have permission to view these records.';
+        _errorMessage =
+            'Access denied. You do not have permission to view these records.';
       } else {
         _errorMessage = 'Unable to load sales orders. Please contact support.';
       }
@@ -264,8 +274,12 @@ class _SalesOrderListScreenState extends State<SalesOrderListScreen> {
   }
 
   void _onScroll() {
-    if (_scrollController.position.pixels >= _scrollController.position.maxScrollExtent - 200) {
-      if (!_isFetchingMore && _hasMore && !_isLoading && _errorMessage == null) {
+    if (_scrollController.position.pixels >=
+        _scrollController.position.maxScrollExtent - 200) {
+      if (!_isFetchingMore &&
+          _hasMore &&
+          !_isLoading &&
+          _errorMessage == null) {
         _fetchSalesOrders();
       }
     }
@@ -304,8 +318,17 @@ class _SalesOrderListScreenState extends State<SalesOrderListScreen> {
 
       // 2. Search Text Filtering
       if (query.isNotEmpty) {
-        final soNum = _parseSafeString(data['salesOrderNumber'] ?? data['soNumber'] ?? data['orderNumber'], fallback: '').toLowerCase();
-        final custName = _parseSafeString(data['customerName'] ?? data['clientName'] ?? data['partyName'] ?? data['customer'], fallback: '').toLowerCase();
+        final soNum = _parseSafeString(
+          data['salesOrderNumber'] ?? data['soNumber'] ?? data['orderNumber'],
+          fallback: '',
+        ).toLowerCase();
+        final custName = _parseSafeString(
+          data['customerName'] ??
+              data['clientName'] ??
+              data['partyName'] ??
+              data['customer'],
+          fallback: '',
+        ).toLowerCase();
         if (!soNum.contains(query) && !custName.contains(query)) {
           return false;
         }
@@ -315,11 +338,14 @@ class _SalesOrderListScreenState extends State<SalesOrderListScreen> {
     }).toList();
   }
 
-  Map<String, dynamic> prepareSalesOrderForPdf(Map<String, dynamic> mergedData) {
+  Map<String, dynamic> prepareSalesOrderForPdf(
+    Map<String, dynamic> mergedData,
+  ) {
     mergedData['documentType'] = 'Sales Order';
 
     DateTime? date;
-    final dateRaw = mergedData['date'] ?? mergedData['createdAt'] ?? mergedData['soDate'];
+    final dateRaw =
+        mergedData['date'] ?? mergedData['createdAt'] ?? mergedData['soDate'];
     if (dateRaw != null && dateRaw is Timestamp) {
       date = dateRaw.toDate();
     } else if (dateRaw is String && dateRaw.isNotEmpty) {
@@ -333,21 +359,35 @@ class _SalesOrderListScreenState extends State<SalesOrderListScreen> {
     }
 
     final soNumber = _parseSafeString(
-        mergedData['salesOrderNumber'] ?? mergedData['soNumber'] ?? mergedData['orderNumber'],
-        fallback: 'Draft SO'
+      mergedData['salesOrderNumber'] ??
+          mergedData['soNumber'] ??
+          mergedData['orderNumber'],
+      fallback: 'Draft SO',
     );
     final customerName = _parseSafeString(
-        mergedData['customerName'] ?? mergedData['clientName'] ?? mergedData['partyName'] ?? mergedData['customer'],
-        fallback: 'Unknown Customer'
+      mergedData['customerName'] ??
+          mergedData['clientName'] ??
+          mergedData['partyName'] ??
+          mergedData['customer'],
+      fallback: 'Unknown Customer',
     );
 
     mergedData['salesOrderNumberDisplay'] = soNumber;
-    mergedData['quoteNumber'] = mergedData['quoteNumber'] ?? mergedData['quotationNumber'];
+    mergedData['quoteNumber'] =
+        mergedData['quoteNumber'] ?? mergedData['quotationNumber'];
     mergedData['clientName'] = customerName;
     mergedData['quoteDateStr'] = DateFormat('dd/MM/yyyy').format(date);
-    mergedData['grandTotal'] = _parseSafeDouble(mergedData['grandTotal'] ?? mergedData['totalAmount'] ?? mergedData['amount']);
-    mergedData['totalTaxableAmount'] = _parseSafeDouble(mergedData['subtotal'] ?? mergedData['totalTaxableAmount']);
-    mergedData['totalTaxAmount'] = _parseSafeDouble(mergedData['tax'] ?? mergedData['totalTaxAmount']);
+    mergedData['grandTotal'] = _parseSafeDouble(
+      mergedData['grandTotal'] ??
+          mergedData['totalAmount'] ??
+          mergedData['amount'],
+    );
+    mergedData['totalTaxableAmount'] = _parseSafeDouble(
+      mergedData['subtotal'] ?? mergedData['totalTaxableAmount'],
+    );
+    mergedData['totalTaxAmount'] = _parseSafeDouble(
+      mergedData['tax'] ?? mergedData['totalTaxAmount'],
+    );
 
     return mergedData;
   }
@@ -356,16 +396,15 @@ class _SalesOrderListScreenState extends State<SalesOrderListScreen> {
     showDialog(
       context: context,
       barrierDismissible: false,
-      builder: (_) => const Center(child: CircularProgressIndicator(color: _zPrimary)),
+      builder: (_) =>
+          const Center(child: CircularProgressIndicator(color: _zPrimary)),
     );
 
     try {
       Map<String, dynamic> mergedData = {};
 
       final quoteId = _parseSafeString(
-          data['referenceQuotationId'] ??
-              data['quotationId'] ??
-              data['quoteId']
+        data['referenceQuotationId'] ?? data['quotationId'] ?? data['quoteId'],
       );
 
       if (quoteId.isNotEmpty && widget.companyId.isNotEmpty) {
@@ -382,7 +421,8 @@ class _SalesOrderListScreenState extends State<SalesOrderListScreen> {
         }
       }
 
-      final originalQuoteNumber = mergedData['quoteNumber'] ?? mergedData['quotationNumber'];
+      final originalQuoteNumber =
+          mergedData['quoteNumber'] ?? mergedData['quotationNumber'];
 
       mergedData.addAll(data);
 
@@ -398,24 +438,40 @@ class _SalesOrderListScreenState extends State<SalesOrderListScreen> {
 
       if (companyDoc.exists) {
         final companyData = companyDoc.data() ?? {};
-        preparedData['companyName'] ??= companyData['companyName'] ?? companyData['name'] ?? '';
-        preparedData['companyAddress'] ??= companyData['companyAddress'] ?? companyData['address'] ?? '';
-        preparedData['companyPhone'] ??= companyData['companyPhone'] ?? companyData['phone'] ?? '';
-        preparedData['companyEmail'] ??= companyData['companyEmail'] ?? companyData['email'] ?? '';
-        preparedData['companyLogoUrl'] ??= companyData['companyLogoUrl'] ?? companyData['logoUrl'] ?? '';
-        preparedData['companyGst'] ??= companyData['companyGst'] ?? companyData['gstin'] ?? companyData['gstNo'] ?? '';
-        preparedData['companyPan'] ??= companyData['companyPan'] ?? companyData['pan'] ?? '';
-        preparedData['companyIec'] ??= companyData['companyIec'] ?? companyData['iec'] ?? '';
-        preparedData['companyWebsite'] ??= companyData['companyWebsite'] ?? companyData['website'] ?? '';
+        preparedData['companyName'] ??=
+            companyData['companyName'] ?? companyData['name'] ?? '';
+        preparedData['companyAddress'] ??=
+            companyData['companyAddress'] ?? companyData['address'] ?? '';
+        preparedData['companyPhone'] ??=
+            companyData['companyPhone'] ?? companyData['phone'] ?? '';
+        preparedData['companyEmail'] ??=
+            companyData['companyEmail'] ?? companyData['email'] ?? '';
+        preparedData['companyLogoUrl'] ??=
+            companyData['companyLogoUrl'] ?? companyData['logoUrl'] ?? '';
+        preparedData['companyGst'] ??=
+            companyData['companyGst'] ??
+            companyData['gstin'] ??
+            companyData['gstNo'] ??
+            '';
+        preparedData['companyPan'] ??=
+            companyData['companyPan'] ?? companyData['pan'] ?? '';
+        preparedData['companyIec'] ??=
+            companyData['companyIec'] ?? companyData['iec'] ?? '';
+        preparedData['companyWebsite'] ??=
+            companyData['companyWebsite'] ?? companyData['website'] ?? '';
       }
 
       final bool isInterState = preparedData['isInterState'] == true;
-      final itemsList = (preparedData['items'] is List) ? (preparedData['items'] as List) : [];
+      final itemsList = (preparedData['items'] is List)
+          ? (preparedData['items'] as List)
+          : [];
 
       final parsedItems = itemsList.map((e) {
         final itemMap = Map<String, dynamic>.from(e as Map);
 
-        final double gstRate = _parseSafeDouble(itemMap['gstRate'] ?? itemMap['taxRate'] ?? itemMap['gst']);
+        final double gstRate = _parseSafeDouble(
+          itemMap['gstRate'] ?? itemMap['taxRate'] ?? itemMap['gst'],
+        );
         double cgst = 0.0;
         double sgst = 0.0;
         double igst = 0.0;
@@ -430,17 +486,29 @@ class _SalesOrderListScreenState extends State<SalesOrderListScreen> {
         return QuotationLineItem(
           id: itemMap['id']?.toString() ?? '',
           productId: itemMap['productId']?.toString() ?? '',
-          name: itemMap['name']?.toString() ?? itemMap['itemName']?.toString() ?? 'Item',
+          name:
+              itemMap['name']?.toString() ??
+              itemMap['itemName']?.toString() ??
+              'Item',
           description: itemMap['description']?.toString() ?? '',
           hsnCode: itemMap['hsnCode']?.toString() ?? '',
           quantity: _parseSafeDouble(itemMap['quantity']),
-          uom: itemMap['unit']?.toString() ?? itemMap['uom']?.toString() ?? 'Nos',
-          unitPrice: _parseSafeDouble(itemMap['unitPrice'] ?? itemMap['price'] ?? itemMap['rate']),
-          discountPercent: _parseSafeDouble(itemMap['discountPercent'] ?? itemMap['discount']),
+          uom:
+              itemMap['unit']?.toString() ??
+              itemMap['uom']?.toString() ??
+              'Nos',
+          unitPrice: _parseSafeDouble(
+            itemMap['unitPrice'] ?? itemMap['price'] ?? itemMap['rate'],
+          ),
+          discountPercent: _parseSafeDouble(
+            itemMap['discountPercent'] ?? itemMap['discount'],
+          ),
           cgstPercent: cgst,
           sgstPercent: sgst,
           igstPercent: igst,
-          availableStock: _parseSafeDouble(itemMap['availableStock'] ?? itemMap['stock']),
+          availableStock: _parseSafeDouble(
+            itemMap['availableStock'] ?? itemMap['stock'],
+          ),
         );
       }).toList();
 
@@ -462,25 +530,54 @@ class _SalesOrderListScreenState extends State<SalesOrderListScreen> {
       if (mounted) {
         Navigator.pop(context);
       }
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
           content: Text('Failed to load preview: $e'),
-          backgroundColor: _zDanger
-      ));
+          backgroundColor: _zDanger,
+        ),
+      );
     }
   }
 
   void _createProformaInvoice(Map<String, dynamic> soData) {
     final Map<String, dynamic> mappedData = Map<String, dynamic>.from(soData);
 
-    mappedData['customerName'] = _parseSafeString(soData['customerName'] ?? soData['clientName'] ?? soData['partyName'] ?? soData['customer']);
+    mappedData['customerName'] = _parseSafeString(
+      soData['customerName'] ??
+          soData['clientName'] ??
+          soData['partyName'] ??
+          soData['customer'],
+    );
     mappedData['clientName'] = mappedData['customerName'];
 
-    final String inquiryNum = _parseSafeString(soData['inquiryNumber'] ?? soData['inquiryCode'] ?? soData['referenceInquiryNumber'] ?? soData['inquiryId'] ?? '', fallback: '');
-    final String quoteNum = _parseSafeString(soData['quotationNumber'] ?? soData['quoteNumber'] ?? soData['referenceQuotationNumber'] ?? soData['referenceQuotationId'] ?? soData['quotationId'] ?? soData['quoteId'] ?? '', fallback: '');
+    final String inquiryNum = _parseSafeString(
+      soData['inquiryNumber'] ??
+          soData['inquiryCode'] ??
+          soData['referenceInquiryNumber'] ??
+          soData['inquiryId'] ??
+          '',
+      fallback: '',
+    );
+    final String quoteNum = _parseSafeString(
+      soData['quotationNumber'] ??
+          soData['quoteNumber'] ??
+          soData['referenceQuotationNumber'] ??
+          soData['referenceQuotationId'] ??
+          soData['quotationId'] ??
+          soData['quoteId'] ??
+          '',
+      fallback: '',
+    );
 
     mappedData['inquiryNumber'] = inquiryNum;
     mappedData['quotationNumber'] = quoteNum;
-    mappedData['referenceQuotationId'] = _parseSafeString(soData['referenceQuotationId'] ?? soData['quotationId'] ?? soData['quoteId'] ?? '', fallback: '');
+    mappedData['referenceQuotationId'] = _parseSafeString(
+      soData['referenceQuotationId'] ??
+          soData['quotationId'] ??
+          soData['quoteId'] ??
+          '',
+      fallback: '',
+    );
 
     mappedData.remove('salesOrderNumber');
     mappedData.remove('soNumber');
@@ -510,17 +607,20 @@ class _SalesOrderListScreenState extends State<SalesOrderListScreen> {
       final fileSize = file.size;
 
       if (fileSize > 10 * 1024 * 1024) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
             content: Text('File size exceeds 10MB limit.'),
-            backgroundColor: _zDanger
-        ));
+            backgroundColor: _zDanger,
+          ),
+        );
         return;
       }
 
       showDialog(
         context: context,
         barrierDismissible: false,
-        builder: (ctx) => const Center(child: CircularProgressIndicator(color: _zPrimary)),
+        builder: (ctx) =>
+            const Center(child: CircularProgressIndicator(color: _zPrimary)),
       );
 
       Uint8List fileBytes;
@@ -551,14 +651,18 @@ class _SalesOrderListScreenState extends State<SalesOrderListScreen> {
         }
       }
 
-      final String safeFileName = '${DateTime.now().millisecondsSinceEpoch}_${fileName.replaceAll(RegExp(r'\s+'), '_')}';
-      final storageRef = FirebaseStorage.instance
-          .ref()
-          .child('companies/${widget.companyId}/sales_orders/$docId/purchase_order/$safeFileName');
+      final String safeFileName =
+          '${DateTime.now().millisecondsSinceEpoch}_${fileName.replaceAll(RegExp(r'\s+'), '_')}';
+      final storageRef = FirebaseStorage.instance.ref().child(
+        'companies/${widget.companyId}/sales_orders/$docId/purchase_order/$safeFileName',
+      );
 
-      final uploadTask = storageRef.putData(fileBytes, SettableMetadata(
-        contentType: isImage ? 'image/$extension' : 'application/pdf',
-      ));
+      final uploadTask = storageRef.putData(
+        fileBytes,
+        SettableMetadata(
+          contentType: isImage ? 'image/$extension' : 'application/pdf',
+        ),
+      );
 
       final snapshot = await uploadTask;
       final downloadUrl = await snapshot.ref.getDownloadURL();
@@ -570,7 +674,9 @@ class _SalesOrderListScreenState extends State<SalesOrderListScreen> {
           .doc(docId);
 
       final user = FirebaseAuth.instance.currentUser;
-      final currentUserName = user != null ? await _getUserName(user.uid) : 'System';
+      final currentUserName = user != null
+          ? await _getUserName(user.uid)
+          : 'System';
 
       await docRef.update({
         'purchaseOrder': {
@@ -587,24 +693,27 @@ class _SalesOrderListScreenState extends State<SalesOrderListScreen> {
             'note': 'Purchase Order ($fileName) uploaded',
             'timestamp': Timestamp.now(),
             'byUid': user?.uid ?? 'system',
-          }
+          },
         ]),
       });
 
       if (mounted) Navigator.pop(context);
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
           content: Text('Purchase Order uploaded successfully'),
-          backgroundColor: _zSuccess
-      ));
+          backgroundColor: _zSuccess,
+        ),
+      );
 
       _fetchInitialData();
-
     } catch (e) {
       if (mounted) Navigator.pop(context);
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
           content: Text('Failed to upload PO: $e'),
-          backgroundColor: _zDanger
-      ));
+          backgroundColor: _zDanger,
+        ),
+      );
     }
   }
 
@@ -614,15 +723,22 @@ class _SalesOrderListScreenState extends State<SalesOrderListScreen> {
       await launchUrl(uri, mode: LaunchMode.externalApplication);
     } else {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
             content: Text('Could not open file'),
-            backgroundColor: _zDanger
-        ));
+            backgroundColor: _zDanger,
+          ),
+        );
       }
     }
   }
 
-  Future<void> _updateOrderField(String docId, Map<String, dynamic> updates, String logType, String logNote) async {
+  Future<void> _updateOrderField(
+    String docId,
+    Map<String, dynamic> updates,
+    String logType,
+    String logNote,
+  ) async {
     try {
       final docRef = FirebaseFirestore.instance
           .collection('companies')
@@ -631,7 +747,9 @@ class _SalesOrderListScreenState extends State<SalesOrderListScreen> {
           .doc(docId);
 
       final user = FirebaseAuth.instance.currentUser;
-      final currentUserName = user != null ? await _getUserName(user.uid) : 'System';
+      final currentUserName = user != null
+          ? await _getUserName(user.uid)
+          : 'System';
 
       updates['activities'] = FieldValue.arrayUnion([
         {
@@ -639,7 +757,7 @@ class _SalesOrderListScreenState extends State<SalesOrderListScreen> {
           'note': logNote,
           'timestamp': Timestamp.now(),
           'byUid': user?.uid ?? 'system',
-        }
+        },
       ]);
       updates['updatedAt'] = FieldValue.serverTimestamp();
       updates['updatedBy'] = user?.uid;
@@ -648,22 +766,34 @@ class _SalesOrderListScreenState extends State<SalesOrderListScreen> {
       await docRef.update(updates);
       _fetchInitialData();
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Failed to update: $e'), backgroundColor: _zDanger));
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Failed to update: $e'),
+          backgroundColor: _zDanger,
+        ),
+      );
     }
   }
 
   void _showApprovalDialog(QueryDocumentSnapshot<Map<String, dynamic>> doc) {
     final data = doc.data();
     if (data['status'] == 'completed') {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Completed orders cannot be modified.')));
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Completed orders cannot be modified.')),
+      );
       return;
     }
 
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Approve Sales Order', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
-        content: const Text('Do you want to approve or reject this order? Approved orders will automatically be Confirmed.'),
+        title: const Text(
+          'Approve Sales Order',
+          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
+        ),
+        content: const Text(
+          'Do you want to approve or reject this order? Approved orders will automatically be Confirmed.',
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx),
@@ -673,7 +803,12 @@ class _SalesOrderListScreenState extends State<SalesOrderListScreen> {
             style: ElevatedButton.styleFrom(backgroundColor: _zDanger),
             onPressed: () {
               Navigator.pop(ctx);
-              _updateOrderField(doc.id, {'approvalStatus': 'rejected', 'status': 'draft'}, 'Approval', 'Order Rejected by User');
+              _updateOrderField(
+                doc.id,
+                {'approvalStatus': 'rejected', 'status': 'draft'},
+                'Approval',
+                'Order Rejected by User',
+              );
             },
             child: const Text('Reject', style: TextStyle(color: Colors.white)),
           ),
@@ -681,7 +816,12 @@ class _SalesOrderListScreenState extends State<SalesOrderListScreen> {
             style: ElevatedButton.styleFrom(backgroundColor: _zSuccess),
             onPressed: () {
               Navigator.pop(ctx);
-              _updateOrderField(doc.id, {'approvalStatus': 'approved', 'status': 'confirmed'}, 'Approval', 'Order Approved and Confirmed');
+              _updateOrderField(
+                doc.id,
+                {'approvalStatus': 'approved', 'status': 'confirmed'},
+                'Approval',
+                'Order Approved and Confirmed',
+              );
             },
             child: const Text('Approve', style: TextStyle(color: Colors.white)),
           ),
@@ -693,22 +833,48 @@ class _SalesOrderListScreenState extends State<SalesOrderListScreen> {
   void _showDispatchDialog(QueryDocumentSnapshot<Map<String, dynamic>> doc) {
     final data = doc.data();
     final String currentStatus = _parseSafeString(data['status']).toLowerCase();
-    final String approvalStatus = _parseSafeString(data['approvalStatus']).toLowerCase();
+    final String approvalStatus = _parseSafeString(
+      data['approvalStatus'],
+    ).toLowerCase();
 
     if (approvalStatus != 'approved' || currentStatus != 'confirmed') {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Only Approved and Confirmed orders can be dispatched.'), backgroundColor: _zWarning),
+        const SnackBar(
+          content: Text(
+            'Only Approved and Confirmed orders can be dispatched.',
+          ),
+          backgroundColor: _zWarning,
+        ),
       );
       return;
     }
 
-    String selectedDispatch = _parseSafeString(data['dispatchStatus'], fallback: 'pending');
-    selectedDispatch = selectedDispatch.isEmpty ? 'Pending' : selectedDispatch[0].toUpperCase() + selectedDispatch.substring(1).toLowerCase();
-    if (!['Pending', 'Packed', 'Shipped', 'Delivered'].contains(selectedDispatch)) selectedDispatch = 'Pending';
+    String selectedDispatch = _parseSafeString(
+      data['dispatchStatus'],
+      fallback: 'pending',
+    );
+    selectedDispatch = selectedDispatch.isEmpty
+        ? 'Pending'
+        : selectedDispatch[0].toUpperCase() +
+              selectedDispatch.substring(1).toLowerCase();
+    if (![
+      'Pending',
+      'Packed',
+      'Shipped',
+      'Delivered',
+    ].contains(selectedDispatch)) {
+      selectedDispatch = 'Pending';
+    }
 
-    final transCtrl = TextEditingController(text: _parseSafeString(data['transporterName'], fallback: ''));
-    final vehCtrl = TextEditingController(text: _parseSafeString(data['vehicleNumber'], fallback: ''));
-    final lrCtrl = TextEditingController(text: _parseSafeString(data['lrNumber'], fallback: ''));
+    final transCtrl = TextEditingController(
+      text: _parseSafeString(data['transporterName'], fallback: ''),
+    );
+    final vehCtrl = TextEditingController(
+      text: _parseSafeString(data['vehicleNumber'], fallback: ''),
+    );
+    final lrCtrl = TextEditingController(
+      text: _parseSafeString(data['lrNumber'], fallback: ''),
+    );
 
     showDialog(
       context: context,
@@ -716,28 +882,63 @@ class _SalesOrderListScreenState extends State<SalesOrderListScreen> {
         return StatefulBuilder(
           builder: (context, setDialogState) {
             return AlertDialog(
-              title: const Text('Update Dispatch Status', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
+              title: const Text(
+                'Update Dispatch Status',
+                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
+              ),
               content: SingleChildScrollView(
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     DropdownButtonFormField<String>(
-                      value: selectedDispatch,
-                      decoration: const InputDecoration(labelText: 'Dispatch Status', border: OutlineInputBorder()),
-                      items: ['Pending', 'Packed', 'Shipped', 'Delivered'].map((e) => DropdownMenuItem(value: e, child: Text(e))).toList(),
-                      onChanged: (val) => setDialogState(() => selectedDispatch = val!),
+                      initialValue: selectedDispatch,
+                      decoration: const InputDecoration(
+                        labelText: 'Dispatch Status',
+                        border: OutlineInputBorder(),
+                      ),
+                      items: ['Pending', 'Packed', 'Shipped', 'Delivered']
+                          .map(
+                            (e) => DropdownMenuItem(value: e, child: Text(e)),
+                          )
+                          .toList(),
+                      onChanged: (val) =>
+                          setDialogState(() => selectedDispatch = val!),
                     ),
                     const SizedBox(height: 12),
-                    TextField(controller: transCtrl, decoration: const InputDecoration(labelText: 'Transporter Name', border: OutlineInputBorder())),
+                    TextField(
+                      controller: transCtrl,
+                      decoration: const InputDecoration(
+                        labelText: 'Transporter Name',
+                        border: OutlineInputBorder(),
+                      ),
+                    ),
                     const SizedBox(height: 12),
-                    TextField(controller: vehCtrl, decoration: const InputDecoration(labelText: 'Vehicle Number', border: OutlineInputBorder())),
+                    TextField(
+                      controller: vehCtrl,
+                      decoration: const InputDecoration(
+                        labelText: 'Vehicle Number',
+                        border: OutlineInputBorder(),
+                      ),
+                    ),
                     const SizedBox(height: 12),
-                    TextField(controller: lrCtrl, decoration: const InputDecoration(labelText: 'LR Number', border: OutlineInputBorder())),
+                    TextField(
+                      controller: lrCtrl,
+                      decoration: const InputDecoration(
+                        labelText: 'LR Number',
+                        border: OutlineInputBorder(),
+                      ),
+                    ),
                   ],
                 ),
               ),
               actions: [
-                TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel', style: TextStyle(color: Colors.grey))),
+                TextButton(
+                  onPressed: () => Navigator.pop(ctx),
+                  child: const Text(
+                    'Cancel',
+                    style: TextStyle(color: Colors.grey),
+                  ),
+                ),
                 ElevatedButton(
                   style: ElevatedButton.styleFrom(backgroundColor: _zPrimary),
                   onPressed: () {
@@ -753,9 +954,17 @@ class _SalesOrderListScreenState extends State<SalesOrderListScreen> {
                     }
 
                     Navigator.pop(ctx);
-                    _updateOrderField(doc.id, updates, 'Dispatch', 'Dispatch updated to $selectedDispatch via ${transCtrl.text.trim()}');
+                    _updateOrderField(
+                      doc.id,
+                      updates,
+                      'Dispatch',
+                      'Dispatch updated to $selectedDispatch via ${transCtrl.text.trim()}',
+                    );
                   },
-                  child: const Text('Save Dispatch', style: TextStyle(color: Colors.white)),
+                  child: const Text(
+                    'Save Dispatch',
+                    style: TextStyle(color: Colors.white),
+                  ),
                 ),
               ],
             );
@@ -768,11 +977,20 @@ class _SalesOrderListScreenState extends State<SalesOrderListScreen> {
   void _cancelOrder(QueryDocumentSnapshot<Map<String, dynamic>> doc) {
     final data = doc.data();
     final String status = _parseSafeString(data['status']).toLowerCase();
-    final String dispatchStatus = _parseSafeString(data['dispatchStatus']).toLowerCase();
+    final String dispatchStatus = _parseSafeString(
+      data['dispatchStatus'],
+    ).toLowerCase();
 
-    if (status == 'completed' || dispatchStatus == 'shipped' || dispatchStatus == 'delivered') {
+    if (status == 'completed' ||
+        dispatchStatus == 'shipped' ||
+        dispatchStatus == 'delivered') {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Cannot cancel orders that are shipped, delivered, or completed.'), backgroundColor: _zWarning),
+        const SnackBar(
+          content: Text(
+            'Cannot cancel orders that are shipped, delivered, or completed.',
+          ),
+          backgroundColor: _zWarning,
+        ),
       );
       return;
     }
@@ -780,17 +998,36 @@ class _SalesOrderListScreenState extends State<SalesOrderListScreen> {
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Cancel Order', style: TextStyle(color: _zDanger, fontWeight: FontWeight.bold)),
-        content: const Text('Are you sure you want to cancel this Sales Order? This action cannot be fully undone.'),
+        title: const Text(
+          'Cancel Order',
+          style: TextStyle(color: _zDanger, fontWeight: FontWeight.bold),
+        ),
+        content: const Text(
+          'Are you sure you want to cancel this Sales Order? This action cannot be fully undone.',
+        ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('No, Keep It', style: TextStyle(color: Colors.black87))),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text(
+              'No, Keep It',
+              style: TextStyle(color: Colors.black87),
+            ),
+          ),
           ElevatedButton(
             style: ElevatedButton.styleFrom(backgroundColor: _zDanger),
             onPressed: () {
               Navigator.pop(ctx);
-              _updateOrderField(doc.id, {'status': 'cancelled'}, 'Status Update', 'Order manually cancelled');
+              _updateOrderField(
+                doc.id,
+                {'status': 'cancelled'},
+                'Status Update',
+                'Order manually cancelled',
+              );
             },
-            child: const Text('Yes, Cancel Order', style: TextStyle(color: Colors.white)),
+            child: const Text(
+              'Yes, Cancel Order',
+              style: TextStyle(color: Colors.white),
+            ),
           ),
         ],
       ),
@@ -805,7 +1042,8 @@ class _SalesOrderListScreenState extends State<SalesOrderListScreen> {
     _fetchInitialData();
   }
 
-  bool get _hasActiveFilters => _selectedStatus != 'All' || _selectedSort != 'Latest';
+  bool get _hasActiveFilters =>
+      _selectedStatus != 'All' || _selectedSort != 'Latest';
 
   Future<void> _openFilterSheet() async {
     String tempStatus = _selectedStatus;
@@ -846,7 +1084,9 @@ class _SalesOrderListScreenState extends State<SalesOrderListScreen> {
                         border: OutlineInputBorder(),
                       ),
                       items: _statusOptions
-                          .map((e) => DropdownMenuItem(value: e, child: Text(e)))
+                          .map(
+                            (e) => DropdownMenuItem(value: e, child: Text(e)),
+                          )
                           .toList(),
                       onChanged: (value) {
                         setModalState(() {
@@ -863,7 +1103,9 @@ class _SalesOrderListScreenState extends State<SalesOrderListScreen> {
                         border: OutlineInputBorder(),
                       ),
                       items: _sortOptions
-                          .map((e) => DropdownMenuItem(value: e, child: Text(e)))
+                          .map(
+                            (e) => DropdownMenuItem(value: e, child: Text(e)),
+                          )
                           .toList(),
                       onChanged: (value) {
                         setModalState(() {
@@ -927,7 +1169,10 @@ class _SalesOrderListScreenState extends State<SalesOrderListScreen> {
         body: Center(
           child: Text(
             _errorMessage!,
-            style: const TextStyle(color: Colors.red, fontWeight: FontWeight.bold),
+            style: const TextStyle(
+              color: Colors.red,
+              fontWeight: FontWeight.bold,
+            ),
           ),
         ),
       );
@@ -941,7 +1186,9 @@ class _SalesOrderListScreenState extends State<SalesOrderListScreen> {
 
     for (var doc in filteredDocs) {
       final data = doc.data();
-      totalRevenue += _parseSafeDouble(data['grandTotal'] ?? data['totalAmount'] ?? data['amount']);
+      totalRevenue += _parseSafeDouble(
+        data['grandTotal'] ?? data['totalAmount'] ?? data['amount'],
+      );
       final st = _parseSafeString(data['status']).toLowerCase();
       final dst = _parseSafeString(data['dispatchStatus']).toLowerCase();
 
@@ -950,7 +1197,8 @@ class _SalesOrderListScreenState extends State<SalesOrderListScreen> {
     }
 
     final String formattedRevenue = NumberFormat.compactCurrency(
-        symbol: '₹', locale: 'en_IN'
+      symbol: '₹',
+      locale: 'en_IN',
     ).format(totalRevenue);
 
     return Scaffold(
@@ -981,13 +1229,13 @@ class _SalesOrderListScreenState extends State<SalesOrderListScreen> {
                         suffixIcon: _searchQuery.trim().isEmpty
                             ? null
                             : IconButton(
-                          tooltip: 'Clear',
-                          icon: const Icon(Icons.close, size: 17),
-                          onPressed: () {
-                            _searchController.clear();
-                            _onSearchChanged('');
-                          },
-                        ),
+                                tooltip: 'Clear',
+                                icon: const Icon(Icons.close, size: 17),
+                                onPressed: () {
+                                  _searchController.clear();
+                                  _onSearchChanged('');
+                                },
+                              ),
                         isDense: true,
                         filled: true,
                         fillColor: Colors.grey.shade100,
@@ -1052,9 +1300,15 @@ class _SalesOrderListScreenState extends State<SalesOrderListScreen> {
                 const SizedBox(width: 10),
                 _MiniStatText(label: 'Rev', value: formattedRevenue),
                 const SizedBox(width: 10),
-                _MiniStatText(label: 'Confirmed', value: confirmedCount.toString()),
+                _MiniStatText(
+                  label: 'Confirmed',
+                  value: confirmedCount.toString(),
+                ),
                 const SizedBox(width: 10),
-                _MiniStatText(label: 'Disp Pend', value: dispatchPendingCount.toString()),
+                _MiniStatText(
+                  label: 'Disp Pend',
+                  value: dispatchPendingCount.toString(),
+                ),
               ],
             ),
           ),
@@ -1083,53 +1337,57 @@ class _SalesOrderListScreenState extends State<SalesOrderListScreen> {
           Expanded(
             child: filteredDocs.isEmpty
                 ? _EmptyOrdersState(
-              hasSearch: _searchQuery.trim().isNotEmpty || _hasActiveFilters,
-              onReset: () {
-                _searchController.clear();
-                setState(() {
-                  _searchQuery = '';
-                });
-                _resetFilters();
-              },
-            )
-                : RefreshIndicator(
-              onRefresh: _fetchInitialData,
-              child: ListView.separated(
-                controller: _scrollController,
-                padding: const EdgeInsets.fromLTRB(16, 4, 16, 90),
-                itemCount: filteredDocs.length + (_hasMore ? 1 : 0),
-                separatorBuilder: (_, __) => const SizedBox(height: 8),
-                itemBuilder: (context, index) {
-                  if (index == filteredDocs.length) {
-                    return const Padding(
-                      padding: EdgeInsets.symmetric(vertical: 24),
-                      child: Center(child: CircularProgressIndicator(strokeWidth: 2)),
-                    );
-                  }
-
-                  final doc = filteredDocs[index];
-                  final data = doc.data();
-
-                  return _SalesOrderCard(
-                    key: ValueKey(doc.id),
-                    document: doc,
-                    nameResolver: _getUserName,
-                    onViewTap: () => _openSalesOrderPreview(data),
-                    onDispatchTap: () => _showDispatchDialog(doc),
-                    onApproveTap: () => _showApprovalDialog(doc),
-                    onCancelTap: () => _cancelOrder(doc),
-                    onUploadPOTap: () => _handlePOUpload(doc.id),
-                    onViewPOTap: () {
-                      final poData = data['purchaseOrder'];
-                      if (poData != null && poData['url'] != null) {
-                        _viewPO(poData['url']);
-                      }
+                    hasSearch:
+                        _searchQuery.trim().isNotEmpty || _hasActiveFilters,
+                    onReset: () {
+                      _searchController.clear();
+                      setState(() {
+                        _searchQuery = '';
+                      });
+                      _resetFilters();
                     },
-                    onCreateProformaTap: () => _createProformaInvoice(data),
-                  );
-                },
-              ),
-            ),
+                  )
+                : RefreshIndicator(
+                    onRefresh: _fetchInitialData,
+                    child: ListView.separated(
+                      controller: _scrollController,
+                      padding: const EdgeInsets.fromLTRB(16, 4, 16, 90),
+                      itemCount: filteredDocs.length + (_hasMore ? 1 : 0),
+                      separatorBuilder: (_, __) => const SizedBox(height: 8),
+                      itemBuilder: (context, index) {
+                        if (index == filteredDocs.length) {
+                          return const Padding(
+                            padding: EdgeInsets.symmetric(vertical: 24),
+                            child: Center(
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            ),
+                          );
+                        }
+
+                        final doc = filteredDocs[index];
+                        final data = doc.data();
+
+                        return _SalesOrderCard(
+                          key: ValueKey(doc.id),
+                          document: doc,
+                          nameResolver: _getUserName,
+                          onViewTap: () => _openSalesOrderPreview(data),
+                          onDispatchTap: () => _showDispatchDialog(doc),
+                          onApproveTap: () => _showApprovalDialog(doc),
+                          onCancelTap: () => _cancelOrder(doc),
+                          onUploadPOTap: () => _handlePOUpload(doc.id),
+                          onViewPOTap: () {
+                            final poData = data['purchaseOrder'];
+                            if (poData != null && poData['url'] != null) {
+                              _viewPO(poData['url']);
+                            }
+                          },
+                          onCreateProformaTap: () =>
+                              _createProformaInvoice(data),
+                        );
+                      },
+                    ),
+                  ),
           ),
         ],
       ),
@@ -1149,7 +1407,7 @@ class _SalesOrderCard extends StatelessWidget {
   final VoidCallback onCreateProformaTap;
 
   const _SalesOrderCard({
-    Key? key,
+    super.key,
     required this.document,
     required this.nameResolver,
     required this.onViewTap,
@@ -1159,24 +1417,38 @@ class _SalesOrderCard extends StatelessWidget {
     required this.onUploadPOTap,
     required this.onViewPOTap,
     required this.onCreateProformaTap,
-  }) : super(key: key);
+  });
 
   @override
   Widget build(BuildContext context) {
     final data = document.data();
 
     final String soNumber = _parseSafeString(
-        data['salesOrderNumber'] ?? data['soNumber'] ?? data['orderNumber'],
-        fallback: 'Draft SO'
+      data['salesOrderNumber'] ?? data['soNumber'] ?? data['orderNumber'],
+      fallback: 'Draft SO',
     );
     final String customerName = _parseSafeString(
-        data['customerName'] ?? data['clientName'] ?? data['partyName'] ?? data['customer'],
-        fallback: 'Unknown Customer'
+      data['customerName'] ??
+          data['clientName'] ??
+          data['partyName'] ??
+          data['customer'],
+      fallback: 'Unknown Customer',
     );
-    final String status = _parseSafeString(data['status'], fallback: 'draft').toLowerCase();
-    final String approvalStatus = _parseSafeString(data['approvalStatus'], fallback: 'pending').toLowerCase();
-    final String dispatchStatus = _parseSafeString(data['dispatchStatus'], fallback: 'pending').toLowerCase();
-    final double grandTotal = _parseSafeDouble(data['grandTotal'] ?? data['totalAmount'] ?? data['amount']);
+    final String status = _parseSafeString(
+      data['status'],
+      fallback: 'draft',
+    ).toLowerCase();
+    final String approvalStatus = _parseSafeString(
+      data['approvalStatus'],
+      fallback: 'pending',
+    ).toLowerCase();
+    final String dispatchStatus = _parseSafeString(
+      data['dispatchStatus'],
+      fallback: 'pending',
+    ).toLowerCase();
+    final double grandTotal = _parseSafeDouble(
+      data['grandTotal'] ?? data['totalAmount'] ?? data['amount'],
+    );
 
     DateTime? date;
     final dateRaw = data['date'] ?? data['createdAt'] ?? data['soDate'];
@@ -1184,35 +1456,49 @@ class _SalesOrderCard extends StatelessWidget {
       date = dateRaw.toDate();
     }
 
-    final formattedDate = date != null ? DateFormat('dd/MM/yyyy').format(date) : '-';
+    final formattedDate = date != null
+        ? DateFormat('dd/MM/yyyy').format(date)
+        : '-';
     final formattedAmount = NumberFormat.currency(
-        symbol: '₹', locale: 'en_IN', decimalDigits: grandTotal.truncateToDouble() == grandTotal ? 0 : 2
+      symbol: '₹',
+      locale: 'en_IN',
+      decimalDigits: grandTotal.truncateToDouble() == grandTotal ? 0 : 2,
     ).format(grandTotal);
 
-    final bool canCancel = status != 'completed' && dispatchStatus != 'shipped' && dispatchStatus != 'delivered' && status != 'cancelled';
-    final bool canDispatch = approvalStatus == 'approved' && status == 'confirmed';
-    final bool canApprove = status != 'cancelled' && status != 'completed' && approvalStatus != 'approved' && approvalStatus != 'rejected';
+    final bool canCancel =
+        status != 'completed' &&
+        dispatchStatus != 'shipped' &&
+        dispatchStatus != 'delivered' &&
+        status != 'cancelled';
+    final bool canDispatch =
+        approvalStatus == 'approved' && status == 'confirmed';
+    final bool canApprove =
+        status != 'cancelled' &&
+        status != 'completed' &&
+        approvalStatus != 'approved' &&
+        approvalStatus != 'rejected';
 
     final Map<String, dynamic>? poData = data['purchaseOrder'];
-    final bool hasPO = poData != null && _parseSafeString(poData['url']).isNotEmpty;
+    final bool hasPO =
+        poData != null && _parseSafeString(poData['url']).isNotEmpty;
 
     final String createdByUid = _parseSafeString(data['createdBy']);
-    final String explicitlyStoredName = data['createdByName']?.toString().trim() ?? '';
+    final String explicitlyStoredName =
+        data['createdByName']?.toString().trim() ?? '';
 
     String formattedUpdatedAt = '--';
     final updatedAtRaw = data['updatedAt'];
     if (updatedAtRaw != null && updatedAtRaw is Timestamp) {
-      formattedUpdatedAt = DateFormat('dd/MM/yyyy').format(updatedAtRaw.toDate());
+      formattedUpdatedAt = DateFormat(
+        'dd/MM/yyyy',
+      ).format(updatedAtRaw.toDate());
     }
 
     return Container(
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(
-          color: Colors.grey.shade200,
-          width: 0.8,
-        ),
+        border: Border.all(color: Colors.grey.shade200, width: 0.8),
       ),
       child: Padding(
         padding: const EdgeInsets.all(10),
@@ -1257,7 +1543,11 @@ class _SalesOrderCard extends StatelessWidget {
                           if (hasPO)
                             const Padding(
                               padding: EdgeInsets.only(left: 6.0),
-                              child: Icon(Icons.attachment_rounded, size: 14, color: Colors.blue),
+                              child: Icon(
+                                Icons.attachment_rounded,
+                                size: 14,
+                                color: Colors.blue,
+                              ),
                             ),
                         ],
                       ),
@@ -1281,7 +1571,11 @@ class _SalesOrderCard extends StatelessWidget {
                   child: PopupMenuButton<String>(
                     padding: EdgeInsets.zero,
                     tooltip: 'Actions',
-                    icon: Icon(Icons.more_vert, size: 20, color: Colors.grey.shade600),
+                    icon: Icon(
+                      Icons.more_vert,
+                      size: 20,
+                      color: Colors.grey.shade600,
+                    ),
                     onSelected: (value) {
                       if (value == 'view') onViewTap();
                       if (value == 'dispatch') onDispatchTap();
@@ -1292,23 +1586,55 @@ class _SalesOrderCard extends StatelessWidget {
                       if (value == 'create_proforma') onCreateProformaTap();
                     },
                     itemBuilder: (BuildContext context) => [
-                      const PopupMenuItem(value: 'view', child: Text('View Details')),
+                      const PopupMenuItem(
+                        value: 'view',
+                        child: Text('View Details'),
+                      ),
                       const PopupMenuDivider(),
                       if (hasPO)
-                        const PopupMenuItem(value: 'view_po', child: Text('View PO', style: TextStyle(color: Colors.blue, fontWeight: FontWeight.w600))),
+                        const PopupMenuItem(
+                          value: 'view_po',
+                          child: Text(
+                            'View PO',
+                            style: TextStyle(
+                              color: Colors.blue,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
                       PopupMenuItem(
-                          value: 'upload_po',
-                          child: Text(hasPO ? 'Replace PO' : 'Upload PO', style: TextStyle(color: hasPO ? Colors.grey.shade700 : Colors.blue))
+                        value: 'upload_po',
+                        child: Text(
+                          hasPO ? 'Replace PO' : 'Upload PO',
+                          style: TextStyle(
+                            color: hasPO ? Colors.grey.shade700 : Colors.blue,
+                          ),
+                        ),
                       ),
                       const PopupMenuDivider(),
                       const PopupMenuItem(
-                          value: 'create_proforma',
-                          child: Text('Create Proforma Invoice')
+                        value: 'create_proforma',
+                        child: Text('Create Proforma Invoice'),
                       ),
                       const PopupMenuDivider(),
-                      if (canApprove) const PopupMenuItem(value: 'approve', child: Text('Approve / Reject')),
-                      if (canDispatch) const PopupMenuItem(value: 'dispatch', child: Text('Update Dispatch')),
-                      if (canCancel) const PopupMenuItem(value: 'cancel', child: Text('Cancel Order', style: TextStyle(color: Colors.red))),
+                      if (canApprove)
+                        const PopupMenuItem(
+                          value: 'approve',
+                          child: Text('Approve / Reject'),
+                        ),
+                      if (canDispatch)
+                        const PopupMenuItem(
+                          value: 'dispatch',
+                          child: Text('Update Dispatch'),
+                        ),
+                      if (canCancel)
+                        const PopupMenuItem(
+                          value: 'cancel',
+                          child: Text(
+                            'Cancel Order',
+                            style: TextStyle(color: Colors.red),
+                          ),
+                        ),
                     ],
                   ),
                 ),
@@ -1330,10 +1656,13 @@ class _SalesOrderCard extends StatelessWidget {
               runSpacing: 6,
               crossAxisAlignment: WrapCrossAlignment.center,
               children: [
-                if (_parseSafeString(data['referenceQuotationId'] ?? data['quotationId']).isNotEmpty)
+                if (_parseSafeString(
+                  data['referenceQuotationId'] ?? data['quotationId'],
+                ).isNotEmpty)
                   _InlineInfo(
                     icon: Icons.tag_outlined,
-                    text: 'Ref: ${_parseSafeString(data['referenceQuotationId'] ?? data['quotationId'])}',
+                    text:
+                        'Ref: ${_parseSafeString(data['referenceQuotationId'] ?? data['quotationId'])}',
                   ),
                 _InlineInfo(
                   icon: Icons.currency_rupee_outlined,
@@ -1376,7 +1705,7 @@ class _StatusBadge extends StatelessWidget {
   final String status;
   final String type;
 
-  const _StatusBadge({Key? key, required this.status, required this.type}) : super(key: key);
+  const _StatusBadge({required this.status, required this.type});
 
   @override
   Widget build(BuildContext context) {
@@ -1387,18 +1716,43 @@ class _StatusBadge extends StatelessWidget {
     final s = status.toLowerCase();
 
     if (type == 'Approval') {
-      if (s == 'approved') { bgColor = Colors.green.shade50; textColor = Colors.green.shade700; }
-      else if (s == 'rejected') { bgColor = Colors.red.shade50; textColor = Colors.red.shade700; }
-      else { bgColor = Colors.orange.shade50; textColor = Colors.orange.shade800; displayStatus = 'PENDING APPR'; }
+      if (s == 'approved') {
+        bgColor = Colors.green.shade50;
+        textColor = Colors.green.shade700;
+      } else if (s == 'rejected') {
+        bgColor = Colors.red.shade50;
+        textColor = Colors.red.shade700;
+      } else {
+        bgColor = Colors.orange.shade50;
+        textColor = Colors.orange.shade800;
+        displayStatus = 'PENDING APPR';
+      }
     } else if (type == 'Dispatch') {
-      if (s == 'delivered') { bgColor = Colors.green.shade50; textColor = Colors.green.shade700; }
-      else if (s == 'shipped') { bgColor = Colors.blue.shade50; textColor = Colors.blue.shade700; }
-      else if (s == 'packed') { bgColor = Colors.purple.shade50; textColor = Colors.purple.shade700; }
-      else { bgColor = Colors.grey.shade100; textColor = Colors.grey.shade700; displayStatus = 'DISP PENDING'; }
+      if (s == 'delivered') {
+        bgColor = Colors.green.shade50;
+        textColor = Colors.green.shade700;
+      } else if (s == 'shipped') {
+        bgColor = Colors.blue.shade50;
+        textColor = Colors.blue.shade700;
+      } else if (s == 'packed') {
+        bgColor = Colors.purple.shade50;
+        textColor = Colors.purple.shade700;
+      } else {
+        bgColor = Colors.grey.shade100;
+        textColor = Colors.grey.shade700;
+        displayStatus = 'DISP PENDING';
+      }
     } else {
-      if (s == 'confirmed') { bgColor = Colors.blue.shade50; textColor = Colors.blue.shade700; }
-      else if (s == 'completed') { bgColor = Colors.green.shade50; textColor = Colors.green.shade700; }
-      else if (s == 'cancelled') { bgColor = Colors.red.shade50; textColor = Colors.red.shade700; }
+      if (s == 'confirmed') {
+        bgColor = Colors.blue.shade50;
+        textColor = Colors.blue.shade700;
+      } else if (s == 'completed') {
+        bgColor = Colors.green.shade50;
+        textColor = Colors.green.shade700;
+      } else if (s == 'cancelled') {
+        bgColor = Colors.red.shade50;
+        textColor = Colors.red.shade700;
+      }
     }
 
     return Container(
