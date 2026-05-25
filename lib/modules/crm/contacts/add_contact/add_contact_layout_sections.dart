@@ -1,17 +1,18 @@
+// FILE PATH: lib/modules/crm/contacts/add_contact/add_contact_layout_sections.dart
 part of '../screens_add_contact.dart';
 
 extension _AddContactLayoutSections on _ScreensAddContactState {
   Widget _buildScrollableContent() {
     return SingleChildScrollView(
-      padding: const EdgeInsets.fromLTRB(20, 20, 20, 120),
+      padding: const EdgeInsets.fromLTRB(24, 24, 24, 120),
       child: Center(
         child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 980),
+          constraints: const BoxConstraints(maxWidth: 1000),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               _buildHeader(),
-              const SizedBox(height: 18),
+              const SizedBox(height: 24),
               LayoutBuilder(
                 builder: (context, constraints) {
                   final isWide = constraints.maxWidth >= 860;
@@ -31,24 +32,26 @@ extension _AddContactLayoutSections on _ScreensAddContactState {
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
+        // Left Column
         Expanded(
-          flex: 3,
+          flex: 11,
           child: Column(
             children: [
-              _buildContactInformationSection(compact: false),
-              const SizedBox(height: 16),
-              _buildCommunicationDetailsSection(compact: false),
+              _buildIdentitySection(compact: false),
+              const SizedBox(height: 24),
+              _buildCommunicationSection(compact: false),
             ],
           ),
         ),
-        const SizedBox(width: 16),
+        const SizedBox(width: 24),
+        // Right Column
         Expanded(
-          flex: 2,
+          flex: 9,
           child: Column(
             children: [
-              _buildCompanyRoleSection(),
-              const SizedBox(height: 16),
-              _buildTipsSection(),
+              _buildRoleSection(compact: true),
+              const SizedBox(height: 24),
+              _buildAdditionalInfoSection(compact: true),
             ],
           ),
         ),
@@ -59,11 +62,13 @@ extension _AddContactLayoutSections on _ScreensAddContactState {
   Widget _buildCompactContactForm() {
     return Column(
       children: [
-        _buildContactInformationSection(compact: true),
-        const SizedBox(height: 16),
-        _buildCommunicationDetailsSection(compact: true),
-        const SizedBox(height: 16),
-        _buildCompanyRoleSection(),
+        _buildIdentitySection(compact: true),
+        const SizedBox(height: 24),
+        _buildRoleSection(compact: true),
+        const SizedBox(height: 24),
+        _buildCommunicationSection(compact: true),
+        const SizedBox(height: 24),
+        _buildAdditionalInfoSection(compact: true),
       ],
     );
   }
