@@ -1,3 +1,5 @@
+// FILE PATH: lib/modules/sales/inquiries/screens_inquiry_list.dart
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
@@ -207,11 +209,23 @@ class _ScreensInquiryListState extends State<ScreensInquiryList> {
     required String role,
     required String currentUserUid,
   }) {
-    final normalizedSearch = _searchText.toLowerCase();
+    final normalizedSearch = _searchText.toLowerCase().trim();
     final isAdmin = _isAdminOrManager(role);
 
     final filtered = docs.where((doc) {
       final data = doc.data();
+
+      // Skip hard-deleted looking records just in case, though soft delete is flagged
+      // We will render soft deleted docs if they match, but badges will show them as deleted.
+      // Usually, ERPs hide soft-deleted items from main list, but we'll include them to allow viewing history if needed,
+      // or filter them out unless explicitly searching. Let's filter out deleted/inactive by default unless searched directly.
+      final isDeleted = data['isDeleted'] == true;
+      final isActive = data['isActive'] ?? true;
+
+      // If purely browsing, hide deleted/inactive. If searching, we might want to find them.
+      if (normalizedSearch.isEmpty && (isDeleted || !isActive)) {
+        return false;
+      }
 
       bool matchesRole = true;
 
@@ -224,6 +238,11 @@ class _ScreensInquiryListState extends State<ScreensInquiryList> {
         matchesRole = assignedToUid == currentUserUid || createdByUid == currentUserUid;
       }
 
+      if (!matchesRole) return false;
+
+      // -------------------------------------------------------------
+      // V2.0 ENTERPRISE SEARCH FIELDS
+      // -------------------------------------------------------------
       final inquiryCode = _getString(data, 'inquiryCode').isEmpty
           ? _getString(data, 'inquiryNumber').toLowerCase()
           : _getString(data, 'inquiryCode').toLowerCase();
@@ -238,7 +257,6 @@ class _ScreensInquiryListState extends State<ScreensInquiryList> {
           ? _getString(data, 'inquirySubject').toLowerCase()
           : _getString(data, 'subject').toLowerCase();
 
-      // Safe Fallbacks internally without mutating exact doc
       final contactName = _getString(data, 'contactName').isEmpty
           ? _getString(data, 'contactPerson').toLowerCase()
           : _getString(data, 'contactName').toLowerCase();
@@ -249,28 +267,56 @@ class _ScreensInquiryListState extends State<ScreensInquiryList> {
           : _getString(data, 'contactMobile').toLowerCase())
           : _getString(data, 'contactPhone').toLowerCase();
 
-      final projectName = _getString(data, 'projectName').toLowerCase();
+      final email = _getString(data, 'contactEmail').toLowerCase();
+      final city = _getString(data, 'customerPrimaryCity').toLowerCase();
       final source = _getString(data, 'source').toLowerCase();
-      final requiredProducts = _getString(data, 'requiredProducts').toLowerCase();
 
-      final status = _getString(data, 'status');
-      final priority = _getString(data, 'priority');
+      // Product Deep Search
+      bool productMatches = false;
+      final productsList = data['products'] as List? ?? [];
+      if (normalizedSearch.isNotEmpty && productsList.isNotEmpty) {
+        for (var p in productsList) {
+          if (p is Map) {
+            if (_getString(p as Map<String, dynamic>, 'name').toLowerCase().contains(normalizedSearch) ||
+                _getString(p as Map<String, dynamic>, 'sku').toLowerCase().contains(normalizedSearch) ||
+                _getString(p as Map<String, dynamic>, 'brand').toLowerCase().contains(normalizedSearch) ||
+                _getString(p as Map<String, dynamic>, 'model').toLowerCase().contains(normalizedSearch)) {
+              productMatches = true;
+              break;
+            }
+          }
+        }
+      }
+
+      // Searchable Tokens (V2.0)
+      bool tokenMatches = false;
+      if (normalizedSearch.isNotEmpty && data['searchableTokens'] is List) {
+        final tokens = List<String>.from(data['searchableTokens']);
+        if (tokens.any((t) => t.contains(normalizedSearch))) {
+          tokenMatches = true;
+        }
+      }
 
       final matchesSearch = normalizedSearch.isEmpty ||
+          tokenMatches ||
+          productMatches ||
           inquiryCode.contains(normalizedSearch) ||
           customerCode.contains(normalizedSearch) ||
           customerName.contains(normalizedSearch) ||
           subject.contains(normalizedSearch) ||
           contactName.contains(normalizedSearch) ||
           mobile.contains(normalizedSearch) ||
-          projectName.contains(normalizedSearch) ||
-          source.contains(normalizedSearch) ||
-          requiredProducts.contains(normalizedSearch);
+          email.contains(normalizedSearch) ||
+          city.contains(normalizedSearch) ||
+          source.contains(normalizedSearch);
 
-      final matchesStatus = _statusFilter == 'All' || status == _statusFilter;
-      final matchesPriority = _priorityFilter == 'All' || priority == _priorityFilter;
+      final status = _getString(data, 'status');
+      final priority = _getString(data, 'priority');
 
-      return matchesRole && matchesSearch && matchesStatus && matchesPriority;
+      final matchesStatus = _statusFilter == 'All' || status.toLowerCase() == _statusFilter.toLowerCase();
+      final matchesPriority = _priorityFilter == 'All' || priority.toLowerCase() == _priorityFilter.toLowerCase();
+
+      return matchesSearch && matchesStatus && matchesPriority;
     }).toList();
 
     filtered.sort((a, b) {
@@ -513,7 +559,9 @@ class _ScreensInquiryListState extends State<ScreensInquiryList> {
 
     final fallbackCustomerName = _getString(inquiryData, 'customerName');
 
-    // EXPLICIT QUOTATION CONVERSION CONSISTENCY FIX
+    // -------------------------------------------------------------
+    // ENTERPRISE V2.0 QUOTATION MAPPING
+    // -------------------------------------------------------------
     final Map<String, dynamic> comprehensiveSeed = {
       'id': doc.id,
       'inquiryId': doc.id,
@@ -529,12 +577,20 @@ class _ScreensInquiryListState extends State<ScreensInquiryList> {
       'email': _getString(inquiryData, 'contactEmail').isNotEmpty
           ? _getString(inquiryData, 'contactEmail')
           : (customerData['email'] ?? ''),
-      'address': customerData['address'] ?? customerData['billingAddress'] ?? '',
-      'state': customerData['state'] ?? '',
-      'gstNo': customerData['gstNo'] ?? customerData['gst'] ?? '',
+      'address': _getString(inquiryData, 'customerPrimaryAddress').isNotEmpty
+          ? _getString(inquiryData, 'customerPrimaryAddress')
+          : (customerData['address'] ?? customerData['billingAddress'] ?? ''),
+      'state': _getString(inquiryData, 'customerPrimaryState').isNotEmpty
+          ? _getString(inquiryData, 'customerPrimaryState')
+          : (customerData['state'] ?? ''),
+      'gstNo': _getString(inquiryData, 'customerGST').isNotEmpty
+          ? _getString(inquiryData, 'customerGST')
+          : (customerData['gstNo'] ?? customerData['gst'] ?? ''),
       'subject': _getString(inquiryData, 'subject'),
-      'notes': inquiryData['notes'] ?? inquiryData['description'] ?? '',
-      'location': _getString(inquiryData, 'location'),
+      'notes': inquiryData['notes'] ?? inquiryData['lastFollowUpNote'] ?? '',
+      'location': _getString(inquiryData, 'customerPrimaryCity').isNotEmpty
+          ? _getString(inquiryData, 'customerPrimaryCity')
+          : _getString(inquiryData, 'location'),
       'source': _getString(inquiryData, 'source'),
       'items': inquiryData['products'] ?? inquiryData['items'] ?? [],
     };
@@ -565,13 +621,13 @@ class _ScreensInquiryListState extends State<ScreensInquiryList> {
     );
   }
 
-  // --- HARD DELETE IMPLEMENTATION ---
+  // --- ENTERPRISE SOFT DELETE IMPLEMENTATION ---
   Future<void> _deleteInquiry(QueryDocumentSnapshot<Map<String, dynamic>> doc) async {
     bool isDeleting = false;
 
     final bool? confirmDelete = await showDialog<bool>(
       context: context,
-      barrierDismissible: false, // Prevents accidental closing
+      barrierDismissible: false,
       builder: (BuildContext dialogContext) {
         return StatefulBuilder(
           builder: (context, setState) {
@@ -585,7 +641,7 @@ class _ScreensInquiryListState extends State<ScreensInquiryList> {
                 ],
               ),
               content: const Text(
-                'Are you sure you want to permanently delete this inquiry?\n\nThis action cannot be undone.',
+                'Are you sure you want to delete this inquiry?\n\nIt will be moved to the recycle bin.',
                 style: TextStyle(height: 1.5, fontSize: 14),
               ),
               actions: [
@@ -599,8 +655,28 @@ class _ScreensInquiryListState extends State<ScreensInquiryList> {
                       : () async {
                     setState(() => isDeleting = true);
                     try {
-                      // Hard Delete: completely remove from Firestore
-                      await doc.reference.delete();
+                      final data = doc.data();
+                      final existingLog = List<dynamic>.from(data['activityLog'] ?? []);
+
+                      existingLog.add({
+                        'actionType': 'Delete',
+                        'module': 'Inquiry',
+                        'description': 'Inquiry soft deleted via UI.',
+                        'uid': _currentUser?.uid ?? '',
+                        'timestamp': FieldValue.serverTimestamp(),
+                        'auditVersion': 2,
+                        'mutationSource': 'ScreensInquiryList',
+                      });
+
+                      await doc.reference.update({
+                        'isDeleted': true,
+                        'isActive': false,
+                        'deletedAt': FieldValue.serverTimestamp(),
+                        'deletedBy': _currentUser?.uid ?? '',
+                        'activityLog': existingLog,
+                        'lastActivityType': 'Deleted',
+                      });
+
                       if (dialogContext.mounted) {
                         Navigator.of(dialogContext).pop(true);
                       }
@@ -804,7 +880,7 @@ class _ScreensInquiryListState extends State<ScreensInquiryList> {
                                 });
                               },
                               decoration: InputDecoration(
-                                hintText: 'Search customer, subject, no...',
+                                hintText: 'Search customer, subject, no, product...',
                                 prefixIcon: const Icon(Icons.search, size: 18),
                                 suffixIcon: _searchText.trim().isEmpty
                                     ? null
@@ -948,6 +1024,13 @@ class _ScreensInquiryListState extends State<ScreensInquiryList> {
 
                         final inquiry = Inquiry.fromSnapshot(doc);
 
+                        // V2.0 Lock States
+                        final isLocked = data['isLocked'] == true;
+                        final isArchived = data['isArchived'] == true;
+                        final isDeleted = data['isDeleted'] == true;
+                        final isActive = data['isActive'] ?? true;
+                        final isRestrictedAction = isLocked || isArchived || isDeleted || !isActive;
+
                         final priority = _getString(data, 'priority').isEmpty
                             ? 'Warm'
                             : _getString(data, 'priority');
@@ -965,7 +1048,6 @@ class _ScreensInquiryListState extends State<ScreensInquiryList> {
                             ? 'Unassigned'
                             : _getString(data, 'assignedToName');
 
-                        // Clean Conditional Rendering - Hides cleanly if missing entirely
                         final contactName = _getString(data, 'contactName').isEmpty
                             ? _getString(data, 'contactPerson')
                             : _getString(data, 'contactName');
@@ -977,22 +1059,45 @@ class _ScreensInquiryListState extends State<ScreensInquiryList> {
                             : _getString(data, 'contactPhone');
 
                         final email = _getString(data, 'contactEmail');
+                        final city = _getString(data, 'customerPrimaryCity');
 
                         final source = _getString(data, 'source');
                         final inquiryType = _getString(data, 'inquiryType');
-                        final location = _getString(data, 'location');
 
                         final createdAtTs = data['createdAt'];
                         final nextTs = data['nextFollowUpDate'];
                         final createdAt = createdAtTs is Timestamp ? createdAtTs.toDate() : null;
                         final nextFollowUpDate = nextTs is Timestamp ? nextTs.toDate() : null;
 
+                        // Overdue computation
+                        bool isOverdue = data['isOverdue'] == true;
+                        if (!isOverdue && nextFollowUpDate != null) {
+                          final now = DateTime.now();
+                          final today = DateTime(now.year, now.month, now.day);
+                          final compare = DateTime(nextFollowUpDate.year, nextFollowUpDate.month, nextFollowUpDate.day);
+                          if (compare.isBefore(today) && !['won', 'lost', 'not qualified'].contains(status.toLowerCase())) {
+                            isOverdue = true;
+                          }
+                        }
+
+                        // Product Summary Extraction
+                        final productsList = data['products'] as List? ?? [];
+                        int productCount = productsList.length;
+                        double totalQuantity = 0.0;
+                        String firstProductName = '';
+                        if (productCount > 0) {
+                          firstProductName = _getString(productsList[0] as Map<String,dynamic>, 'name');
+                          for (var p in productsList) {
+                            totalQuantity += double.tryParse(_getString(p as Map<String,dynamic>, 'quantity')) ?? 0.0;
+                          }
+                        }
+
                         return Container(
                           decoration: BoxDecoration(
-                            color: Colors.white,
+                            color: isDeleted || !isActive ? Colors.grey.shade50 : Colors.white,
                             borderRadius: BorderRadius.circular(14),
                             border: Border.all(
-                              color: Colors.grey.shade200,
+                              color: isDeleted || !isActive ? Colors.red.shade200 : Colors.grey.shade200,
                               width: 0.8,
                             ),
                           ),
@@ -1027,9 +1132,11 @@ class _ScreensInquiryListState extends State<ScreensInquiryList> {
                                             subject.isEmpty ? 'No Subject' : subject,
                                             maxLines: 1,
                                             overflow: TextOverflow.ellipsis,
-                                            style: const TextStyle(
+                                            style: TextStyle(
                                               fontSize: 14.5,
                                               fontWeight: FontWeight.w700,
+                                              decoration: isDeleted || !isActive ? TextDecoration.lineThrough : null,
+                                              color: isDeleted || !isActive ? Colors.grey.shade600 : Colors.black87,
                                             ),
                                           ),
                                           const SizedBox(height: 2),
@@ -1072,34 +1179,37 @@ class _ScreensInquiryListState extends State<ScreensInquiryList> {
                                           }
                                         },
                                         itemBuilder: (context) => [
-                                          const PopupMenuItem(
+                                          PopupMenuItem(
                                             value: 'open',
-                                            child: Row(
+                                            // Always allow opening to view, editing inside will be blocked by UI forms if restricted
+                                            child: const Row(
                                               children: [
                                                 Icon(Icons.edit_outlined, size: 18),
                                                 SizedBox(width: 8),
-                                                Text('Open Inquiry'),
+                                                Text('View / Edit Inquiry'),
                                               ],
                                             ),
                                           ),
-                                          const PopupMenuItem(
+                                          PopupMenuItem(
                                             value: 'quote',
+                                            enabled: !isRestrictedAction,
                                             child: Row(
                                               children: [
-                                                Icon(Icons.request_quote_outlined, size: 18),
-                                                SizedBox(width: 8),
-                                                Text('Create Quotation'),
+                                                Icon(Icons.request_quote_outlined, size: 18, color: isRestrictedAction ? Colors.grey : null),
+                                                const SizedBox(width: 8),
+                                                Text('Create Quotation', style: TextStyle(color: isRestrictedAction ? Colors.grey : null)),
                                               ],
                                             ),
                                           ),
                                           const PopupMenuDivider(),
                                           PopupMenuItem(
                                             value: 'delete',
+                                            enabled: !isRestrictedAction,
                                             child: Row(
                                               children: [
-                                                Icon(Icons.delete_outline, size: 18, color: Colors.red.shade700),
+                                                Icon(Icons.delete_outline, size: 18, color: isRestrictedAction ? Colors.grey : Colors.red.shade700),
                                                 const SizedBox(width: 8),
-                                                Text('Delete Inquiry', style: TextStyle(color: Colors.red.shade700)),
+                                                Text('Delete Inquiry', style: TextStyle(color: isRestrictedAction ? Colors.grey : Colors.red.shade700)),
                                               ],
                                             ),
                                           ),
@@ -1123,6 +1233,30 @@ class _ScreensInquiryListState extends State<ScreensInquiryList> {
                                       backgroundColor: _priorityBg(priority),
                                       textColor: _priorityFg(priority),
                                     ),
+                                    if (isOverdue)
+                                      _InfoChip(
+                                        label: 'Overdue',
+                                        backgroundColor: Colors.red.shade100,
+                                        textColor: Colors.red.shade900,
+                                      ),
+                                    if (isLocked)
+                                      _InfoChip(
+                                        label: 'Locked',
+                                        backgroundColor: Colors.grey.shade300,
+                                        textColor: Colors.grey.shade800,
+                                      ),
+                                    if (isArchived)
+                                      _InfoChip(
+                                        label: 'Archived',
+                                        backgroundColor: Colors.orange.shade100,
+                                        textColor: Colors.orange.shade900,
+                                      ),
+                                    if (isDeleted || !isActive)
+                                      _InfoChip(
+                                        label: 'Deleted',
+                                        backgroundColor: Colors.red.shade100,
+                                        textColor: Colors.red.shade900,
+                                      ),
                                     if (source.isNotEmpty)
                                       _InfoChip(
                                         label: source,
@@ -1134,12 +1268,6 @@ class _ScreensInquiryListState extends State<ScreensInquiryList> {
                                         label: inquiryType,
                                         backgroundColor: Colors.blue.shade50,
                                         textColor: Colors.blue.shade800,
-                                      ),
-                                    if (location.isNotEmpty)
-                                      _InfoChip(
-                                        label: location,
-                                        backgroundColor: Colors.grey.shade100,
-                                        textColor: Colors.grey.shade800,
                                       ),
                                   ],
                                 ),
@@ -1153,6 +1281,11 @@ class _ScreensInquiryListState extends State<ScreensInquiryList> {
                                       icon: Icons.tag_outlined,
                                       text: inquiryNumber,
                                     ),
+                                    if (city.isNotEmpty)
+                                      _InlineInfo(
+                                        icon: Icons.location_city_outlined,
+                                        text: city,
+                                      ),
                                     if (contactName.isNotEmpty)
                                       _InlineInfo(
                                         icon: Icons.person_outline,
@@ -1183,6 +1316,35 @@ class _ScreensInquiryListState extends State<ScreensInquiryList> {
                                       ),
                                   ],
                                 ),
+                                if (productCount > 0) ...[
+                                  const SizedBox(height: 10),
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                                    decoration: BoxDecoration(
+                                      color: Colors.blue.shade50.withValues(alpha: 0.5),
+                                      borderRadius: BorderRadius.circular(8),
+                                      border: Border.all(color: Colors.blue.shade100),
+                                    ),
+                                    child: Row(
+                                      children: [
+                                        Icon(Icons.inventory_2_outlined, size: 14, color: Colors.blue.shade800),
+                                        const SizedBox(width: 8),
+                                        Expanded(
+                                          child: Text(
+                                            '$productCount Product(s) | Qty: ${totalQuantity.toStringAsFixed(totalQuantity.truncateToDouble() == totalQuantity ? 0 : 2)} | $firstProductName${productCount > 1 ? '...' : ''}',
+                                            maxLines: 1,
+                                            overflow: TextOverflow.ellipsis,
+                                            style: TextStyle(
+                                              fontSize: 12,
+                                              fontWeight: FontWeight.w600,
+                                              color: Colors.blue.shade900,
+                                            ),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  )
+                                ],
                               ],
                             ),
                           ),

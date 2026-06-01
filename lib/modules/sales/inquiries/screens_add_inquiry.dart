@@ -1,9 +1,18 @@
+// FILE PATH: lib/modules/sales/inquiries/screens_add_inquiry.dart
+
 import 'dart:async';
+import 'dart:collection';
+import 'dart:convert';
 import 'dart:developer' as developer;
+import 'dart:io' show Platform;
+
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:crypto/crypto.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:intl/intl.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:QUIK/models/inquiry_model.dart';
 import 'package:QUIK/modules/crm/customers/screens_add_customer.dart';
@@ -36,12 +45,30 @@ class _ScreensAddInquiryState extends State<ScreensAddInquiry> {
   // Core Identifiers & DRY Snapshots
   String? _selectedCustomerId;
   String? _selectedContactId;
-  List<String> _additionalContactIds = [];
+  List<String> _additionalContactIds = <String>[];
   String? _assignedToUid;
+  String? _recordOwnerUid;
 
+  // Enterprise Customer Snapshots
   String _customerNameSnapshot = '';
+  String _customerCodeSnapshot = '';
   String _customerIndustrySnapshot = '';
-  String _customerCitySnapshot = '';
+  String _customerStageSnapshot = '';
+  String _customerPhoneSnapshot = '';
+  String _customerEmailSnapshot = '';
+  String _customerGSTSnapshot = '';
+  String _customerAssignedToUidSnapshot = '';
+  String _customerAssignedToNameSnapshot = '';
+
+  // Address Snapshots
+  List<Map<String, dynamic>> _customerAddresses = <Map<String, dynamic>>[];
+  String? _selectedAddressId;
+  Map<String, dynamic>? _selectedAddressData;
+  String _customerPrimaryAddressSnapshot = '';
+  String _customerPrimaryCitySnapshot = '';
+  String _customerPrimaryStateSnapshot = '';
+  String _customerPrimaryCountrySnapshot = '';
+  String _customerPrimaryPincodeSnapshot = '';
 
   // CRM Classification
   String? _selectedSource;
@@ -51,7 +78,7 @@ class _ScreensAddInquiryState extends State<ScreensAddInquiry> {
   // Follow-up & Dates
   DateTime? _nextFollowUpDate;
   String _followUpType = 'Call';
-  DateTime? _inquiryDate = DateTime.now();
+  DateTime? _inquiryDate;
   bool _isFollowUpManuallyEdited = false;
 
   // Controllers
@@ -61,12 +88,14 @@ class _ScreensAddInquiryState extends State<ScreensAddInquiry> {
   final TextEditingController _customerSearchController = TextEditingController();
 
   // Structured Products (ERP Grade Inventory Connection)
-  List<Map<String, dynamic>> _structuredProducts = [];
+  List<Map<String, dynamic>> _structuredProducts = <Map<String, dynamic>>[];
 
-  // State Flags
+  // State Flags & Concurrency
   bool _isSaving = false;
+  bool _isLockedForm = false;
   String? _formMessage;
-  final Map<String, bool> _sectionExpanded = {
+  String? _lockReason;
+  final Map<String, bool> _sectionExpanded = <String, bool>{
     'Customer & Contacts': true,
     'Inquiry Basics': true,
     'Products & Scope': true,
@@ -79,10 +108,13 @@ class _ScreensAddInquiryState extends State<ScreensAddInquiry> {
   Map<String, dynamic>? _assignedUserData;
   Map<String, dynamic>? _existingRawData;
 
+  // LRU Cache for Search
   Timer? _debounceTimer;
-  final Map<String, List<QueryDocumentSnapshot<Map<String, dynamic>>>>
-  _customerSearchCache = {};
-  List<DocumentSnapshot<Map<String, dynamic>>> _customerSuggestions = [];
+  Timer? _autosaveTimer;
+  int _customerSearchEpoch = 0;
+  final int _maxCacheSize = 50;
+  final LinkedHashMap<String, List<QueryDocumentSnapshot<Map<String, dynamic>>>> _customerSearchCache = LinkedHashMap<String, List<QueryDocumentSnapshot<Map<String, dynamic>>>>();
+  List<DocumentSnapshot<Map<String, dynamic>>> _customerSuggestions = <DocumentSnapshot<Map<String, dynamic>>>[];
 
   bool get _isEditing => widget.existingDoc != null;
 
@@ -111,20 +143,36 @@ class _ScreensAddInquiryState extends State<ScreensAddInquiry> {
   @override
   void initState() {
     super.initState();
-    _loadInitialData();
+    _inquiryDate = DateTime.now().toUtc(); // Timezone-safe initialization
+    _initializeForm();
   }
 
-  Future<void> _loadInitialData() async {
-    if (!_isEditing && !_isAdminOrManager) {
-      _assignedToUid = widget.currentUserUid;
+  Future<void> _initializeForm() async {
+    try {
+      if (!_isEditing) {
+        await _checkOfflineDraft();
+      }
+
+      if (!_isEditing && !_isAdminOrManager && _assignedToUid == null) {
+        _assignedToUid = widget.currentUserUid;
+      }
+      _hydrateFromInquiry();
+      await _loadExtraData();
+
+      // Auto-save listener
+      if (!_isEditing) {
+        _subjectController.addListener(_triggerAutosave);
+      }
+    } catch (e, st) {
+      _handleError('Failed to initialize module', e, st);
     }
-    _hydrateFromInquiry();
-    await _loadExtraData();
   }
 
   @override
   void dispose() {
     _debounceTimer?.cancel();
+    _autosaveTimer?.cancel();
+    _subjectController.removeListener(_triggerAutosave);
     _scrollController.dispose();
     _inquirySequenceController.dispose();
     _subjectController.dispose();
@@ -134,10 +182,123 @@ class _ScreensAddInquiryState extends State<ScreensAddInquiry> {
   }
 
   // ---------------------------------------------------------
-  // STRUCTURED ERROR HANDLING
+  // OFFLINE DRAFT RECOVERY SYSTEM (SharedPreferences)
+  // ---------------------------------------------------------
+  String get _draftKey => 'draft_inquiry_${widget.companyId}_${widget.currentUserUid}';
+
+  void _triggerAutosave() {
+    if (_autosaveTimer?.isActive ?? false) _autosaveTimer!.cancel();
+    _autosaveTimer = Timer(const Duration(seconds: 3), () async {
+      if (!_isEditing && mounted && !_isSaving) {
+        await _saveDraftToLocal();
+      }
+    });
+  }
+
+  Future<void> _saveDraftToLocal() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final draftPayload = <String, dynamic>{
+        'subject': _subjectController.text.trim(),
+        'customerId': _selectedCustomerId,
+        'customerNameSnapshot': _customerNameSnapshot,
+        'products': _structuredProducts,
+        'lastFollowUpNote': _lastFollowUpNoteController.text.trim(),
+        'savedAt': DateTime.now().toUtc().toIso8601String(),
+      };
+      await prefs.setString(_draftKey, jsonEncode(draftPayload));
+    } catch (e) {
+      developer.log('Draft autosave failed', error: e, name: 'InquiryModule');
+    }
+  }
+
+  Future<void> _checkOfflineDraft() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final draftJson = prefs.getString(_draftKey);
+      if (draftJson != null && draftJson.isNotEmpty) {
+        final draftData = jsonDecode(draftJson) as Map<String, dynamic>;
+        final savedAtStr = draftData['savedAt']?.toString();
+        if (savedAtStr != null) {
+          final savedAt = DateTime.parse(savedAtStr);
+          if (DateTime.now().toUtc().difference(savedAt).inDays < 7) {
+            // Valid draft found, show recovery prompt
+            if (mounted) {
+              _showDraftRecoveryDialog(draftData);
+            }
+          } else {
+            await prefs.remove(_draftKey); // Cleanup stale draft
+          }
+        }
+      }
+    } catch (e) {
+      developer.log('Draft recovery failed', error: e, name: 'InquiryModule');
+    }
+  }
+
+  void _showDraftRecoveryDialog(Map<String, dynamic> draftData) {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => AlertDialog(
+        title: const Text('Unsaved Draft Found'),
+        content: const Text('You have an unsaved inquiry draft. Would you like to restore it?'),
+        actions: [
+          TextButton(
+            onPressed: () async {
+              final prefs = await SharedPreferences.getInstance();
+              await prefs.remove(_draftKey);
+              if (mounted) Navigator.pop(context);
+            },
+            child: const Text('Discard'),
+          ),
+          FilledButton(
+            onPressed: () {
+              setState(() {
+                _subjectController.text = draftData['subject']?.toString() ?? '';
+                _lastFollowUpNoteController.text = draftData['lastFollowUpNote']?.toString() ?? '';
+                _selectedCustomerId = draftData['customerId']?.toString();
+                _customerNameSnapshot = draftData['customerNameSnapshot']?.toString() ?? '';
+                if (_customerNameSnapshot.isNotEmpty) {
+                  _customerSearchController.text = _customerNameSnapshot;
+                }
+                if (draftData['products'] != null) {
+                  _structuredProducts = List<Map<String, dynamic>>.from(draftData['products']);
+                }
+              });
+              if (_selectedCustomerId != null) {
+                _loadCustomerData(_selectedCustomerId);
+              }
+              Navigator.pop(context);
+            },
+            child: const Text('Restore Draft'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _clearDraft() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove(_draftKey);
+    } catch (e) {
+      developer.log('Draft clear failed', error: e, name: 'InquiryModule');
+    }
+  }
+
+  // ---------------------------------------------------------
+  // STRUCTURED ERROR HANDLING & LOGGING
   // ---------------------------------------------------------
   void _handleError(String contextMessage, Object error, [StackTrace? st]) {
-    developer.log('Error: $contextMessage', error: error, stackTrace: st, name: 'InquiryModule');
+    final traceId = DateTime.now().toUtc().millisecondsSinceEpoch.toString();
+    developer.log(
+      '[$traceId] ERROR: $contextMessage',
+      error: error,
+      stackTrace: st,
+      name: 'InquiryModule',
+      level: 1000,
+    );
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
@@ -145,12 +306,13 @@ class _ScreensAddInquiryState extends State<ScreensAddInquiry> {
           children: [
             const Icon(Icons.error_outline, color: Colors.white),
             const SizedBox(width: 8),
-            Expanded(child: Text('$contextMessage: ${error.toString().replaceAll("Exception: ", "")}')),
+            Expanded(child: Text('$contextMessage (Trace: $traceId)')),
           ],
         ),
         backgroundColor: Colors.redAccent.shade700,
         behavior: SnackBarBehavior.floating,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+        duration: const Duration(seconds: 5),
       ),
     );
   }
@@ -162,11 +324,42 @@ class _ScreensAddInquiryState extends State<ScreensAddInquiry> {
 
   void _showValidationMessage(String message) {
     _setFormMessage(message);
-    _scrollController.animateTo(0, duration: const Duration(milliseconds: 250), curve: Curves.easeOut);
+    if (_scrollController.hasClients) {
+      _scrollController.animateTo(0, duration: const Duration(milliseconds: 250), curve: Curves.easeOut);
+    }
   }
 
+  // ---------------------------------------------------------
+  // CACHE MANAGEMENT (LRU)
+  // ---------------------------------------------------------
+  void _updateSearchCache(String query, List<QueryDocumentSnapshot<Map<String, dynamic>>> results) {
+    if (_customerSearchCache.containsKey(query)) {
+      _customerSearchCache.remove(query);
+    }
+    _customerSearchCache[query] = results;
+    if (_customerSearchCache.length > _maxCacheSize) {
+      _customerSearchCache.remove(_customerSearchCache.keys.first);
+    }
+  }
+
+  // ---------------------------------------------------------
+  // DATA NORMALIZATION & FINGERPRINTING & TOKENIZATION
+  // ---------------------------------------------------------
   String _normalizeText(String value) {
     return value.toLowerCase().trim().replaceAll(RegExp(r'[^a-z0-9]+'), ' ');
+  }
+
+  List<String> _generateSearchTokens(String input) {
+    final normalized = _normalizeText(input);
+    if (normalized.isEmpty) return <String>[];
+    final words = normalized.split(' ').where((e) => e.isNotEmpty).toSet().toList();
+    final tokens = <String>{};
+    for (var word in words) {
+      for (int i = 1; i <= word.length; i++) {
+        tokens.add(word.substring(0, i));
+      }
+    }
+    return tokens.toList();
   }
 
   String _buildProductFingerprint() {
@@ -183,6 +376,16 @@ class _ScreensAddInquiryState extends State<ScreensAddInquiry> {
     return [subjectSearch, _buildProductFingerprint()].where((e) => e.isNotEmpty).join('|');
   }
 
+  String _generateChecksum(Map<String, dynamic> payload) {
+    try {
+      final normalizedStr = jsonEncode(payload);
+      final bytes = utf8.encode(normalizedStr);
+      return sha256.convert(bytes).toString(); // Stable SHA256 Checksum
+    } catch (_) {
+      return DateTime.now().toUtc().millisecondsSinceEpoch.toString();
+    }
+  }
+
   void _hydrateFromInquiry() {
     final iq = widget.existingInquiry;
     if (iq == null) return;
@@ -197,7 +400,7 @@ class _ScreensAddInquiryState extends State<ScreensAddInquiry> {
     if (iq.nextFollowUpDate != null) {
       _nextFollowUpDate = iq.nextFollowUpDate;
     }
-    _isFollowUpManuallyEdited = true; // Lock auto-calc on existing items
+    _isFollowUpManuallyEdited = true;
   }
 
   String? _firstNonEmptyString(List<dynamic> values) {
@@ -213,8 +416,24 @@ class _ScreensAddInquiryState extends State<ScreensAddInquiry> {
     if (widget.existingDoc == null) return;
     try {
       final existingSnap = await widget.existingDoc!.get();
-      final data = existingSnap.data() ?? {};
+      if (!existingSnap.exists) {
+        throw Exception("Inquiry record not found.");
+      }
+
+      final data = existingSnap.data() ?? <String, dynamic>{};
       _existingRawData = data;
+
+      // Soft Delete + Lock Protection Hardening
+      final isDeleted = data['isDeleted'] == true;
+      final isLocked = data['isLocked'] == true;
+      final isArchived = data['isArchived'] == true;
+      final isActive = data['isActive'] ?? true;
+
+      if (isDeleted || isLocked || isArchived || !isActive) {
+        _isLockedForm = true;
+        _lockReason = "This inquiry is ${isDeleted ? 'deleted' : isArchived ? 'archived' : isLocked ? 'locked' : 'inactive'} and cannot be edited.";
+        _setFormMessage(_lockReason);
+      }
 
       if (!mounted) return;
       setState(() {
@@ -224,9 +443,23 @@ class _ScreensAddInquiryState extends State<ScreensAddInquiry> {
           _additionalContactIds = List<String>.from(data['additionalContactIds']);
         }
 
+        _selectedAddressId = _firstNonEmptyString([data['addressId']]);
+
         _customerNameSnapshot = (data['customerName'] ?? '').toString();
+        _customerCodeSnapshot = (data['customerCode'] ?? '').toString();
         _customerIndustrySnapshot = (data['customerIndustry'] ?? '').toString();
-        _customerCitySnapshot = (data['customerCity'] ?? '').toString();
+        _customerStageSnapshot = (data['customerStage'] ?? '').toString();
+        _customerPhoneSnapshot = (data['customerPhone'] ?? '').toString();
+        _customerEmailSnapshot = (data['customerEmail'] ?? '').toString();
+        _customerGSTSnapshot = (data['customerGST'] ?? '').toString();
+        _customerAssignedToUidSnapshot = (data['customerAssignedToUid'] ?? '').toString();
+        _customerAssignedToNameSnapshot = (data['customerAssignedToName'] ?? '').toString();
+
+        _customerPrimaryAddressSnapshot = (data['customerPrimaryAddress'] ?? '').toString();
+        _customerPrimaryCitySnapshot = (data['customerPrimaryCity'] ?? data['customerCity'] ?? '').toString();
+        _customerPrimaryStateSnapshot = (data['customerPrimaryState'] ?? '').toString();
+        _customerPrimaryCountrySnapshot = (data['customerPrimaryCountry'] ?? '').toString();
+        _customerPrimaryPincodeSnapshot = (data['customerPrimaryPincode'] ?? '').toString();
 
         String rawNo = _firstNonEmptyString([data['inquiryNumber']]) ?? '';
         if (rawNo.isNotEmpty) {
@@ -246,33 +479,34 @@ class _ScreensAddInquiryState extends State<ScreensAddInquiry> {
         _selectedPriority = _firstNonEmptyString([data['priority'], _selectedPriority]) ?? 'Warm';
         _followUpType = _firstNonEmptyString([data['followUpType'], 'Call']) ?? 'Call';
         _assignedToUid = _firstNonEmptyString([data['assignedToUid'], _assignedToUid]);
+        _recordOwnerUid = _firstNonEmptyString([data['recordOwnerUid'], _recordOwnerUid]);
 
         if (data['products'] != null && (data['products'] as List).isNotEmpty) {
           _structuredProducts = List<Map<String, dynamic>>.from(data['products']);
         } else if (data['requiredProducts'] != null && data['requiredProducts'].toString().isNotEmpty) {
-          _structuredProducts = [
-            {
+          _structuredProducts = <Map<String, dynamic>>[
+            <String, dynamic>{
               'productId': 'legacy',
               'name': data['requiredProducts'],
               'quantity': data['quantityScope'] ?? '1',
               'price': 0.0,
               'unit': 'Nos',
               'sku': '',
+              'productNature': 'General',
             },
           ];
         }
 
         if (data['inquiryDate'] != null && data['inquiryDate'] is Timestamp) {
-          _inquiryDate = (data['inquiryDate'] as Timestamp).toDate();
+          _inquiryDate = (data['inquiryDate'] as Timestamp).toDate().toUtc();
         } else if (data['createdAt'] != null && data['createdAt'] is Timestamp) {
-          _inquiryDate = (data['createdAt'] as Timestamp).toDate();
+          _inquiryDate = (data['createdAt'] as Timestamp).toDate().toUtc();
         }
 
         if (data['nextFollowUpDate'] != null && data['nextFollowUpDate'] is Timestamp) {
-          _nextFollowUpDate = (data['nextFollowUpDate'] as Timestamp).toDate();
+          _nextFollowUpDate = (data['nextFollowUpDate'] as Timestamp).toDate().toUtc();
         }
 
-        // Mark as manually edited because it's an existing record (prevents auto-overwrite)
         _isFollowUpManuallyEdited = true;
       });
 
@@ -293,49 +527,58 @@ class _ScreensAddInquiryState extends State<ScreensAddInquiry> {
   }
 
   // ---------------------------------------------------------
-  // ENTERPRISE DEBOUNCED SEARCH + SYNCHRONOUS AUTOCOMPLETE
+  // ENTERPRISE INDEXED SEARCH + SYNCHRONOUS AUTOCOMPLETE
   // ---------------------------------------------------------
   void _triggerAsyncCustomerSearch(String query) {
     final q = query.toLowerCase().trim();
     if (_customerSearchCache.containsKey(q)) return;
 
     if (_debounceTimer?.isActive ?? false) _debounceTimer!.cancel();
+
+    final currentEpoch = ++_customerSearchEpoch;
+
     _debounceTimer = Timer(const Duration(milliseconds: 350), () async {
       try {
-        Query<Map<String, dynamic>> baseQuery = _companyCustomersRef;
+        Query<Map<String, dynamic>> baseQuery = _companyCustomersRef
+            .where('isActive', isEqualTo: true)
+            .where('isDeleted', isEqualTo: false);
+
         QuerySnapshot<Map<String, dynamic>> snap;
 
         if (q.isEmpty) {
           snap = await baseQuery.limit(30).get();
         } else {
-          snap = await baseQuery.limit(100).get();
+          // Enterprise scalable search approach
+          snap = await baseQuery
+              .where('searchKeywords', arrayContains: q)
+              .limit(30)
+              .get();
 
-          final filteredDocs = snap.docs.where((doc) {
-            final data = doc.data();
-            final isActive = data['isActive'] == true;
-            final name = (data['nameLowercase'] ?? data['companyName'] ?? data['name'] ?? '').toString().toLowerCase();
-            final phone = (data['phone'] ?? '').toString();
-            return isActive && (name.contains(q) || phone.contains(q));
-          }).toList();
-
-          _customerSearchCache[q] = filteredDocs;
-
-          if (mounted) {
-            setState(() {
-              _customerSuggestions = _filterCustomersByRole(filteredDocs).toList();
-            });
+          if (snap.docs.isEmpty) {
+            // Fallback prefix search
+            snap = await baseQuery
+                .where('companyNameLower', isGreaterThanOrEqualTo: q)
+                .where('companyNameLower', isLessThanOrEqualTo: q + '\uf8ff')
+                .limit(30)
+                .get();
           }
-          return;
         }
 
-        _customerSearchCache[q] = snap.docs;
+        // Stale response protection
+        if (currentEpoch != _customerSearchEpoch) return;
+
+        final filteredDocs = _filterCustomersBySecurityAndRole(snap.docs).toList();
+        _updateSearchCache(q, filteredDocs);
+
         if (mounted) {
           setState(() {
-            _customerSuggestions = _filterCustomersByRole(snap.docs).toList();
+            _customerSuggestions = filteredDocs;
           });
         }
       } catch (e, st) {
-        _handleError('Customer Search Failed', e, st);
+        if (currentEpoch == _customerSearchEpoch) {
+          _handleError('Customer Search Failed', e, st);
+        }
       }
     });
   }
@@ -345,21 +588,36 @@ class _ScreensAddInquiryState extends State<ScreensAddInquiry> {
     _triggerAsyncCustomerSearch(q);
 
     if (_customerSearchCache.containsKey(q)) {
-      return _filterCustomersByRole(_customerSearchCache[q]!);
+      return _customerSearchCache[q]!;
     }
     return _customerSuggestions;
   }
 
-  Iterable<DocumentSnapshot<Map<String, dynamic>>> _filterCustomersByRole(
+  Iterable<QueryDocumentSnapshot<Map<String, dynamic>>> _filterCustomersBySecurityAndRole(
       List<QueryDocumentSnapshot<Map<String, dynamic>>> docs,
       ) {
-    if (_isAdminOrManager) return docs;
+    final normalizedRole = widget.currentUserRole.trim().toLowerCase();
     return docs.where((d) {
       final data = d.data();
+      if (data['isLocked'] == true) return false;
+      if (data['isActive'] == false) return false;
+      if (data['isDeleted'] == true) return false;
+
+      if (_isAdminOrManager) return true;
+
+      final visibleToRoles = List<dynamic>.from(data['visibleToRoles'] ?? <dynamic>[])
+          .map((e) => e.toString().trim().toLowerCase())
+          .toList();
+
+      if (visibleToRoles.isNotEmpty && !visibleToRoles.contains(normalizedRole)) {
+        return false;
+      }
+
       return data['assignedToUid'] == widget.currentUserUid ||
+          data['recordOwnerUid'] == widget.currentUserUid ||
           data['createdByUid'] == widget.currentUserUid ||
           data['createdBy'] == widget.currentUserUid;
-    }).toList();
+    });
   }
 
   Future<void> _loadCustomerData(String? customerId) async {
@@ -371,14 +629,57 @@ class _ScreensAddInquiryState extends State<ScreensAddInquiry> {
         if (mounted) {
           setState(() {
             _customerNameSnapshot = (_selectedCustomerData?['companyName'] ?? _selectedCustomerData?['name'] ?? '').toString();
+            _customerCodeSnapshot = (_selectedCustomerData?['customerCode'] ?? '').toString();
             _customerIndustrySnapshot = (_selectedCustomerData?['industry'] ?? '').toString();
-            _customerCitySnapshot = (_selectedCustomerData?['city'] ?? '').toString();
+            _customerStageSnapshot = (_selectedCustomerData?['customerStage'] ?? '').toString();
+            _customerPhoneSnapshot = (_selectedCustomerData?['phoneNormalized'] ?? _selectedCustomerData?['phone'] ?? '').toString();
+            _customerEmailSnapshot = (_selectedCustomerData?['emailNormalized'] ?? _selectedCustomerData?['email'] ?? '').toString();
+            _customerGSTSnapshot = (_selectedCustomerData?['gst'] ?? '').toString();
+            _customerAssignedToUidSnapshot = (_selectedCustomerData?['assignedToUid'] ?? '').toString();
+            _customerAssignedToNameSnapshot = (_selectedCustomerData?['assignedToName'] ?? '').toString();
+
+            // Extract addresses safely
+            _customerAddresses = <Map<String, dynamic>>[];
+            if (_selectedCustomerData?['addresses'] != null) {
+              _customerAddresses = List<Map<String, dynamic>>.from(_selectedCustomerData!['addresses']);
+            }
+
+            // Null-safe address verification
+            if (_selectedAddressId != null) {
+              final exists = _customerAddresses.any((a) => a['id'] == _selectedAddressId);
+              if (!exists) {
+                _selectedAddressId = null;
+                _selectedAddressData = null;
+              }
+            }
+
+            // Auto-select primary or billing address if none selected
+            if (_customerAddresses.isNotEmpty && _selectedAddressId == null) {
+              final primaryBillingMatches = _customerAddresses.where((a) => a['isBillingAddress'] == true && a['isPrimary'] == true);
+              final primaryMatches = _customerAddresses.where((a) => a['isPrimary'] == true);
+
+              _selectedAddressData = primaryBillingMatches.isNotEmpty
+                  ? primaryBillingMatches.first
+                  : (primaryMatches.isNotEmpty ? primaryMatches.first : _customerAddresses.first);
+
+              _selectedAddressId = _selectedAddressData?['id'];
+              _updateAddressSnapshots(_selectedAddressData);
+            }
           });
         }
       }
     } catch (e, st) {
       _handleError('Failed to load customer data', e, st);
     }
+  }
+
+  void _updateAddressSnapshots(Map<String, dynamic>? address) {
+    if (address == null) return;
+    _customerPrimaryAddressSnapshot = (address['combinedAddress'] ?? address['address'] ?? '').toString();
+    _customerPrimaryCitySnapshot = (address['city'] ?? '').toString();
+    _customerPrimaryStateSnapshot = (address['state'] ?? '').toString();
+    _customerPrimaryCountrySnapshot = (address['country'] ?? '').toString();
+    _customerPrimaryPincodeSnapshot = (address['pincode'] ?? '').toString();
   }
 
   Future<void> _loadContactData(String customerId, String contactId) async {
@@ -397,16 +698,21 @@ class _ScreensAddInquiryState extends State<ScreensAddInquiry> {
   }
 
   Future<void> _loadAssignedUserData(String userId) async {
-    final doc = await _companyUsersRef.doc(userId).get();
-    _assignedUserData = doc.data();
+    try {
+      final doc = await _companyUsersRef.doc(userId).get();
+      _assignedUserData = doc.data();
+    } catch (e) {
+      developer.log('User load error (non-fatal)', error: e, name: 'InquiryModule');
+    }
   }
 
   // ---------------------------------------------------------
   // FINANCIAL YEAR CALCULATION
   // ---------------------------------------------------------
   String _getFinancialYear(DateTime date) {
-    int year = date.year % 100;
-    if (date.month >= 4) {
+    final localDate = date.toLocal(); // FY based on local company timezone typically
+    int year = localDate.year % 100;
+    if (localDate.month >= 4) {
       return '$year-${year + 1}';
     } else {
       return '${year - 1}-$year';
@@ -414,6 +720,11 @@ class _ScreensAddInquiryState extends State<ScreensAddInquiry> {
   }
 
   bool _validateForm() {
+    if (_isLockedForm) {
+      _showValidationMessage(_lockReason ?? 'Form is locked.');
+      return false;
+    }
+
     _setFormMessage(null);
 
     if (!_formKey.currentState!.validate()) {
@@ -451,18 +762,20 @@ class _ScreensAddInquiryState extends State<ScreensAddInquiry> {
     final assignedTo = _isAdminOrManager ? (_assignedToUid ?? widget.currentUserUid).trim() : widget.currentUserUid;
     await _loadAssignedUserData(assignedTo);
 
-    final contactData = _selectedContactData ?? {};
-    final assignedUserData = _assignedUserData ?? {};
+    final contactData = _selectedContactData ?? <String, dynamic>{};
+    final assignedUserData = _assignedUserData ?? <String, dynamic>{};
 
-    // Standardize Flat Contact Extraction
+    // Standardize Flat Contact Extraction (Enterprise fallback)
     final contactName = (contactData['name'] ?? contactData['contactName'] ?? '').toString().trim();
-    final contactPhone = (contactData['mobile'] ?? contactData['phone'] ?? contactData['contactPhone'] ?? '').toString().trim();
-    final contactEmail = (contactData['email'] ?? contactData['contactEmail'] ?? '').toString().trim();
+    final contactPhone = (contactData['phoneNormalized'] ?? contactData['phone'] ?? contactData['mobile'] ?? '').toString().trim();
+    final contactEmail = (contactData['emailNormalized'] ?? contactData['email'] ?? '').toString().trim();
+    final contactDesignation = (contactData['designation'] ?? '').toString().trim();
+    final contactDepartment = (contactData['department'] ?? '').toString().trim();
 
     final assignedToName = (assignedUserData['name'] ?? assignedUserData['fullName'] ?? '').toString().trim();
     final assignedToRole = (assignedUserData['role'] ?? '').toString().trim();
 
-    final now = DateTime.now();
+    final now = DateTime.now().toUtc();
     bool isOverdue = false;
     if (_nextFollowUpDate != null) {
       final today = DateTime(now.year, now.month, now.day);
@@ -475,32 +788,54 @@ class _ScreensAddInquiryState extends State<ScreensAddInquiry> {
     final requirementFingerprint = _buildRequirementFingerprint(subjectSearch);
     final uniqueKey = '${_selectedCustomerId}_${requirementFingerprint.replaceAll(RegExp(r'[^a-z0-9]'), '_')}';
 
-    final searchCache = '${_customerNameSnapshot.toLowerCase()} ${_customerIndustrySnapshot.toLowerCase()} ${_customerCitySnapshot.toLowerCase()} $subjectSearch'.trim();
+    final searchCache = '${_customerNameSnapshot.toLowerCase()} ${_customerIndustrySnapshot.toLowerCase()} ${_customerPrimaryCitySnapshot.toLowerCase()} $subjectSearch'.trim();
+    final searchableTokens = _generateSearchTokens(searchCache);
 
     double totalQuantity = _structuredProducts.fold<double>(
       0.0,
           (runningTotal, item) => runningTotal + (double.tryParse(item['quantity'].toString()) ?? 0.0),
     );
 
-    return <String, dynamic>{
+    final payload = <String, dynamic>{
+      'schemaVersion': '2.0.0',
+      'payloadVersion': 2,
+
       'inquiryDate': _inquiryDate != null ? Timestamp.fromDate(_inquiryDate!) : FieldValue.serverTimestamp(),
       'subject': subjectStr,
       'subjectSearch': subjectSearch,
+      'searchableTokens': searchableTokens,
       'customerSearchCache': searchCache,
       'uniqueKey': uniqueKey,
       'requirementFingerprint': requirementFingerprint,
       'productFingerprint': _buildProductFingerprint(),
 
+      // Enterprise Snapshots
       'customerId': _selectedCustomerId,
       'customerName': _customerNameSnapshot,
+      'customerCode': _customerCodeSnapshot,
       'customerIndustry': _customerIndustrySnapshot,
-      'customerCity': _customerCitySnapshot,
+      'customerStage': _customerStageSnapshot,
+      'customerPhone': _customerPhoneSnapshot,
+      'customerEmail': _customerEmailSnapshot,
+      'customerGST': _customerGSTSnapshot,
+      'customerAssignedToUid': _customerAssignedToUidSnapshot,
+      'customerAssignedToName': _customerAssignedToNameSnapshot,
 
-      // Enforced Exact Contact Consistency Flat fields
+      // Address Snapshots
+      'addressId': _selectedAddressId ?? '',
+      'customerPrimaryAddress': _customerPrimaryAddressSnapshot,
+      'customerPrimaryCity': _customerPrimaryCitySnapshot,
+      'customerPrimaryState': _customerPrimaryStateSnapshot,
+      'customerPrimaryCountry': _customerPrimaryCountrySnapshot,
+      'customerPrimaryPincode': _customerPrimaryPincodeSnapshot,
+
+      // Contact Consistency Flat fields
       'contactId': _selectedContactId ?? '',
       'contactName': contactName,
       'contactPhone': contactPhone,
       'contactEmail': contactEmail,
+      'contactDesignation': contactDesignation,
+      'contactDepartment': contactDepartment,
       'additionalContactIds': _additionalContactIds,
 
       'source': (_selectedSource ?? '').trim(),
@@ -508,27 +843,69 @@ class _ScreensAddInquiryState extends State<ScreensAddInquiry> {
       'products': _structuredProducts,
       'quantityScope': totalQuantity.toString(),
       'totalQuantity': totalQuantity,
-      'expectedValue': 0.0, // Safely defaulted to 0 for backend consistency
+      'expectedValue': 0.0,
       'priority': _selectedPriority.trim(),
       'status': 'Open',
       'followUpType': _followUpType,
       'nextFollowUpDate': _nextFollowUpDate == null ? null : Timestamp.fromDate(_nextFollowUpDate!),
       'isOverdue': isOverdue,
       'lastFollowUpNote': _lastFollowUpNoteController.text.trim(),
+
+      // Enterprise Security Role Models
       'assignedToUid': assignedTo,
       'assignedToName': assignedToName,
       'assignedToRole': assignedToRole,
-      'recordOwnerUid': assignedTo,
+      'recordOwnerUid': _recordOwnerUid ?? assignedTo,
       'updatedBy': widget.currentUserUid,
       'updatedAt': FieldValue.serverTimestamp(),
       'lastActivityDate': FieldValue.serverTimestamp(),
       'lastActivityBy': widget.currentUserUid,
+    };
+
+    payload['auditChecksum'] = _generateChecksum(payload);
+    return payload;
+  }
+
+  // ---------------------------------------------------------
+  // ENTERPRISE AUDIT DIFF ENGINE
+  // ---------------------------------------------------------
+  Map<String, dynamic> _generateAuditDiff(Map<String, dynamic> oldData, Map<String, dynamic> newData) {
+    Map<String, dynamic> prev = <String, dynamic>{};
+    Map<String, dynamic> curr = <String, dynamic>{};
+    List<String> changedFields = <String>[];
+
+    const keysToTrack = ['subject', 'priority', 'status', 'followUpType', 'nextFollowUpDate', 'assignedToUid', 'totalQuantity', 'addressId'];
+
+    for (var key in keysToTrack) {
+      var oldVal = oldData[key]?.toString() ?? '';
+      var newVal = newData[key]?.toString() ?? '';
+      if (oldVal != newVal) {
+        prev[key] = oldData[key];
+        curr[key] = newData[key];
+        changedFields.add(key);
+      }
+    }
+
+    // Product tracking check
+    final oldProd = oldData['products'] as List? ?? <dynamic>[];
+    final newProd = newData['products'] as List? ?? <dynamic>[];
+    if (oldProd.length != newProd.length) {
+      changedFields.add('products');
+      prev['products_count'] = oldProd.length;
+      curr['products_count'] = newProd.length;
+    }
+
+    return <String, dynamic>{
+      'previousValues': prev,
+      'newValues': curr,
+      'changedFields': changedFields,
     };
   }
 
   Future<void> _executeSave(Map<String, dynamic> payload) async {
     int attempts = 0;
     bool success = false;
+    final requestId = DateTime.now().toUtc().millisecondsSinceEpoch.toString();
 
     while (attempts < 2 && !success) {
       attempts++;
@@ -536,7 +913,7 @@ class _ScreensAddInquiryState extends State<ScreensAddInquiry> {
         await FirebaseFirestore.instance.runTransaction((transaction) async {
 
           String finalInquiryNumber;
-          final dateToUse = _inquiryDate ?? DateTime.now();
+          final dateToUse = _inquiryDate ?? DateTime.now().toUtc();
           final fy = _getFinancialYear(dateToUse);
           String manualSequence = _inquirySequenceController.text.trim();
 
@@ -552,7 +929,7 @@ class _ScreensAddInquiryState extends State<ScreensAddInquiry> {
             String formattedSequence = currentSeq.toString().padLeft(3, '0');
             finalInquiryNumber = 'INQ/$formattedSequence/$fy';
 
-            transaction.set(counterRef, {'sequence': currentSeq}, SetOptions(merge: true));
+            transaction.set(counterRef, <String, dynamic>{'sequence': currentSeq}, SetOptions(merge: true));
           } else {
             int? parsedSeq = int.tryParse(manualSequence);
             if (parsedSeq != null) {
@@ -570,20 +947,51 @@ class _ScreensAddInquiryState extends State<ScreensAddInquiry> {
             final snapshot = await transaction.get(docRef);
 
             if (!snapshot.exists) throw Exception("Inquiry document no longer exists.");
-            if (snapshot.data()?['isActive'] == false) throw Exception("Cannot edit inactive inquiry.");
+            final data = snapshot.data() ?? <String, dynamic>{};
 
-            final existingLog = List<dynamic>.from(snapshot.data()?['activityLog'] ?? []);
-
-            String actionDesc = 'Inquiry updated.';
-            if (_lastFollowUpNoteController.text.isNotEmpty && _lastFollowUpNoteController.text != _existingRawData?['lastFollowUpNote']) {
-              actionDesc = 'Added follow-up: ${_lastFollowUpNoteController.text}';
+            if (data['isActive'] == false || data['isDeleted'] == true || data['isLocked'] == true) {
+              throw Exception("Cannot edit locked or inactive inquiry.");
             }
 
-            existingLog.add({
-              'action': 'Updated',
+            // Optimistic Concurrency Protection
+            if (data['updatedAt'] != null && _existingRawData?['updatedAt'] != null) {
+              final remoteTime = (data['updatedAt'] as Timestamp).millisecondsSinceEpoch;
+              final localTime = (_existingRawData!['updatedAt'] as Timestamp).millisecondsSinceEpoch;
+              if (remoteTime > localTime) {
+                throw Exception("Document was modified by another user. Please refresh and try again.");
+              }
+            }
+
+            final rawLog = data['activityLog'] as List<dynamic>? ?? <dynamic>[];
+            final List<Map<String, dynamic>> existingLog = rawLog.map((e) => Map<String, dynamic>.from(e as Map)).toList();
+
+            final auditDiff = _generateAuditDiff(data, payload);
+            List<String> changedFields = List<String>.from(auditDiff['changedFields'] as List<dynamic>);
+
+            String actionDesc = 'Inquiry updated.';
+            if (changedFields.isNotEmpty) {
+              actionDesc = 'Updated fields: ${changedFields.join(', ')}';
+            }
+            if (_lastFollowUpNoteController.text.isNotEmpty && _lastFollowUpNoteController.text != data['lastFollowUpNote']) {
+              actionDesc = 'Added follow-up note. $actionDesc';
+            }
+
+            // Enterprise Activity Log with Web-Safe Timestamp
+            existingLog.add(<String, dynamic>{
+              'actionType': 'Update',
+              'module': 'Inquiry',
               'description': actionDesc,
-              'by': widget.currentUserUid,
+              'changedFields': changedFields,
+              'previousValues': auditDiff['previousValues'],
+              'newValues': auditDiff['newValues'],
+              'uid': widget.currentUserUid,
+              'role': widget.currentUserRole,
               'timestamp': Timestamp.now(),
+              'auditVersion': 2,
+              'deviceType': kIsWeb ? 'Web' : Platform.operatingSystem,
+              'platform': kIsWeb ? 'Web' : 'App',
+              'mutationSource': 'ScreensAddInquiry',
+              'requestId': requestId,
             });
 
             payload['activityLog'] = existingLog;
@@ -594,20 +1002,32 @@ class _ScreensAddInquiryState extends State<ScreensAddInquiry> {
             final docRef = _companyInquiriesRef.doc();
 
             payload['lastActivityType'] = 'Created';
-            payload['activityLog'] = [
-              {
-                'action': 'Created',
+            payload['activityLog'] = <Map<String, dynamic>>[
+              <String, dynamic>{
+                'actionType': 'Create',
+                'module': 'Inquiry',
                 'description': 'Inquiry created.',
-                'by': widget.currentUserUid,
-                'timestamp': Timestamp.now(),
+                'changedFields': <String>[],
+                'previousValues': <String, dynamic>{},
+                'newValues': <String, dynamic>{},
+                'uid': widget.currentUserUid,
+                'role': widget.currentUserRole,
+                'timestamp': Timestamp.now(), // CRITICAL FIX for Web
+                'auditVersion': 2,
+                'deviceType': kIsWeb ? 'Web' : Platform.operatingSystem,
+                'platform': kIsWeb ? 'Web' : 'App',
+                'mutationSource': 'ScreensAddInquiry',
+                'requestId': requestId,
               },
             ];
 
-            payload.addAll({
+            payload.addAll(<String, dynamic>{
               'companyId': widget.companyId,
+              'createdByUid': widget.currentUserUid,
               'createdBy': widget.currentUserUid,
               'createdAt': FieldValue.serverTimestamp(),
               'isActive': true,
+              'isDeleted': false,
             });
 
             transaction.set(docRef, payload);
@@ -615,14 +1035,14 @@ class _ScreensAddInquiryState extends State<ScreensAddInquiry> {
         });
         success = true;
       } catch (e, st) {
-        if (e.toString().contains('Duplicate') || e.toString().contains('inactive')) {
+        if (e.toString().contains('Duplicate') || e.toString().contains('inactive') || e.toString().contains('modified')) {
           rethrow;
         }
         if (attempts >= 2) {
           _handleError('Transaction Save Failed', e, st);
           rethrow;
         }
-        await Future.delayed(const Duration(milliseconds: 400));
+        await Future.delayed(const Duration(milliseconds: 500));
       }
     }
   }
@@ -641,7 +1061,7 @@ class _ScreensAddInquiryState extends State<ScreensAddInquiry> {
     final duplicateExists = duplicateSnap.docs.any((doc) {
       if (_isEditing && doc.id == widget.existingDoc?.id) return false;
       final data = doc.data();
-      return data['isActive'] != false && (data['status'] ?? '') == 'Open';
+      return data['isActive'] != false && data['isDeleted'] != true && (data['status'] ?? '') == 'Open';
     });
 
     if (duplicateExists) {
@@ -650,7 +1070,7 @@ class _ScreensAddInquiryState extends State<ScreensAddInquiry> {
   }
 
   Future<void> _saveInquiry({bool createQuote = false}) async {
-    if (_isSaving) return;
+    if (_isSaving || _isLockedForm) return;
     FocusScope.of(context).unfocus();
 
     if (!_validateForm()) return;
@@ -661,6 +1081,8 @@ class _ScreensAddInquiryState extends State<ScreensAddInquiry> {
       final payload = await _buildPayload();
       await _ensureNotDuplicate(payload);
       await _executeSave(payload);
+
+      await _clearDraft(); // Clean draft on success
 
       if (!mounted) return;
 
@@ -761,35 +1183,44 @@ class _ScreensAddInquiryState extends State<ScreensAddInquiry> {
   Widget _buildFormMessageBanner() {
     if (_formMessage == null || _formMessage!.trim().isEmpty) return const SizedBox.shrink();
 
+    final isError = _isLockedForm;
+
     return Container(
       width: double.infinity,
       margin: const EdgeInsets.only(bottom: 16),
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: const Color(0xFFFFF7ED),
+        color: isError ? const Color(0xFFFEF2F2) : const Color(0xFFFFF7ED),
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: const Color(0xFFFDBA74)),
+        border: Border.all(color: isError ? const Color(0xFFFCA5A5) : const Color(0xFFFDBA74)),
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Padding(
-            padding: EdgeInsets.only(top: 1),
-            child: Icon(Icons.info_outline, color: Color(0xFF9A3412)),
+          Padding(
+            padding: const EdgeInsets.only(top: 1),
+            child: Icon(
+                isError ? Icons.lock_outline : Icons.info_outline,
+                color: isError ? const Color(0xFFB91C1C) : const Color(0xFF9A3412)
+            ),
           ),
           const SizedBox(width: 10),
           Expanded(
             child: Text(
               _formMessage!,
-              style: const TextStyle(color: Color(0xFF9A3412), fontWeight: FontWeight.w600),
+              style: TextStyle(
+                  color: isError ? const Color(0xFFB91C1C) : const Color(0xFF9A3412),
+                  fontWeight: FontWeight.w600
+              ),
             ),
           ),
-          IconButton(
-            tooltip: 'Dismiss',
-            visualDensity: VisualDensity.compact,
-            onPressed: () => _setFormMessage(null),
-            icon: const Icon(Icons.close, size: 18, color: Color(0xFF9A3412)),
-          ),
+          if (!isError)
+            IconButton(
+              tooltip: 'Dismiss',
+              visualDensity: VisualDensity.compact,
+              onPressed: () => _setFormMessage(null),
+              icon: const Icon(Icons.close, size: 18, color: Color(0xFF9A3412)),
+            ),
         ],
       ),
     );
@@ -803,7 +1234,7 @@ class _ScreensAddInquiryState extends State<ScreensAddInquiry> {
         color: Colors.white,
         borderRadius: BorderRadius.circular(16),
         border: Border.all(color: const Color(0xFFE2E8F0)),
-        boxShadow: const [BoxShadow(color: Color(0x05000000), blurRadius: 10, offset: Offset(0, 4))],
+        boxShadow: <BoxShadow>[BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10, offset: const Offset(0, -4))],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -860,7 +1291,7 @@ class _ScreensAddInquiryState extends State<ScreensAddInquiry> {
             final customerField = Autocomplete<DocumentSnapshot<Map<String, dynamic>>>(
               initialValue: TextEditingValue(text: _customerNameSnapshot),
               displayStringForOption: (doc) {
-                final data = doc.data() ?? {};
+                final data = doc.data() ?? <String, dynamic>{};
                 return (data['companyName'] ?? data['name'] ?? 'Unknown').toString();
               },
               optionsBuilder: (TextEditingValue textEditingValue) {
@@ -870,12 +1301,15 @@ class _ScreensAddInquiryState extends State<ScreensAddInquiry> {
                 setState(() {
                   _selectedCustomerId = doc.id;
                   _selectedContactId = null;
-                  _selectedContactData = null; // Clear old contact data cleanly
+                  _selectedContactData = null;
                   _additionalContactIds.clear();
+                  _selectedAddressId = null;
+                  _customerAddresses.clear();
                   _formMessage = null;
                 });
                 _customerSearchController.text = (doc.data()?['companyName'] ?? doc.data()?['name'] ?? '').toString();
                 await _loadCustomerData(doc.id);
+                _triggerAutosave();
               },
               fieldViewBuilder: (context, controller, focusNode, onEditingComplete) {
                 if (_customerSearchController.text.isNotEmpty && controller.text.isEmpty) {
@@ -884,7 +1318,7 @@ class _ScreensAddInquiryState extends State<ScreensAddInquiry> {
                 return TextFormField(
                   controller: controller,
                   focusNode: focusNode,
-                  decoration: _dec('Search Customer Database *', hint: 'Type name or phone...', prefixIcon: const Icon(Icons.business_outlined)),
+                  decoration: _dec('Search Customer Database *', hint: 'Type name, phone, tags...', prefixIcon: const Icon(Icons.business_outlined)),
                   validator: (v) => _selectedCustomerId == null ? 'Required' : null,
                   onChanged: (value) {
                     _customerSearchController.text = value;
@@ -896,6 +1330,8 @@ class _ScreensAddInquiryState extends State<ScreensAddInquiry> {
                         _selectedContactId = null;
                         _selectedContactData = null;
                         _additionalContactIds.clear();
+                        _selectedAddressId = null;
+                        _customerAddresses.clear();
                       });
                     }
                   },
@@ -907,7 +1343,7 @@ class _ScreensAddInquiryState extends State<ScreensAddInquiry> {
               height: 56,
               width: isCompact ? double.infinity : null,
               child: OutlinedButton.icon(
-                onPressed: () async {
+                onPressed: _isLockedForm ? null : () async {
                   final result = await Navigator.push(
                     context,
                     MaterialPageRoute(
@@ -919,11 +1355,13 @@ class _ScreensAddInquiryState extends State<ScreensAddInquiry> {
                     ),
                   );
                   if (result == true) {
-                    setState(() {
-                      _selectedCustomerId = null;
-                      _customerSearchController.clear();
-                    });
-                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Customer added. Please search and select it.')));
+                    if (mounted) {
+                      setState(() {
+                        _selectedCustomerId = null;
+                        _customerSearchController.clear();
+                      });
+                      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Customer added. Please search and select it.')));
+                    }
                   }
                 },
                 icon: const Icon(Icons.add),
@@ -940,20 +1378,71 @@ class _ScreensAddInquiryState extends State<ScreensAddInquiry> {
         ),
         if (_selectedCustomerId != null && _customerNameSnapshot.isNotEmpty) ...[
           const SizedBox(height: 16),
+
+          // Enterprise Address Selector
+          if (_customerAddresses.isNotEmpty) ...[
+            DropdownButtonFormField<String>(
+              isExpanded: true,
+              value: _customerAddresses.any((a) => a['id'] == _selectedAddressId) ? _selectedAddressId : null,
+              decoration: _dec('Select Inquiry Address', prefixIcon: const Icon(Icons.location_on_outlined)),
+              items: _customerAddresses.map<DropdownMenuItem<String>>((addr) {
+                final type = (addr['type'] ?? 'Address').toString();
+                final isPrimary = addr['isPrimary'] == true ? ' (Primary)' : '';
+                final isBilling = addr['isBillingAddress'] == true ? ' (Billing)' : '';
+                final shortAddr = (addr['combinedAddress'] ?? addr['address'] ?? '').toString().replaceAll('\n', ', ');
+                return DropdownMenuItem<String>(
+                  value: addr['id']?.toString(),
+                  child: Text('$type$isPrimary$isBilling - $shortAddr', maxLines: 1, overflow: TextOverflow.ellipsis),
+                );
+              }).toList(),
+              selectedItemBuilder: (BuildContext context) {
+                return _customerAddresses.map<Widget>((addr) {
+                  final type = (addr['type'] ?? 'Address').toString();
+                  final isPrimary = addr['isPrimary'] == true ? ' (Primary)' : '';
+                  final isBilling = addr['isBillingAddress'] == true ? ' (Billing)' : '';
+                  final shortAddr = (addr['combinedAddress'] ?? addr['address'] ?? '').toString().replaceAll('\n', ', ');
+                  return Text('$type$isPrimary$isBilling - $shortAddr', maxLines: 1, overflow: TextOverflow.ellipsis);
+                }).toList();
+              },
+              onChanged: (v) {
+                setState(() {
+                  _selectedAddressId = v;
+                  _selectedContactId = null;
+                  _selectedContactData = null;
+                  _additionalContactIds.clear();
+
+                  if (v != null) {
+                    final matches = _customerAddresses.where((a) => a['id'] == v);
+                    _selectedAddressData = matches.isNotEmpty ? matches.first : null;
+                    _updateAddressSnapshots(_selectedAddressData);
+                  }
+                });
+              },
+            ),
+            const SizedBox(height: 16),
+          ],
+
           _buildContactDropdown(),
 
-          // ADDED: Real-time contact mobile display
+          // Enterprise Contact Display
           if (_selectedContactData != null) Builder(
             builder: (context) {
-              final phone = (_selectedContactData!['mobile'] ?? _selectedContactData!['phone'] ?? _selectedContactData!['contactPhone'] ?? '').toString().trim();
-              if (phone.isNotEmpty) {
+              final phone = (_selectedContactData!['phoneNormalized'] ?? _selectedContactData!['phone'] ?? _selectedContactData!['mobile'] ?? '').toString().trim();
+              final designation = (_selectedContactData!['designation'] ?? '').toString().trim();
+              if (phone.isNotEmpty || designation.isNotEmpty) {
                 return Padding(
                   padding: const EdgeInsets.only(top: 8, left: 4, bottom: 8),
                   child: Row(
                     children: [
-                      const Icon(Icons.phone_outlined, size: 14, color: Color(0xFF64748B)),
-                      const SizedBox(width: 6),
-                      Text('Contact Mobile: $phone', style: const TextStyle(fontSize: 13, color: Color(0xFF475569), fontWeight: FontWeight.w500)),
+                      if (phone.isNotEmpty) ...[
+                        const Icon(Icons.phone_outlined, size: 14, color: Color(0xFF64748B)),
+                        const SizedBox(width: 6),
+                        Flexible(child: Text('Contact: $phone', style: const TextStyle(fontSize: 13, color: Color(0xFF475569), fontWeight: FontWeight.w500), overflow: TextOverflow.ellipsis)),
+                      ],
+                      if (phone.isNotEmpty && designation.isNotEmpty) const Text(' • ', style: TextStyle(color: Color(0xFF64748B))),
+                      if (designation.isNotEmpty) ...[
+                        Flexible(child: Text(designation, style: const TextStyle(fontSize: 13, color: Color(0xFF475569)), overflow: TextOverflow.ellipsis)),
+                      ],
                     ],
                   ),
                 );
@@ -980,7 +1469,7 @@ class _ScreensAddInquiryState extends State<ScreensAddInquiry> {
                     children: [
                       Text(_customerNameSnapshot, style: const TextStyle(fontWeight: FontWeight.w700, color: Color(0xFF0F172A))),
                       const SizedBox(height: 4),
-                      Text('Industry: ${_customerIndustrySnapshot.isEmpty ? 'N/A' : _customerIndustrySnapshot} • City: ${_customerCitySnapshot.isEmpty ? 'N/A' : _customerCitySnapshot}', style: const TextStyle(fontSize: 13, color: Color(0xFF475569))),
+                      Text('Industry: ${_customerIndustrySnapshot.isEmpty ? 'N/A' : _customerIndustrySnapshot} • City: ${_customerPrimaryCitySnapshot.isEmpty ? 'N/A' : _customerPrimaryCitySnapshot}', style: const TextStyle(fontSize: 13, color: Color(0xFF475569))),
                     ],
                   ),
                 ),
@@ -996,17 +1485,63 @@ class _ScreensAddInquiryState extends State<ScreensAddInquiry> {
     if (_selectedCustomerId == null || _selectedCustomerId!.trim().isEmpty) return const SizedBox.shrink();
 
     return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-      stream: _companyContactsRef(_selectedCustomerId!).where('isActive', isEqualTo: true).snapshots(),
+      stream: _companyContactsRef(_selectedCustomerId!)
+          .where('isActive', isEqualTo: true)
+          .snapshots(),
       builder: (context, snap) {
-        if (!snap.hasData || snap.data!.docs.isEmpty) return const SizedBox.shrink();
-        final contacts = snap.data!.docs;
+        if (!snap.hasData) return const SizedBox.shrink();
+
+        var contacts = snap.data!.docs.where((d) => d.data()['isDeleted'] != true).toList();
+        if (contacts.isEmpty) return const SizedBox.shrink();
+
+        if (_selectedAddressId != null) {
+          bool anyContactHasAddress = contacts.any((d) {
+            final data = d.data();
+            final addrId = data['addressId'];
+            final linked = data['linkedAddressIds'] as List?;
+            final assigned = data['assignedAddressId'];
+            return addrId != null || (linked != null && linked.isNotEmpty) || assigned != null;
+          });
+
+          if (anyContactHasAddress) {
+            contacts = contacts.where((d) {
+              final data = d.data();
+              final addrId = data['addressId'];
+              final linked = data['linkedAddressIds'] as List?;
+              final assigned = data['assignedAddressId'];
+              if (addrId == _selectedAddressId) return true;
+              if (assigned == _selectedAddressId) return true;
+              if (linked != null && linked.contains(_selectedAddressId)) return true;
+              return false;
+            }).toList();
+          }
+        }
+
+        if (contacts.isEmpty) {
+          return const Padding(
+            padding: EdgeInsets.only(top: 8, bottom: 8),
+            child: Text('No contacts found for the selected address.', style: TextStyle(color: Colors.grey, fontSize: 13)),
+          );
+        }
+
+        final validContactId = contacts.any((d) => d.id == _selectedContactId) ? _selectedContactId : null;
+
         return Row(
           children: [
             Expanded(
               child: DropdownButtonFormField<String>(
-                initialValue: contacts.any((d) => d.id == _selectedContactId) ? _selectedContactId : null,
+                isExpanded: true,
+                value: validContactId,
                 decoration: _dec('Primary Contact Person', prefixIcon: const Icon(Icons.person_outline)),
-                items: contacts.map((doc) => DropdownMenuItem<String>(value: doc.id, child: Text((doc.data()['name'] ?? doc.data()['contactName'] ?? '').toString()))).toList(),
+                items: contacts.map<DropdownMenuItem<String>>((doc) => DropdownMenuItem<String>(
+                    value: doc.id,
+                    child: Text((doc.data()['name'] ?? doc.data()['contactName'] ?? '').toString(), maxLines: 1, overflow: TextOverflow.ellipsis)
+                )).toList(),
+                selectedItemBuilder: (BuildContext context) {
+                  return contacts.map<Widget>((doc) {
+                    return Text((doc.data()['name'] ?? doc.data()['contactName'] ?? '').toString(), maxLines: 1, overflow: TextOverflow.ellipsis);
+                  }).toList();
+                },
                 onChanged: (v) {
                   setState(() {
                     _selectedContactId = v;
@@ -1020,7 +1555,7 @@ class _ScreensAddInquiryState extends State<ScreensAddInquiry> {
             ),
             const SizedBox(width: 12),
             OutlinedButton(
-              onPressed: _selectedContactId == null ? null : () => _showMultiContactPicker(contacts),
+              onPressed: validContactId == null ? null : () => _showMultiContactPicker(contacts),
               style: OutlinedButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: 18, horizontal: 16), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
               child: Text('+ ${_additionalContactIds.length} More'),
             ),
@@ -1072,7 +1607,7 @@ class _ScreensAddInquiryState extends State<ScreensAddInquiry> {
   }
 
   Widget _buildSegmentedInquiryNumber() {
-    final fy = _getFinancialYear(_inquiryDate ?? DateTime.now());
+    final fy = _getFinancialYear(_inquiryDate ?? DateTime.now().toUtc());
     return TextFormField(
       controller: _inquirySequenceController,
       keyboardType: TextInputType.number,
@@ -1103,6 +1638,8 @@ class _ScreensAddInquiryState extends State<ScreensAddInquiry> {
   }
 
   Widget _buildInquiryBasicsSection() {
+    final sourceOptions = const <String>['Whatsapp', 'E-mail', 'Website', 'Referral', 'Cold Call', 'Exhibition', 'IndiaMART', 'Visit', 'Other'];
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -1115,7 +1652,6 @@ class _ScreensAddInquiryState extends State<ScreensAddInquiry> {
               initialValue: _inquiryDate,
               onPicked: (d) => setState(() {
                 _inquiryDate = d;
-                // Auto-fill logic using the explicitly selected Inquiry Date
                 if (!_isFollowUpManuallyEdited) {
                   _nextFollowUpDate = d.add(const Duration(days: 2));
                 }
@@ -1133,9 +1669,13 @@ class _ScreensAddInquiryState extends State<ScreensAddInquiry> {
         const SizedBox(height: 16),
         _buildResponsiveFields([
           DropdownButtonFormField<String>(
-            initialValue: _selectedSource,
+            isExpanded: true,
+            value: sourceOptions.contains(_selectedSource) ? _selectedSource : null,
             decoration: _dec('Source', prefixIcon: const Icon(Icons.campaign_outlined)),
-            items: const ['Whatsapp', 'E-mail', 'Website', 'Referral', 'Cold Call', 'Exhibition', 'IndiaMART', 'Visit', 'Other'].map((e) => DropdownMenuItem(value: e, child: Text(e))).toList(),
+            items: sourceOptions.map<DropdownMenuItem<String>>((String e) => DropdownMenuItem<String>(value: e, child: Text(e, maxLines: 1, overflow: TextOverflow.ellipsis))).toList(),
+            selectedItemBuilder: (BuildContext context) {
+              return sourceOptions.map<Widget>((String e) => Text(e, maxLines: 1, overflow: TextOverflow.ellipsis)).toList();
+            },
             onChanged: (v) => setState(() => _selectedSource = v),
           ),
           _buildAssignUserDropdown(),
@@ -1170,45 +1710,71 @@ class _ScreensAddInquiryState extends State<ScreensAddInquiry> {
             separatorBuilder: (c, i) => const SizedBox(height: 12),
             itemBuilder: (context, index) {
               final item = _structuredProducts[index];
-              return Container(
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(12), border: Border.all(color: const Color(0xFFE2E8F0))),
-                child: Row(
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.all(10),
-                      decoration: BoxDecoration(color: const Color(0xFFEFF6FF), borderRadius: BorderRadius.circular(8)),
-                      child: const Icon(Icons.widgets_outlined, color: Color(0xFF2563EB), size: 20),
-                    ),
-                    const SizedBox(width: 16),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
+              return RepaintBoundary(
+                child: Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(12), border: Border.all(color: const Color(0xFFE2E8F0))),
+                  child: Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(10),
+                        decoration: BoxDecoration(color: const Color(0xFFEFF6FF), borderRadius: BorderRadius.circular(8)),
+                        child: const Icon(Icons.widgets_outlined, color: Color(0xFF2563EB), size: 20),
+                      ),
+                      const SizedBox(width: 16),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(item['name'], style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15), maxLines: 2, overflow: TextOverflow.ellipsis),
+                            const SizedBox(height: 4),
+                            Text('Nature: ${item['productNature'] ?? 'General'}  •  Unit: ${item['unit'] ?? 'Nos'}', style: const TextStyle(fontSize: 12, color: Color(0xFF64748B)), maxLines: 1, overflow: TextOverflow.ellipsis),
+                            Builder(
+                                builder: (context) {
+                                  final sku = (item['sku'] ?? '').toString().trim();
+                                  final brand = (item['brand'] ?? '').toString().trim();
+                                  final model = (item['model'] ?? '').toString().trim();
+                                  List<String> extras = <String>[];
+                                  if (sku.isNotEmpty) extras.add('SKU: $sku');
+                                  if (brand.isNotEmpty) extras.add('Brand: $brand');
+                                  if (model.isNotEmpty) extras.add('Model: $model');
+                                  if (extras.isEmpty) return const SizedBox.shrink();
+                                  return Padding(
+                                    padding: const EdgeInsets.only(top: 4),
+                                    child: Text(
+                                      extras.join('  •  '),
+                                      style: const TextStyle(fontSize: 12, color: Color(0xFF94A3B8)),
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  );
+                                }
+                            ),
+                          ],
+                        ),
+                      ),
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.end,
                         children: [
-                          Text(item['name'], style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15)),
-                          const SizedBox(height: 4),
-                          Text('Category: ${item['category'] ?? 'N/A'}  •  Unit: ${item['unit'] ?? 'Nos'}', style: const TextStyle(fontSize: 12, color: Color(0xFF64748B))),
+                          Text('Qty: ${item['quantity']}', style: const TextStyle(fontWeight: FontWeight.w700)),
+                          Text('₹${item['price'] ?? 0}', style: const TextStyle(fontSize: 13, color: Color(0xFF10B981), fontWeight: FontWeight.w600)),
                         ],
                       ),
-                    ),
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.end,
-                      children: [
-                        Text('Qty: ${item['quantity']}', style: const TextStyle(fontWeight: FontWeight.w700)),
-                        Text('₹${item['price'] ?? 0}', style: const TextStyle(fontSize: 13, color: Color(0xFF10B981), fontWeight: FontWeight.w600)),
-                      ],
-                    ),
-                    const SizedBox(width: 16),
-                    IconButton(icon: const Icon(Icons.edit_outlined, color: Color(0xFF64748B), size: 20), onPressed: () => _editProduct(index)),
-                    IconButton(icon: const Icon(Icons.delete_outline, color: Colors.redAccent, size: 20), onPressed: () => setState(() => _structuredProducts.removeAt(index))),
-                  ],
+                      const SizedBox(width: 16),
+                      IconButton(icon: const Icon(Icons.edit_outlined, color: Color(0xFF64748B), size: 20), onPressed: () => _editProduct(index)),
+                      IconButton(icon: const Icon(Icons.delete_outline, color: Colors.redAccent, size: 20), onPressed: () {
+                        setState(() => _structuredProducts.removeAt(index));
+                        _triggerAutosave();
+                      }),
+                    ],
+                  ),
                 ),
               );
             },
           ),
         const SizedBox(height: 16),
         OutlinedButton.icon(
-          onPressed: () {
+          onPressed: _isLockedForm ? null : () {
             showDialog(
               context: context,
               builder: (context) {
@@ -1221,17 +1787,23 @@ class _ScreensAddInquiryState extends State<ScreensAddInquiry> {
                       name: (docData['itemName'] ?? docData['name'] ?? 'Unknown').toString(),
                       sku: (docData['sku'] ?? docData['itemCode'] ?? '').toString(),
                       defaultPrice: double.tryParse(docData['sellingPrice']?.toString() ?? docData['price']?.toString() ?? '0') ?? 0.0,
-                      unit: (docData['unit'] ?? 'Nos').toString(),
-                      category: (docData['category'] ?? '').toString(),
-                      subCategory: (docData['subCategory'] ?? '').toString(),
+                      unit: (docData['uom'] ?? docData['unit'] ?? 'Nos').toString(),
+                      category: (docData['category'] ?? docData['categoryId'] ?? '').toString(),
+                      subCategory: (docData['subCategory'] ?? docData['subcategoryId'] ?? '').toString(),
                       brand: (docData['brand'] ?? '').toString(),
                       model: (docData['model'] ?? '').toString(),
                       costPrice: double.tryParse(docData['costPrice']?.toString() ?? '0') ?? 0.0,
+                      productNature: (docData['productNature'] ?? 'General').toString(),
+                      machineType: (docData['machineType'] ?? '').toString(),
                     );
                   },
                   onManualAdd: (String query) {
                     Navigator.pop(context);
-                    _showProductDetailEntry(productId: 'manual', name: query, sku: '', defaultPrice: 0.0, unit: 'Nos', category: 'General', subCategory: '', brand: '', model: '', costPrice: 0.0);
+                    _showProductDetailEntry(
+                        productId: 'manual', name: query, sku: '', defaultPrice: 0.0, unit: 'Nos',
+                        category: 'General', subCategory: '', brand: '', model: '', costPrice: 0.0,
+                        productNature: 'General', machineType: ''
+                    );
                   },
                 );
               },
@@ -1256,6 +1828,8 @@ class _ScreensAddInquiryState extends State<ScreensAddInquiry> {
     required String brand,
     required String model,
     required double costPrice,
+    required String productNature,
+    required String machineType,
     int? editIndex,
   }) {
     final nameCtrl = TextEditingController(text: name);
@@ -1297,7 +1871,7 @@ class _ScreensAddInquiryState extends State<ScreensAddInquiry> {
                 ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Quantity must be greater than 0.')));
                 return;
               }
-              final productMap = {
+              final productMap = <String, dynamic>{
                 'productId': productId,
                 'name': nameCtrl.text.trim(),
                 'sku': sku,
@@ -1310,6 +1884,8 @@ class _ScreensAddInquiryState extends State<ScreensAddInquiry> {
                 'subCategory': subCategory,
                 'brand': brand,
                 'model': model,
+                'productNature': productNature,
+                'machineType': machineType,
               };
               setState(() {
                 if (editIndex != null) {
@@ -1318,6 +1894,7 @@ class _ScreensAddInquiryState extends State<ScreensAddInquiry> {
                   _structuredProducts.add(productMap);
                 }
               });
+              _triggerAutosave();
               Navigator.pop(context);
             },
             child: const Text('Confirm'),
@@ -1340,35 +1917,41 @@ class _ScreensAddInquiryState extends State<ScreensAddInquiry> {
       brand: item['brand'] ?? '',
       model: item['model'] ?? '',
       costPrice: double.tryParse(item['costPrice']?.toString() ?? '0') ?? 0.0,
+      productNature: item['productNature'] ?? 'General',
+      machineType: item['machineType'] ?? '',
       editIndex: index,
     );
   }
 
   Widget _buildFollowUpSection() {
+    final followUpOptions = const <String>['Call', 'Email', 'Visit', 'Meeting', 'WhatsApp'];
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         _buildResponsiveFields([
           _buildDateSelector(
-            // Removed the * to visually indicate it's not compulsory
             label: 'Next Follow-up Date',
             value: _nextFollowUpDate,
             onTap: () async => await _pickDate(
               initialValue: _nextFollowUpDate,
               onPicked: (d) => setState(() {
                 _nextFollowUpDate = d;
-                _isFollowUpManuallyEdited = true; // Lock manual entry
+                _isFollowUpManuallyEdited = true;
               }),
             ),
             onClear: () => setState(() {
               _nextFollowUpDate = null;
-              _isFollowUpManuallyEdited = true; // Still locked so it doesn't auto-generate from inquiry date
+              _isFollowUpManuallyEdited = true;
             }),
           ),
           DropdownButtonFormField<String>(
-            initialValue: _followUpType,
+            isExpanded: true,
+            value: followUpOptions.contains(_followUpType) ? _followUpType : 'Call',
             decoration: _dec('Follow-up Type', prefixIcon: const Icon(Icons.event_outlined)),
-            items: const ['Call', 'Email', 'Visit', 'Meeting', 'WhatsApp'].map((e) => DropdownMenuItem(value: e, child: Text(e))).toList(),
+            items: followUpOptions.map<DropdownMenuItem<String>>((String e) => DropdownMenuItem<String>(value: e, child: Text(e, maxLines: 1, overflow: TextOverflow.ellipsis))).toList(),
+            selectedItemBuilder: (BuildContext context) {
+              return followUpOptions.map<Widget>((String e) => Text(e, maxLines: 1, overflow: TextOverflow.ellipsis)).toList();
+            },
             onChanged: (v) => setState(() => _followUpType = v ?? 'Call'),
           ),
         ]),
@@ -1414,7 +1997,7 @@ class _ScreensAddInquiryState extends State<ScreensAddInquiry> {
           suffixIcon: value != null ? IconButton(icon: const Icon(Icons.close, size: 16), onPressed: onClear) : const Icon(Icons.arrow_drop_down),
         ),
         child: Text(
-          value == null ? 'Select Date' : DateFormat('dd/MM/yyyy').format(value),
+          value == null ? 'Select Date' : DateFormat('dd/MM/yyyy').format(value.toLocal()),
           style: TextStyle(color: value == null ? Colors.grey.shade500 : Colors.black87, fontSize: 14),
         ),
       ),
@@ -1427,10 +2010,23 @@ class _ScreensAddInquiryState extends State<ScreensAddInquiry> {
       builder: (context, snap) {
         if (!snap.hasData) return const LinearProgressIndicator();
         final docs = snap.data!.docs;
+
+        // Deterministic valid value
+        final validAssignedUid = docs.any((d) => d.id == _assignedToUid) ? _assignedToUid : null;
+
         return DropdownButtonFormField<String>(
-          initialValue: docs.any((d) => d.id == _assignedToUid) ? _assignedToUid : null,
+          isExpanded: true,
+          value: validAssignedUid,
           decoration: _dec('Assigned Record Owner *', prefixIcon: const Icon(Icons.assignment_ind_outlined)),
-          items: docs.map((doc) => DropdownMenuItem(value: doc.id, child: Text(doc.data()['name'] ?? doc.data()['fullName'] ?? 'Unknown'))).toList(),
+          items: docs.map<DropdownMenuItem<String>>((doc) => DropdownMenuItem<String>(
+              value: doc.id,
+              child: Text((doc.data()['name'] ?? doc.data()['fullName'] ?? 'Unknown').toString(), maxLines: 1, overflow: TextOverflow.ellipsis)
+          )).toList(),
+          selectedItemBuilder: (BuildContext context) {
+            return docs.map<Widget>((doc) {
+              return Text((doc.data()['name'] ?? doc.data()['fullName'] ?? 'Unknown').toString(), maxLines: 1, overflow: TextOverflow.ellipsis);
+            }).toList();
+          },
           onChanged: _isAdminOrManager ? (v) => setState(() => _assignedToUid = v) : null,
           validator: (v) => v == null ? 'Required' : null,
         );
@@ -1439,23 +2035,23 @@ class _ScreensAddInquiryState extends State<ScreensAddInquiry> {
   }
 
   Future<void> _pickDate({required DateTime? initialValue, required ValueChanged<DateTime> onPicked}) async {
-    final now = DateTime.now();
-    // Allow deep backdating (e.g. 5 years) and future dates (e.g. 5 years) securely
-    final firstDate = DateTime(now.year - 5);
-    final lastDate = DateTime(now.year + 5);
+    final now = DateTime.now().toUtc();
+    final firstDate = DateTime(now.year - 5).toUtc();
+    final lastDate = DateTime(now.year + 5).toUtc();
     var initialDate = initialValue ?? now;
     if (initialDate.isBefore(firstDate)) initialDate = firstDate;
     if (initialDate.isAfter(lastDate)) initialDate = lastDate;
-    final picked = await showDatePicker(context: context, initialDate: initialDate, firstDate: firstDate, lastDate: lastDate);
-    if (picked != null) onPicked(picked);
+    final picked = await showDatePicker(context: context, initialDate: initialDate.toLocal(), firstDate: firstDate.toLocal(), lastDate: lastDate.toLocal());
+    if (picked != null) onPicked(picked.toUtc()); // Normalize to UTC
   }
 
   Widget _buildStickyActionBar() {
+    final disableButtons = _isSaving || _isLockedForm;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
       decoration: BoxDecoration(
         color: Colors.white,
-        boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.05), blurRadius: 10, offset: const Offset(0, -4))],
+        boxShadow: <BoxShadow>[BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10, offset: const Offset(0, -4))],
         border: const Border(top: BorderSide(color: Color(0xFFE2E8F0))),
       ),
       child: SafeArea(
@@ -1479,16 +2075,16 @@ class _ScreensAddInquiryState extends State<ScreensAddInquiry> {
                 SizedBox(
                   width: buttonWidth,
                   child: OutlinedButton(
-                    onPressed: _isSaving ? null : () => _saveInquiry(createQuote: true),
-                    style: OutlinedButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16), side: const BorderSide(color: Color(0xFF2563EB)), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))),
-                    child: const Text('Save & Quote', style: TextStyle(color: Color(0xFF2563EB), fontWeight: FontWeight.w600)),
+                    onPressed: disableButtons ? null : () => _saveInquiry(createQuote: true),
+                    style: OutlinedButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16), side: BorderSide(color: disableButtons ? Colors.grey.shade400 : const Color(0xFF2563EB)), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))),
+                    child: Text('Save & Quote', style: TextStyle(color: disableButtons ? Colors.grey.shade500 : const Color(0xFF2563EB), fontWeight: FontWeight.w600)),
                   ),
                 ),
                 SizedBox(
                   width: buttonWidth,
                   child: FilledButton.icon(
-                    onPressed: _isSaving ? null : () => _saveInquiry(),
-                    style: FilledButton.styleFrom(backgroundColor: const Color(0xFF2563EB), padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))),
+                    onPressed: disableButtons ? null : () => _saveInquiry(),
+                    style: FilledButton.styleFrom(backgroundColor: disableButtons ? Colors.grey.shade400 : const Color(0xFF2563EB), padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))),
                     icon: _isSaving ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2)) : const Icon(Icons.check),
                     label: Text(_isEditing ? 'Update Inquiry' : 'Save Inquiry', style: const TextStyle(fontWeight: FontWeight.w600)),
                   ),
@@ -1557,8 +2153,8 @@ class _ERPProductSearchDialogState extends State<_ERPProductSearchDialog> {
   final TextEditingController _searchCtrl = TextEditingController();
   final ScrollController _scrollController = ScrollController();
 
-  List<DocumentSnapshot> _allItems = [];
-  List<DocumentSnapshot> _items = [];
+  List<DocumentSnapshot> _allItems = <DocumentSnapshot>[];
+  List<DocumentSnapshot> _items = <DocumentSnapshot>[];
   bool _isLoading = false;
   bool _hasMore = true;
   String _currentQuery = '';
@@ -1592,7 +2188,12 @@ class _ERPProductSearchDialogState extends State<_ERPProductSearchDialog> {
     final q = _currentQuery.trim().toLowerCase();
     if (q.isEmpty) return true;
 
-    final fields = [data['itemName'], data['name'], data['category'], data['subCategory'], data['sku'], data['itemCode'], data['brand'], data['model']];
+    final fields = [
+      data['itemName'], data['name'], data['category'],
+      data['subCategory'], data['sku'], data['itemCode'],
+      data['brand'], data['model'], data['productNature'],
+      data['machineType']
+    ];
     return fields.any((value) => (value ?? '').toString().toLowerCase().contains(q));
   }
 
@@ -1624,7 +2225,12 @@ class _ERPProductSearchDialogState extends State<_ERPProductSearchDialog> {
     setState(() => _isLoading = true);
 
     try {
-      Query<Map<String, dynamic>> ref = FirebaseFirestore.instance.collection('companies').doc(widget.companyId).collection('products').where('isActive', isEqualTo: true);
+      Query<Map<String, dynamic>> ref = FirebaseFirestore.instance
+          .collection('companies')
+          .doc(widget.companyId)
+          .collection('products')
+          .where('isActive', isEqualTo: true);
+
       ref = ref.limit(80);
       if (loadMore && _allItems.isNotEmpty) ref = ref.startAfterDocument(_allItems.last);
 
@@ -1646,6 +2252,7 @@ class _ERPProductSearchDialogState extends State<_ERPProductSearchDialog> {
       });
     } catch (e) {
       if (mounted) setState(() => _isLoading = false);
+      developer.log('Product fetch error', error: e, name: 'InquiryModule');
     }
   }
 
@@ -1663,7 +2270,7 @@ class _ERPProductSearchDialogState extends State<_ERPProductSearchDialog> {
             TextField(
               controller: _searchCtrl,
               decoration: InputDecoration(
-                labelText: 'Search by Name, Category or SKU...',
+                labelText: 'Search by Name, Category, SKU or Nature...',
                 prefixIcon: const Icon(Icons.search),
                 filled: true,
                 fillColor: const Color(0xFFF8FAFC),
@@ -1686,14 +2293,18 @@ class _ERPProductSearchDialogState extends State<_ERPProductSearchDialog> {
                   final name = (data['itemName'] ?? data['name'] ?? 'Unknown').toString();
                   final sku = (data['sku'] ?? data['itemCode'] ?? '').toString();
                   final price = double.tryParse(data['sellingPrice']?.toString() ?? data['price']?.toString() ?? '0') ?? 0.0;
-                  final category = (data['category'] ?? '').toString();
+                  final category = (data['category'] ?? data['categoryId'] ?? '').toString();
+                  final productNature = (data['productNature'] ?? 'General').toString();
 
-                  return ListTile(
-                    leading: Container(padding: const EdgeInsets.all(8), decoration: BoxDecoration(color: Colors.blue.shade50, borderRadius: BorderRadius.circular(8)), child: const Icon(Icons.inventory_2, color: Colors.blue, size: 20)),
-                    title: Text(name, style: const TextStyle(fontWeight: FontWeight.w600)),
-                    subtitle: Text('Cat: $category | SKU: $sku'),
-                    trailing: Text('₹$price', style: const TextStyle(color: Colors.green, fontWeight: FontWeight.bold)),
-                    onTap: () => widget.onProductSelected(data, doc.id),
+                  return RepaintBoundary(
+                    child: ListTile(
+                      leading: Container(padding: const EdgeInsets.all(8), decoration: BoxDecoration(color: Colors.blue.shade50, borderRadius: BorderRadius.circular(8)), child: const Icon(Icons.inventory_2, color: Colors.blue, size: 20)),
+                      title: Text(name, style: const TextStyle(fontWeight: FontWeight.w600)),
+                      subtitle: Text('Cat: $category | SKU: $sku\nNature: $productNature'),
+                      isThreeLine: true,
+                      trailing: Text('₹$price', style: const TextStyle(color: Colors.green, fontWeight: FontWeight.bold)),
+                      onTap: () => widget.onProductSelected(data, doc.id),
+                    ),
                   );
                 },
               ),
