@@ -1,3 +1,5 @@
+// FILE PATH: lib/modules/administration/users/services/user_management_service.dart
+
 import 'dart:math';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
