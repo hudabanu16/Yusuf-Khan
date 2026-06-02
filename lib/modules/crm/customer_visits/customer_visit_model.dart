@@ -1,3 +1,5 @@
+// FILE PATH: lib/modules/crm/customers/customer_visit_model.dart
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 
 class CustomerVisitModel {
@@ -5,8 +7,8 @@ class CustomerVisitModel {
   final String companyId;
   final String createdBy;
   final String updatedBy;
-  final DateTime createdAt;
-  final DateTime updatedAt;
+  final DateTime? createdAt;
+  final DateTime? updatedAt;
   final bool isActive;
   final bool isDeleted;
 
@@ -74,6 +76,7 @@ class CustomerVisitModel {
   final bool followupRequired;
   final DateTime? followupDate;
   final String followupType;
+  final String followupPriority;
   final String followupRemarks;
 
   CustomerVisitModel({
@@ -81,8 +84,8 @@ class CustomerVisitModel {
     required this.companyId,
     required this.createdBy,
     required this.updatedBy,
-    DateTime? createdAt,
-    DateTime? updatedAt,
+    this.createdAt,
+    this.updatedAt,
     this.isActive = true,
     this.isDeleted = false,
     required this.visitNumber,
@@ -132,18 +135,15 @@ class CustomerVisitModel {
     this.followupRequired = false,
     this.followupDate,
     this.followupType = 'Call',
+    this.followupPriority = 'Medium',
     this.followupRemarks = '',
-  })  : createdAt = createdAt ?? DateTime.now(),
-        updatedAt = updatedAt ?? DateTime.now();
+  });
 
   Map<String, dynamic> toMap() {
     return {
-      'id': id,
       'companyId': companyId,
       'createdBy': createdBy,
       'updatedBy': updatedBy,
-      'createdAt': Timestamp.fromDate(createdAt),
-      'updatedAt': Timestamp.fromDate(updatedAt),
       'isActive': isActive,
       'isDeleted': isDeleted,
       'visitNumber': visitNumber,
@@ -193,6 +193,7 @@ class CustomerVisitModel {
       'followupRequired': followupRequired,
       'followupDate': followupDate != null ? Timestamp.fromDate(followupDate!) : null,
       'followupType': followupType,
+      'followupPriority': followupPriority,
       'followupRemarks': followupRemarks,
     };
   }
@@ -224,7 +225,7 @@ class CustomerVisitModel {
       address: map['address'] ?? '',
       location: map['location'] ?? '',
       assignedEmployee: map['assignedEmployee'] ?? '',
-      purpose: map['purpose'] ?? 'Sales Visit',
+      purpose: map['purpose'] ?? 'Other',
       visitDate: (map['visitDate'] as Timestamp?)?.toDate(),
       priority: map['priority'] ?? 'Medium',
       leadGenerated: map['leadGenerated'] ?? false,
@@ -254,6 +255,7 @@ class CustomerVisitModel {
       followupRequired: map['followupRequired'] ?? false,
       followupDate: (map['followupDate'] as Timestamp?)?.toDate(),
       followupType: map['followupType'] ?? 'Call',
+      followupPriority: map['followupPriority'] ?? 'Medium',
       followupRemarks: map['followupRemarks'] ?? '',
     );
   }

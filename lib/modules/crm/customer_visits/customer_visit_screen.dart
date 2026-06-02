@@ -1,4 +1,8 @@
+// FILE PATH: lib/modules/crm/customers/customer_visit_screen.dart
+
 import 'dart:convert';
+import 'dart:io' as io; // For Safe File Uploads
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -33,11 +37,13 @@ class CustomerVisitScreen extends StatefulWidget {
 
 class _CustomerVisitScreenState extends State<CustomerVisitScreen> {
   final _formKey = GlobalKey<FormState>();
-  final CustomerVisitService _service = CustomerVisitService();
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+  final CustomerVisitService _service = CustomerVisitService();
 
   bool _isLoading = false;
+  bool _isSaving = false;
   bool _isLoadingCustomerDetails = false;
+  bool _isDirty = false;
 
   // --- CRM MASTER DATA ---
   List<QueryDocumentSnapshot<Map<String, dynamic>>> _allCustomers = [];
@@ -57,6 +63,7 @@ class _CustomerVisitScreenState extends State<CustomerVisitScreen> {
   final _visitOwnerNameCtrl = TextEditingController(text: 'Logged-in User');
 
   // --- TAB 1: BASIC INFO ---
+  final _contactNameCtrl = TextEditingController();
   final _contactMobileCtrl = TextEditingController();
   final _contactEmailCtrl = TextEditingController();
   final _contactDesignationCtrl = TextEditingController();
@@ -107,7 +114,7 @@ class _CustomerVisitScreenState extends State<CustomerVisitScreen> {
   String _referenceQuotationNumber = '';
   final _quoteDateCtrl = TextEditingController();
   final _quoteValueCtrl = TextEditingController();
-  final _quoteStatusCtrl = TextEditingController(); // Unified controller name
+  final _quoteStatusCtrl = TextEditingController();
   final _quoteRevisionCtrl = TextEditingController();
   final _customerFeedbackCtrl = TextEditingController();
   final _priceFeedbackCtrl = TextEditingController();
@@ -160,7 +167,15 @@ class _CustomerVisitScreenState extends State<CustomerVisitScreen> {
     super.initState();
     _visitDate = DateTime.now();
     _resetOutcome();
+
+    if (widget.visit == null) {
+      _visitNumberCtrl.text = 'Draft (Auto-Generated)';
+    }
+
     _initializeVisitDetails();
+    _checkRecoverDraftGPS();
+
+    // Fetch customers synchronously into memory for lightning-fast search
     _fetchCustomers().then((_) {
       if (widget.visit != null) {
         _loadExistingData();
@@ -170,11 +185,67 @@ class _CustomerVisitScreenState extends State<CustomerVisitScreen> {
 
   @override
   void dispose() {
+    _visitNumberCtrl.dispose();
+    _visitOwnerCtrl.dispose();
+    _visitOwnerNameCtrl.dispose();
+    _contactNameCtrl.dispose();
+    _contactMobileCtrl.dispose();
+    _contactEmailCtrl.dispose();
+    _contactDesignationCtrl.dispose();
+    _contactDepartmentCtrl.dispose();
+    _otherPurposeCtrl.dispose();
+    _discussionNotesCtrl.dispose();
+    _quoteDateCtrl.dispose();
+    _quoteValueCtrl.dispose();
+    _quoteStatusCtrl.dispose();
+    _quoteRevisionCtrl.dispose();
+    _customerFeedbackCtrl.dispose();
+    _priceFeedbackCtrl.dispose();
+    _competitorFeedbackCtrl.dispose();
+    _expectedClosureCtrl.dispose();
+    _technicalTopicsCtrl.dispose();
+    _serviceObservationCtrl.dispose();
+    _actionTakenCtrl.dispose();
+    _recommendationCtrl.dispose();
+    _complaintDescCtrl.dispose();
+    _temporaryResolutionCtrl.dispose();
+    _installationNotesCtrl.dispose();
+    _machineStatusCtrl.dispose();
+    _customerAcceptanceCtrl.dispose();
+    _outstandingAmountCtrl.dispose();
+    _overdueAmountCtrl.dispose();
+    _lastPaymentDateCtrl.dispose();
+    _creditLimitCtrl.dispose();
+    _committedAmountCtrl.dispose();
+    _paymentRemarksCtrl.dispose();
+    _internalNotesCtrl.dispose();
+    _followupRemarksCtrl.dispose();
     super.dispose();
+  }
+
+  void _markDirty() {
+    if (!_isDirty) _safeSetState(() => _isDirty = true);
   }
 
   void _safeSetState(VoidCallback fn) {
     if (mounted) setState(fn);
+  }
+
+  Future<void> _checkRecoverDraftGPS() async {
+    if (widget.visit != null) return;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final draftTime = prefs.getString('draft_gps_time_${widget.currentUserId}');
+      final draftAddr = prefs.getString('draft_gps_addr_${widget.currentUserId}');
+      if (draftTime != null && draftAddr != null) {
+        _safeSetState(() {
+          _checkInTime = DateTime.parse(draftTime);
+          _gpsAddress = draftAddr;
+          _status = 'In Progress';
+          _isDirty = true;
+        });
+      }
+    } catch (_) {}
   }
 
   void _resetOutcome() {
@@ -201,21 +272,20 @@ class _CustomerVisitScreenState extends State<CustomerVisitScreen> {
     }
   }
 
-  // Robust method for filtering active contacts safely
   List<QueryDocumentSnapshot<Map<String, dynamic>>> _getFilteredContacts() {
     return _customerContacts.where((c) {
       final d = c.data();
-      return d['isActive'] == null || d['isActive'] == true;
+      final isActive = d['isActive'] ?? true;
+      final isDeleted = d['isDeleted'] ?? false;
+      return isActive == true && isDeleted == false;
     }).toList();
   }
 
   Future<void> _initializeVisitDetails() async {
-    if (widget.visit == null) {
-      await _generateSequentialVisitNumber();
-    }
     try {
       final userDoc = await _firestore.collection('companies').doc(widget.companyId).collection('users').doc(widget.currentUserId).get();
-      if (userDoc.exists) {
+      if (!mounted) return;
+      if (userDoc.exists && userDoc.data() != null) {
         final data = userDoc.data()!;
         final name = data['name'] ?? data['fullName'] ?? 'Logged-in User';
         _visitOwnerNameCtrl.text = name;
@@ -226,40 +296,22 @@ class _CustomerVisitScreenState extends State<CustomerVisitScreen> {
     }
   }
 
-  Future<void> _generateSequentialVisitNumber() async {
-    final counterRef = _firestore.collection('companies').doc(widget.companyId).collection('metadata').doc('visit_counter');
-    try {
-      final nextCount = await _firestore.runTransaction((tx) async {
-        final snap = await tx.get(counterRef);
-        int count = 1;
-        if (snap.exists && snap.data()!['count'] != null) {
-          count = (snap.data()!['count'] as int) + 1;
-        }
-        tx.set(counterRef, {'count': count}, SetOptions(merge: true));
-        return count;
-      });
-      final year = DateTime.now().year;
-      _safeSetState(() {
-        _visitNumberCtrl.text = 'VIS-$year-${nextCount.toString().padLeft(6, '0')}';
-      });
-    } catch (e) {
-      _safeSetState(() {
-        _visitNumberCtrl.text = 'VIS-${DateTime.now().year}-${DateTime.now().millisecondsSinceEpoch.toString().substring(7)}';
-      });
-    }
-  }
-
   Future<void> _fetchCustomers() async {
     try {
       final snap = await _firestore
           .collection('companies')
           .doc(widget.companyId)
           .collection('customers')
-          .where('isDeleted', isEqualTo: false)
           .get();
-      _safeSetState(() {
-        _allCustomers = snap.docs;
-      });
+
+      if (mounted) {
+        _safeSetState(() {
+          _allCustomers = snap.docs.where((doc) {
+            final data = doc.data();
+            return data['isDeleted'] != true;
+          }).toList();
+        });
+      }
     } catch (e) {
       debugPrint('Error fetching customers: $e');
     }
@@ -275,10 +327,11 @@ class _CustomerVisitScreenState extends State<CustomerVisitScreen> {
           .doc(customerId)
           .get();
 
+      if (!mounted) return;
+
       if (doc.exists && doc.data() != null) {
         _selectedCustomerData = doc.data();
 
-        // Advanced Finance Data Pull
         final outAmt = (_selectedCustomerData?['outstandingAmount'] ?? 0.0);
         final overdueAmt = (_selectedCustomerData?['overdueAmount'] ?? 0.0);
         final credLim = (_selectedCustomerData?['creditLimit'] ?? 0.0);
@@ -307,10 +360,14 @@ class _CustomerVisitScreenState extends State<CustomerVisitScreen> {
             .collection('customers')
             .doc(customerId)
             .collection('contacts')
-            .where('isActive', isEqualTo: true)
             .get();
 
-        _customerContacts = contactsSnap.docs;
+        _customerContacts = contactsSnap.docs.where((d) {
+          final data = d.data();
+          final isActive = data['isActive'] ?? true;
+          final isDeleted = data['isDeleted'] ?? false;
+          return isActive == true && isDeleted == false;
+        }).toList();
       }
     } catch (e) {
       debugPrint('Error fetching customer details: $e');
@@ -322,6 +379,7 @@ class _CustomerVisitScreenState extends State<CustomerVisitScreen> {
   void _onAddressSelected(Map<String, dynamic>? val) {
     _safeSetState(() {
       _selectedAddressData = val;
+      _markDirty();
     });
   }
 
@@ -378,7 +436,8 @@ class _CustomerVisitScreenState extends State<CustomerVisitScreen> {
     _linkedInquiryId = v.linkedInquiryId;
     _linkedQuotationId = v.linkedQuotationId;
     if (_linkedQuotationId.isNotEmpty) _referenceQuotationNumber = 'Linked ID: $_linkedQuotationId';
-    _quoteStatusCtrl.text = v.quotationStatus; // Fixed Reference
+
+    _quoteStatusCtrl.text = v.quotationStatus;
     _customerFeedbackCtrl.text = v.customerFeedback;
     _priceFeedbackCtrl.text = v.priceFeedback;
     _competitorFeedbackCtrl.text = v.competitorFeedback;
@@ -402,9 +461,12 @@ class _CustomerVisitScreenState extends State<CustomerVisitScreen> {
     _followupRequired = v.followupRequired;
     _followupDate = v.followupDate;
     _followupType = v.followupType;
+    _followupPriority = v.followupPriority;
     _followupRemarksCtrl.text = v.followupRemarks;
 
     _safeSetState(() {});
+
+    Future.delayed(const Duration(milliseconds: 100), () => _isDirty = false);
   }
 
   Future<void> _handleCheckIn() async {
@@ -423,7 +485,6 @@ class _CustomerVisitScreenState extends State<CustomerVisitScreen> {
       Position position = await Geolocator.getCurrentPosition(desiredAccuracy: LocationAccuracy.high);
       String locAddress = 'Lat: ${position.latitude.toStringAsFixed(4)}, Lng: ${position.longitude.toStringAsFixed(4)}';
 
-      // Advanced Fallback: Never stop check-in if reverse geocoding fails
       try {
         List<Placemark> placemarks = await placemarkFromCoordinates(position.latitude, position.longitude).timeout(const Duration(seconds: 5));
         if (placemarks.isNotEmpty) {
@@ -432,15 +493,22 @@ class _CustomerVisitScreenState extends State<CustomerVisitScreen> {
           locAddress = addr.replaceAll(RegExp(r'^,\s*'), '').replaceAll(RegExp(r',\s*,'), ',');
         }
       } catch (geoError) {
-        debugPrint('Reverse geocoding failed, falling back to coordinates: $geoError');
+        debugPrint('Reverse geocoding failed: $geoError');
       }
 
+      final checkIn = DateTime.now();
+
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('draft_gps_time_${widget.currentUserId}', checkIn.toIso8601String());
+      await prefs.setString('draft_gps_addr_${widget.currentUserId}', locAddress);
+
       _safeSetState(() {
-        _checkInTime = DateTime.now();
+        _checkInTime = checkIn;
         _status = 'In Progress';
         _checkInLat = position.latitude;
         _checkInLng = position.longitude;
         _gpsAddress = locAddress;
+        _isDirty = true;
       });
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Checked In successfully.'), backgroundColor: Colors.green));
     } catch (e) {
@@ -469,6 +537,10 @@ class _CustomerVisitScreenState extends State<CustomerVisitScreen> {
         }
       } catch (_) {}
 
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove('draft_gps_time_${widget.currentUserId}');
+      await prefs.remove('draft_gps_addr_${widget.currentUserId}');
+
       _safeSetState(() {
         _checkOutTime = DateTime.now();
         _checkOutLat = position.latitude;
@@ -478,6 +550,7 @@ class _CustomerVisitScreenState extends State<CustomerVisitScreen> {
         final diff = _checkOutTime!.difference(_checkInTime!);
         _visitDuration = '${diff.inHours}h ${diff.inMinutes.remainder(60)}m';
         _status = 'Completed';
+        _isDirty = true;
       });
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Checked Out successfully.'), backgroundColor: Colors.green));
     } catch (e) {
@@ -499,17 +572,29 @@ class _CustomerVisitScreenState extends State<CustomerVisitScreen> {
       if (result != null) {
         _safeSetState(() => _isLoading = true);
         for (var file in result.files) {
-          if (file.bytes != null) {
-            final fileName = '${DateTime.now().millisecondsSinceEpoch}_${file.name}';
-            final ref = FirebaseStorage.instance.ref().child('companies/${widget.companyId}/visits/$fileName');
-            final uploadTask = ref.putData(file.bytes!);
-            final snapshot = await uploadTask;
-            final url = await snapshot.ref.getDownloadURL();
-
-            _safeSetState(() {
-              _attachmentsList.add('${file.name}|||$url|||$_selectedDocumentCategory');
-            });
+          if (file.size > 10 * 1024 * 1024) {
+            ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('${file.name} exceeds 10MB limit.'), backgroundColor: Colors.orange));
+            continue;
           }
+
+          final fileName = '${DateTime.now().millisecondsSinceEpoch}_${file.name}';
+          final ref = FirebaseStorage.instance.ref().child('companies/${widget.companyId}/visits/$fileName');
+
+          UploadTask uploadTask;
+
+          if (kIsWeb || file.path == null) {
+            uploadTask = ref.putData(file.bytes!);
+          } else {
+            uploadTask = ref.putFile(io.File(file.path!));
+          }
+
+          final snapshot = await uploadTask;
+          final url = await snapshot.ref.getDownloadURL();
+
+          _safeSetState(() {
+            _attachmentsList.add('${file.name}|||$url|||$_selectedDocumentCategory');
+            _isDirty = true;
+          });
         }
       }
     } catch (e) {
@@ -533,6 +618,30 @@ class _CustomerVisitScreenState extends State<CustomerVisitScreen> {
     if (result == true) {
       await _fetchCustomers();
     }
+  }
+
+  void _purgeDynamicCustomerData() {
+    _contactNameCtrl.clear();
+    _contactMobileCtrl.clear();
+    _contactEmailCtrl.clear();
+    _contactDesignationCtrl.clear();
+    _contactDepartmentCtrl.clear();
+
+    _linkedInquiryId = '';
+    _linkedQuotationId = '';
+    _referenceQuotationNumber = '';
+    _linkedServiceTicketId = '';
+
+    _quoteDateCtrl.clear();
+    _quoteValueCtrl.clear();
+    _quoteStatusCtrl.clear();
+    _quoteRevisionCtrl.clear();
+
+    _outstandingAmountCtrl.clear();
+    _overdueAmountCtrl.clear();
+    _creditLimitCtrl.clear();
+    _lastPaymentDateCtrl.clear();
+    _paymentCommitmentDate = null;
   }
 
   Future<void> _createInquiry() async {
@@ -590,6 +699,8 @@ class _CustomerVisitScreenState extends State<CustomerVisitScreen> {
           .orderBy('createdAt', descending: true)
           .get();
 
+      if (!mounted) return;
+
       if (mounted) {
         showDialog(
             context: context,
@@ -620,6 +731,7 @@ class _CustomerVisitScreenState extends State<CustomerVisitScreen> {
                             _quoteValueCtrl.text = amt.toString();
                             _quoteStatusCtrl.text = qData['status']?.toString() ?? 'Draft';
                             _quoteRevisionCtrl.text = rev.toString();
+                            _markDirty();
                           });
                           Navigator.pop(ctx);
                         },
@@ -640,7 +752,6 @@ class _CustomerVisitScreenState extends State<CustomerVisitScreen> {
               actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('OK'))],
             )
         );
-        debugPrint('Index missing: ${e.message}');
       } else {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Search failed: ${e.message}')));
       }
@@ -778,26 +889,32 @@ class _CustomerVisitScreenState extends State<CustomerVisitScreen> {
   }
 
   void _applyContactAutoFill(Map<String, dynamic> data) {
+    _contactNameCtrl.text = (data['name'] ?? '').toString().trim();
     _contactMobileCtrl.text = (data['phone'] ?? data['mobile'] ?? data['mobileNo'] ?? data['contactNo'] ?? '').toString().trim();
     _contactEmailCtrl.text = (data['email'] ?? data['primaryEmail'] ?? '').toString().trim();
     _contactDesignationCtrl.text = (data['designation'] ?? '').toString().trim();
     _contactDepartmentCtrl.text = (data['department'] ?? '').toString().trim();
   }
 
+  // --- CLEAN ARCHITECTURE ERP SAVE DELEGATION ---
   Future<void> _saveData() async {
+    if (_isSaving) return;
+
     if (_selectedCustomerId == null || _selectedAddressData == null || _selectedContactId == null) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Please select Customer, Address, and Contact.')));
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Please select Customer, Address, and Contact.'), backgroundColor: Colors.red));
       return;
     }
     if (!_formKey.currentState!.validate()) return;
 
-    _safeSetState(() => _isLoading = true);
+    _safeSetState(() => _isSaving = true);
 
     try {
+      debugPrint('--- VISIT SAVE TRACE ---');
+      debugPrint('1. Save button pressed. Validating payload...');
+
       final customerNameStr = _selectedCustomerData?['name'] ?? _selectedCustomerData?['companyName'] ?? '';
       final addressStr = '${_selectedAddressData!['type'] ?? ''} - ${_selectedAddressData!['street'] ?? ''}, ${_selectedAddressData!['city'] ?? ''}';
 
-      // Build internal notes string carrying rich check-out/location data if model doesn't support them natively
       String deepGpsString = 'Check-In: $_gpsAddress';
       if (_checkOutAddress.isNotEmpty) {
         deepGpsString += ' | Check-Out: $_checkOutAddress';
@@ -809,15 +926,16 @@ class _CustomerVisitScreenState extends State<CustomerVisitScreen> {
         companyId: widget.companyId,
         createdBy: widget.visit?.createdBy ?? widget.currentUserId,
         updatedBy: widget.currentUserId,
+        createdAt: widget.visit?.createdAt,
         visitNumber: _visitNumberCtrl.text,
         checkInTime: _checkInTime,
         checkOutTime: _checkOutTime,
         visitDuration: _visitDuration,
-        gpsLocation: _gpsAddress, // Keeping primary model contract
+        gpsLocation: _gpsAddress,
         attachments: _attachmentsList,
         customerId: _selectedCustomerId!,
         customerName: customerNameStr,
-        contactPerson: _selectedContactData?['name'] ?? '',
+        contactPerson: _contactNameCtrl.text.trim(),
         designation: _contactDesignationCtrl.text.trim(),
         mobile: _contactMobileCtrl.text.trim(),
         email: _contactEmailCtrl.text.trim(),
@@ -832,7 +950,7 @@ class _CustomerVisitScreenState extends State<CustomerVisitScreen> {
         linkedQuotationId: _linkedQuotationId,
         linkedServiceTicketId: _linkedServiceTicketId,
         discussionNotes: _discussionNotesCtrl.text.trim(),
-        quotationStatus: _quoteStatusCtrl.text.trim(), // Fixed Reference
+        quotationStatus: _quoteStatusCtrl.text.trim(),
         customerFeedback: _customerFeedbackCtrl.text.trim(),
         priceFeedback: _priceFeedbackCtrl.text.trim(),
         competitorFeedback: _competitorFeedbackCtrl.text.trim(),
@@ -854,117 +972,124 @@ class _CustomerVisitScreenState extends State<CustomerVisitScreen> {
         followupRequired: _followupRequired,
         followupDate: _followupDate,
         followupType: _followupType,
+        followupPriority: _followupPriority,
         followupRemarks: _followupRemarksCtrl.text.trim(),
         outcome: _outcome,
         status: _status,
       );
 
-      String savedId = '';
-      if (widget.visit == null) {
-        savedId = await _service.createVisit(widget.companyId, model);
-      } else {
-        await _service.updateVisit(widget.companyId, model);
-        savedId = model.id;
-      }
+      debugPrint('2. Model generated. Current ID: ${model.id}');
+      debugPrint('3. Calling CustomerVisitService.saveVisitTransaction()...');
 
-      if (_followupRequired && _followupDate != null) {
-        await _firestore.collection('companies').doc(widget.companyId).collection('tasks').add({
-          'title': 'Follow-up: $customerNameStr',
-          'description': _followupRemarksCtrl.text.trim(),
-          'dueDate': Timestamp.fromDate(_followupDate!),
-          'taskType': _followupType,
-          'priority': _followupPriority,
-          'status': 'Open',
-          'relatedTo': 'Customer Visit',
-          'relatedId': savedId,
-          'customerId': _selectedCustomerId,
-          'assignedToUid': widget.currentUserId,
-          'createdAt': FieldValue.serverTimestamp(),
-          'createdBy': widget.currentUserId,
-          'isActive': true,
-          'isDeleted': false,
-        });
-      }
+      // DELEGATE TO CLEAN ARCHITECTURE SERVICE
+      await _service.saveVisitTransaction(
+        companyId: widget.companyId,
+        currentUserId: widget.currentUserId,
+        ownerName: _visitOwnerNameCtrl.text,
+        visit: model,
+        referenceQuotationNumber: _referenceQuotationNumber,
+        isNew: widget.visit == null,
+      );
 
-      // Enhanced Rich Customer 360 Timeline
-      await _firestore.collection('companies').doc(widget.companyId).collection('customers').doc(_selectedCustomerId).collection('timeline').add({
-        'type': 'Visit',
-        'action': 'Visit Recorded',
-        'title': 'Visit: $_purpose',
-        'description': 'Outcome: $_outcome | Notes: ${_discussionNotesCtrl.text.isNotEmpty ? _discussionNotesCtrl.text : "Logged successfully."}',
-        'visitId': savedId,
-        'visitNumber': _visitNumberCtrl.text,
-        'purpose': _purpose,
-        'outcome': _outcome,
-        'contact': _selectedContactData?['name'] ?? '',
-        'quotationReference': _referenceQuotationNumber,
-        'inquiryReference': _linkedInquiryId,
-        'serviceReference': _linkedServiceTicketId,
-        'date': _visitDate != null ? Timestamp.fromDate(_visitDate!) : FieldValue.serverTimestamp(),
-        'createdAt': FieldValue.serverTimestamp(),
-        'createdBy': widget.currentUserId,
-        'createdByName': _visitOwnerNameCtrl.text,
-      });
+      debugPrint('4. Service call completed successfully. Transaction committed.');
 
+      // Clear draft memory safely after success
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove('draft_gps_time_${widget.currentUserId}');
+      await prefs.remove('draft_gps_addr_${widget.currentUserId}');
+
+      _isDirty = false;
+
+      debugPrint('5. Navigating back to list screen.');
       if (mounted) {
-        Navigator.pop(context);
+        Navigator.pop(context, true);
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Visit Activity saved.'), backgroundColor: Colors.green));
       }
     } catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red));
+      debugPrint('🚨 ERROR IN SAVE TRACE: $e');
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error saving visit: $e'), backgroundColor: Colors.red));
     } finally {
-      _safeSetState(() => _isLoading = false);
+      _safeSetState(() => _isSaving = false);
     }
   }
 
   // ==========================================
-  // UI BUILDERS (MODERN CRM STYLE)
+  // UI BUILDERS
   // ==========================================
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Colors.grey.shade50,
-      appBar: AppBar(
-        title: Text(widget.visit == null ? 'Record Visit' : 'Edit Visit', style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 16)),
-        backgroundColor: Colors.white,
-        foregroundColor: Colors.black87,
-        elevation: 1,
-        shadowColor: Colors.black.withOpacity(0.1),
-        actions: [
-          if (_isLoading)
-            const Padding(padding: EdgeInsets.all(16), child: SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2)))
-          else
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8),
-              child: FilledButton(
-                style: FilledButton.styleFrom(shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6))),
-                onPressed: _saveData,
-                child: const Text('Save Activity'),
-              ),
-            )
-        ],
-      ),
-      body: Center(
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 1000),
-          child: Form(
-            key: _formKey,
-            child: SingleChildScrollView(
-              padding: const EdgeInsets.all(24.0),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  _buildCompactHeader(),
-                  const SizedBox(height: 24),
-                  _buildCustomerSection(),
-                  const SizedBox(height: 24),
-                  _buildDynamicWorkflowSection(),
-                  const SizedBox(height: 24),
-                  _buildFollowUpSection(),
-                  const SizedBox(height: 24),
-                  _buildTrackingSection(),
-                ],
+    return PopScope(
+      canPop: false,
+      onPopInvoked: (didPop) async {
+        if (didPop) return;
+        if (_isDirty) {
+          final confirm = await showDialog<bool>(
+            context: context,
+            builder: (ctx) => AlertDialog(
+              title: const Text('Discard Changes?'),
+              content: const Text('You have unsaved changes. Are you sure you want to discard them?'),
+              actions: [
+                TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+                FilledButton(
+                  style: FilledButton.styleFrom(backgroundColor: Colors.red),
+                  onPressed: () => Navigator.pop(ctx, true),
+                  child: const Text('Discard'),
+                )
+              ],
+            ),
+          );
+          if (confirm == true && mounted) {
+            Navigator.pop(context);
+          }
+        } else {
+          Navigator.pop(context);
+        }
+      },
+      child: Scaffold(
+        backgroundColor: Colors.grey.shade50,
+        appBar: AppBar(
+          title: Text(widget.visit == null ? 'Record Visit' : 'Edit Visit', style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 16)),
+          backgroundColor: Colors.white,
+          foregroundColor: Colors.black87,
+          elevation: 1,
+          shadowColor: Colors.black.withOpacity(0.1),
+          actions: [
+            if (_isSaving || _isLoading)
+              const Padding(padding: EdgeInsets.all(16), child: SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2)))
+            else
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8),
+                child: FilledButton(
+                  style: FilledButton.styleFrom(shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6))),
+                  onPressed: _saveData,
+                  child: const Text('Save Activity'),
+                ),
+              )
+          ],
+        ),
+        body: Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 1000),
+            child: Form(
+              key: _formKey,
+              onChanged: _markDirty,
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.all(24.0),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    _buildCompactHeader(),
+                    const SizedBox(height: 24),
+                    _buildCustomerSection(),
+                    const SizedBox(height: 24),
+                    _buildDynamicWorkflowSection(),
+                    const SizedBox(height: 24),
+                    _buildFollowUpSection(),
+                    const SizedBox(height: 24),
+                    _buildTrackingSection(),
+                  ],
+                ),
               ),
             ),
           ),
@@ -1016,10 +1141,14 @@ class _CustomerVisitScreenState extends State<CustomerVisitScreen> {
             children: [
               Expanded(
                 child: Autocomplete<QueryDocumentSnapshot<Map<String, dynamic>>>(
-                  displayStringForOption: (opt) => opt.data()['name'] ?? opt.data()['companyName'] ?? '-',
+                  displayStringForOption: (opt) {
+                    final d = opt.data();
+                    return (d['companyName'] ?? d['name'] ?? 'Unknown Customer').toString();
+                  },
                   optionsBuilder: (textEditingValue) {
                     if (textEditingValue.text.isEmpty) return const Iterable<QueryDocumentSnapshot<Map<String, dynamic>>>.empty();
-                    final query = textEditingValue.text.toLowerCase();
+                    final query = textEditingValue.text.toLowerCase().trim();
+
                     return _allCustomers.where((doc) {
                       final d = doc.data();
                       final searchStr = [
@@ -1028,8 +1157,9 @@ class _CustomerVisitScreenState extends State<CustomerVisitScreen> {
                         d['city'], d['state'], d['industry'], d['industryType'],
                         d['contactPerson']
                       ].where((e) => e != null && e.toString().trim().isNotEmpty).join(' ').toLowerCase();
+
                       return searchStr.contains(query);
-                    });
+                    }).take(20);
                   },
                   onSelected: (option) async {
                     _safeSetState(() {
@@ -1037,18 +1167,20 @@ class _CustomerVisitScreenState extends State<CustomerVisitScreen> {
                       _selectedAddressData = null;
                       _selectedContactId = null;
                       _selectedContactData = null;
+                      _purgeDynamicCustomerData();
+                      _markDirty();
                     });
                     await _fetchCustomerDetails(option.id);
                   },
                   fieldViewBuilder: (context, controller, focusNode, onFieldSubmitted) {
                     if (_selectedCustomerData != null && controller.text.isEmpty) {
-                      controller.text = _selectedCustomerData!['name'] ?? _selectedCustomerData!['companyName'] ?? '';
+                      controller.text = _selectedCustomerData!['companyName'] ?? _selectedCustomerData!['name'] ?? '';
                     }
                     return TextFormField(
                       controller: controller,
                       focusNode: focusNode,
                       decoration: InputDecoration(
-                        labelText: 'Search Customer (Name, Code, Phone, City, GST...) *',
+                        labelText: 'Search Customer (Name, Company, Code, Phone, City...) *',
                         prefixIcon: const Icon(Icons.search, size: 20),
                         suffixIcon: _selectedCustomerId != null
                             ? IconButton(
@@ -1061,6 +1193,8 @@ class _CustomerVisitScreenState extends State<CustomerVisitScreen> {
                                 _selectedAddressData = null;
                                 _selectedContactId = null;
                                 _selectedContactData = null;
+                                _purgeDynamicCustomerData();
+                                _markDirty();
                               });
                             })
                             : null,
@@ -1113,6 +1247,7 @@ class _CustomerVisitScreenState extends State<CustomerVisitScreen> {
                           _selectedContactData = _getFilteredContacts().firstWhere((d) => d.id == val).data();
                           _applyContactAutoFill(_selectedContactData!);
                         }
+                        _markDirty();
                       });
                     },
                     validator: (v) => v == null ? 'Contact required' : null,
@@ -1123,7 +1258,6 @@ class _CustomerVisitScreenState extends State<CustomerVisitScreen> {
               ],
             ),
 
-            // Contact Person UX Rework
             if (_selectedContactData != null) ...[
               const SizedBox(height: 16),
               Container(
@@ -1143,7 +1277,7 @@ class _CustomerVisitScreenState extends State<CustomerVisitScreen> {
                     const SizedBox(height: 12),
                     Row(
                       children: [
-                        Expanded(child: _buildReadOnlyField('Name', TextEditingController(text: _selectedContactData?['name'] ?? '-'), Icons.person)),
+                        Expanded(child: _buildReadOnlyField('Name', _contactNameCtrl, Icons.person)),
                         const SizedBox(width: 12),
                         Expanded(child: _buildReadOnlyField('Designation', _contactDesignationCtrl, Icons.badge)),
                         const SizedBox(width: 12),
@@ -1168,18 +1302,19 @@ class _CustomerVisitScreenState extends State<CustomerVisitScreen> {
           const SizedBox(height: 16),
           Row(
             children: [
-              Expanded(child: _buildDatePicker('Visit Date', _visitDate, (d) => _safeSetState(() => _visitDate = d))),
+              Expanded(child: _buildDatePicker('Visit Date', _visitDate, (d) => _safeSetState(() { _visitDate = d; _markDirty(); }))),
               const SizedBox(width: 16),
               Expanded(
                   child: _buildDropdown('Purpose', _purpose, _purposeOptions, (v) {
                     _safeSetState(() {
                       _purpose = v!;
                       _resetOutcome();
+                      _markDirty();
                     });
                   })
               ),
               const SizedBox(width: 16),
-              Expanded(child: _buildDropdown('Priority', _priority, ['Low', 'Medium', 'High', 'Critical'], (v) => _safeSetState(() => _priority = v!))),
+              Expanded(child: _buildDropdown('Priority', _priority, ['Low', 'Medium', 'High', 'Critical'], (v) => _safeSetState(() { _priority = v!; _markDirty(); }))),
             ],
           ),
           if (_purpose == 'Other') ...[
@@ -1201,7 +1336,7 @@ class _CustomerVisitScreenState extends State<CustomerVisitScreen> {
             contentPadding: EdgeInsets.zero,
             title: const Text('Inquiry Generated?', style: TextStyle(fontWeight: FontWeight.bold)),
             value: _leadGenerated,
-            onChanged: (val) => _safeSetState(() => _leadGenerated = val),
+            onChanged: (val) => _safeSetState(() { _leadGenerated = val; _markDirty(); }),
             activeColor: Theme.of(context).primaryColor,
           ),
           if (_leadGenerated) ...[
@@ -1217,7 +1352,7 @@ class _CustomerVisitScreenState extends State<CustomerVisitScreen> {
           const SizedBox(height: 12),
           SizedBox(
             width: 300,
-            child: _buildDropdown('Outcome / Stage', _outcome, _getOutcomeOptions(), (v) => _safeSetState(() => _outcome = v!)),
+            child: _buildDropdown('Outcome / Stage', _outcome, _getOutcomeOptions(), (v) => _safeSetState(() { _outcome = v!; _markDirty(); })),
           ),
         ]);
         break;
@@ -1273,9 +1408,9 @@ class _CustomerVisitScreenState extends State<CustomerVisitScreen> {
           _buildTextField(_competitorFeedbackCtrl, 'Competitor Feedback', maxLines: 2),
           Row(
             children: [
-              Expanded(child: _buildDatePicker('Expected Closure Date', _paymentCommitmentDate, (d) => _safeSetState(() => _paymentCommitmentDate = d))),
+              Expanded(child: _buildDatePicker('Expected Closure Date', _paymentCommitmentDate, (d) => _safeSetState(() { _paymentCommitmentDate = d; _markDirty(); }))),
               const SizedBox(width: 16),
-              Expanded(child: _buildDropdown('Outcome', _outcome, _getOutcomeOptions(), (val) => _safeSetState(() => _outcome = val!))),
+              Expanded(child: _buildDropdown('Outcome', _outcome, _getOutcomeOptions(), (val) => _safeSetState(() { _outcome = val!; _markDirty(); }))),
             ],
           ),
         ]);
@@ -1318,7 +1453,7 @@ class _CustomerVisitScreenState extends State<CustomerVisitScreen> {
           const SizedBox(height: 24),
           Row(
             children: [
-              Expanded(child: _buildDatePicker('Payment Commitment Date', _paymentCommitmentDate, (d) => _safeSetState(() => _paymentCommitmentDate = d))),
+              Expanded(child: _buildDatePicker('Payment Commitment Date', _paymentCommitmentDate, (d) => _safeSetState(() { _paymentCommitmentDate = d; _markDirty(); }))),
               const SizedBox(width: 12),
               Expanded(child: _buildTextField(_committedAmountCtrl, 'Committed Amount (₹)', isNumber: true)),
             ],
@@ -1326,14 +1461,13 @@ class _CustomerVisitScreenState extends State<CustomerVisitScreen> {
           _buildTextField(_paymentRemarksCtrl, 'Collection Remarks', maxLines: 3),
           SizedBox(
             width: 300,
-            child: _buildDropdown('Outcome', _outcome, _getOutcomeOptions(), (val) => _safeSetState(() => _outcome = val!)),
+            child: _buildDropdown('Outcome', _outcome, _getOutcomeOptions(), (val) => _safeSetState(() { _outcome = val!; _markDirty(); })),
           ),
         ]);
         break;
 
       case 'Service Visit':
       case 'Complaint Visit':
-      case 'AMC Visit':
         children.addAll([
           OutlinedButton.icon(
               onPressed: () => ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Service Module integration pending.'))),
@@ -1348,7 +1482,19 @@ class _CustomerVisitScreenState extends State<CustomerVisitScreen> {
           const SizedBox(height: 12),
           SizedBox(
             width: 300,
-            child: _buildDropdown('Outcome', _outcome, _getOutcomeOptions(), (val) => _safeSetState(() => _outcome = val!)),
+            child: _buildDropdown('Outcome', _outcome, _getOutcomeOptions(), (val) => _safeSetState(() { _outcome = val!; _markDirty(); })),
+          ),
+        ]);
+        break;
+
+      case 'AMC Visit':
+        children.addAll([
+          _buildTextField(_serviceObservationCtrl, 'Service Notes', maxLines: 3),
+          _buildTextField(_recommendationCtrl, 'Recommendations', maxLines: 2),
+          _buildDatePicker('Next AMC Service Date', _nextServiceDate, (d) => _safeSetState(() { _nextServiceDate = d; _markDirty(); })),
+          SizedBox(
+            width: 300,
+            child: _buildDropdown('Outcome', _outcome, _getOutcomeOptions(), (val) => _safeSetState(() { _outcome = val!; _markDirty(); })),
           ),
         ]);
         break;
@@ -1358,7 +1504,7 @@ class _CustomerVisitScreenState extends State<CustomerVisitScreen> {
         children.addAll([
           _buildTextField(_technicalTopicsCtrl, 'Technical Topics Discussed', maxLines: 2),
           _buildTextField(_discussionNotesCtrl, 'Detailed Notes', maxLines: 4),
-          _buildDropdown('Outcome', _outcome, _getOutcomeOptions(), (val) => _safeSetState(() => _outcome = val!)),
+          _buildDropdown('Outcome', _outcome, _getOutcomeOptions(), (val) => _safeSetState(() { _outcome = val!; _markDirty(); })),
         ]);
         break;
 
@@ -1367,15 +1513,7 @@ class _CustomerVisitScreenState extends State<CustomerVisitScreen> {
           _buildTextField(_machineStatusCtrl, 'Machine Status'),
           _buildTextField(_installationNotesCtrl, 'Installation Notes', maxLines: 3),
           _buildTextField(_customerAcceptanceCtrl, 'Customer Acceptance / Sign-off Remarks', maxLines: 2),
-          _buildDropdown('Outcome', _outcome, _getOutcomeOptions(), (val) => _safeSetState(() => _outcome = val!)),
-        ]);
-        break;
-
-      case 'AMC Visit':
-        children.addAll([
-          _buildTextField(_serviceObservationCtrl, 'Service Notes', maxLines: 3),
-          _buildTextField(_recommendationCtrl, 'Recommendations', maxLines: 2),
-          _buildDatePicker('Next AMC Service Date', _nextServiceDate, (d) => _safeSetState(() => _nextServiceDate = d)),
+          _buildDropdown('Outcome', _outcome, _getOutcomeOptions(), (val) => _safeSetState(() { _outcome = val!; _markDirty(); })),
         ]);
         break;
 
@@ -1385,7 +1523,7 @@ class _CustomerVisitScreenState extends State<CustomerVisitScreen> {
           const SizedBox(height: 12),
           SizedBox(
             width: 300,
-            child: _buildDropdown('Outcome', _outcome, _getOutcomeOptions(), (val) => _safeSetState(() => _outcome = val!)),
+            child: _buildDropdown('Outcome', _outcome, _getOutcomeOptions(), (val) => _safeSetState(() { _outcome = val!; _markDirty(); })),
           ),
         ]);
         break;
@@ -1418,17 +1556,17 @@ class _CustomerVisitScreenState extends State<CustomerVisitScreen> {
             title: const Text('Schedule Follow-Up Task', style: TextStyle(fontWeight: FontWeight.bold)),
             value: _followupRequired,
             activeColor: Theme.of(context).primaryColor,
-            onChanged: (val) => _safeSetState(() => _followupRequired = val),
+            onChanged: (val) => _safeSetState(() { _followupRequired = val; _markDirty(); }),
           ),
           if (_followupRequired) ...[
             const SizedBox(height: 16),
             Row(
               children: [
-                Expanded(child: _buildDatePicker('Date', _followupDate, (d) => _safeSetState(() => _followupDate = d))),
+                Expanded(child: _buildDatePicker('Date', _followupDate, (d) => _safeSetState(() { _followupDate = d; _markDirty(); }))),
                 const SizedBox(width: 16),
-                Expanded(child: _buildDropdown('Type', _followupType, ['Call', 'Email', 'Visit', 'WhatsApp', 'Meeting'], (v) => _safeSetState(() => _followupType = v!))),
+                Expanded(child: _buildDropdown('Type', _followupType, ['Call', 'Email', 'Visit', 'WhatsApp', 'Meeting'], (v) => _safeSetState(() { _followupType = v!; _markDirty(); }))),
                 const SizedBox(width: 16),
-                Expanded(child: _buildDropdown('Priority', _followupPriority, ['High', 'Medium', 'Low'], (v) => _safeSetState(() => _followupPriority = v!))),
+                Expanded(child: _buildDropdown('Priority', _followupPriority, ['High', 'Medium', 'Low'], (v) => _safeSetState(() { _followupPriority = v!; _markDirty(); }))),
               ],
             ),
             const SizedBox(height: 12),
@@ -1497,7 +1635,7 @@ class _CustomerVisitScreenState extends State<CustomerVisitScreen> {
                           final name = str.split('|||')[0];
                           return Chip(
                             label: Text(name, style: const TextStyle(fontSize: 11)),
-                            onDeleted: () => _safeSetState(() => _attachmentsList.remove(str)),
+                            onDeleted: () => _safeSetState(() { _attachmentsList.remove(str); _markDirty(); }),
                             deleteIcon: const Icon(Icons.close, size: 14),
                             backgroundColor: Colors.grey.shade100,
                             side: BorderSide(color: Colors.grey.shade300),
