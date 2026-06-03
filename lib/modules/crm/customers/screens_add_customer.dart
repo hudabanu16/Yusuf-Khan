@@ -1119,7 +1119,7 @@ class _ScreensAddCustomerState extends State<ScreensAddCustomer> {
           }
           int nextCount = currentCount + 1;
           transaction.set(counterRef, {'count': nextCount}, SetOptions(merge: true));
-          return 'CUST-${nextCount.toString().padLeft(6, '0')}';
+          return 'CUST-${nextCount.toString().padLeft(4, '0')}';
         }, timeout: const Duration(seconds: 15));
       } catch (e) {
         retries--;
@@ -1128,7 +1128,36 @@ class _ScreensAddCustomerState extends State<ScreensAddCustomer> {
         delayMs *= 2;
       }
     }
-    return 'CUST-${DateTime.now().millisecondsSinceEpoch.toString().substring(5)}';
+    // Fallback: never use docs.length because deleted/duplicate customers can repeat IDs.
+    // Scan existing numeric customer codes and use highest + 1.
+    final fallbackSnap = await FirebaseFirestore.instance
+        .collection('companies')
+        .doc(widget.companyId)
+        .collection('customers')
+        .get();
+
+    int maxNumber = 0;
+    final codeRegex = RegExp(r'^CUST[-\s]?(\d+)$', caseSensitive: false);
+
+    for (final doc in fallbackSnap.docs) {
+      final code = (doc.data()['customerCode'] ?? '').toString().trim();
+      final match = codeRegex.firstMatch(code);
+      if (match != null) {
+        final number = int.tryParse(match.group(1) ?? '') ?? 0;
+        if (number > maxNumber) maxNumber = number;
+      }
+    }
+
+    final fallbackNext = maxNumber + 1;
+
+    await FirebaseFirestore.instance
+        .collection('companies')
+        .doc(widget.companyId)
+        .collection('metadata')
+        .doc('customer_counter')
+        .set({'count': fallbackNext}, SetOptions(merge: true));
+
+    return 'CUST-${fallbackNext.toString().padLeft(4, '0')}';
   }
 
   // --- DUPLICATE CHECK WARNINGS ---

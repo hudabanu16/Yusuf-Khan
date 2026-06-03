@@ -114,6 +114,7 @@ class _ScreensAddInquiryState extends State<ScreensAddInquiry> {
   int _customerSearchEpoch = 0;
   final int _maxCacheSize = 50;
   final LinkedHashMap<String, List<QueryDocumentSnapshot<Map<String, dynamic>>>> _customerSearchCache = LinkedHashMap<String, List<QueryDocumentSnapshot<Map<String, dynamic>>>>();
+  List<QueryDocumentSnapshot<Map<String, dynamic>>> _allCustomerDocs = <QueryDocumentSnapshot<Map<String, dynamic>>>[];
   List<DocumentSnapshot<Map<String, dynamic>>> _customerSuggestions = <DocumentSnapshot<Map<String, dynamic>>>[];
 
   bool get _isEditing => widget.existingDoc != null;
@@ -145,6 +146,9 @@ class _ScreensAddInquiryState extends State<ScreensAddInquiry> {
     super.initState();
     _inquiryDate = DateTime.now().toUtc(); // Timezone-safe initialization
     _initializeForm();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _triggerAsyncCustomerSearch('');
+    });
   }
 
   Future<void> _initializeForm() async {
@@ -530,44 +534,68 @@ class _ScreensAddInquiryState extends State<ScreensAddInquiry> {
   // ENTERPRISE INDEXED SEARCH + SYNCHRONOUS AUTOCOMPLETE
   // ---------------------------------------------------------
   void _triggerAsyncCustomerSearch(String query) {
-    final q = query.toLowerCase().trim();
+    final q = _normalizeText(query);
     if (_customerSearchCache.containsKey(q)) return;
 
     if (_debounceTimer?.isActive ?? false) _debounceTimer!.cancel();
 
     final currentEpoch = ++_customerSearchEpoch;
 
-    _debounceTimer = Timer(const Duration(milliseconds: 350), () async {
+    _debounceTimer = Timer(const Duration(milliseconds: 250), () async {
       try {
-        Query<Map<String, dynamic>> baseQuery = _companyCustomersRef
-            .where('isActive', isEqualTo: true)
-            .where('isDeleted', isEqualTo: false);
+        // IMPORTANT:
+        // Do not use Firestore arrayContains / prefix composite queries here.
+        // Those queries can fail when indexes are missing and they also hide old
+        // customer records where fields like isDeleted/searchKeywords are absent.
+        // We load a safe batch and filter locally so the inquiry form can show all
+        // customers saved from the customer module.
+        final snap = await _companyCustomersRef.limit(1000).get();
 
-        QuerySnapshot<Map<String, dynamic>> snap;
-
-        if (q.isEmpty) {
-          snap = await baseQuery.limit(30).get();
-        } else {
-          // Enterprise scalable search approach
-          snap = await baseQuery
-              .where('searchKeywords', arrayContains: q)
-              .limit(30)
-              .get();
-
-          if (snap.docs.isEmpty) {
-            // Fallback prefix search
-            snap = await baseQuery
-                .where('companyNameLower', isGreaterThanOrEqualTo: q)
-                .where('companyNameLower', isLessThanOrEqualTo: q + '\uf8ff')
-                .limit(30)
-                .get();
-          }
-        }
-
-        // Stale response protection
         if (currentEpoch != _customerSearchEpoch) return;
 
-        final filteredDocs = _filterCustomersBySecurityAndRole(snap.docs).toList();
+        var filteredDocs = _filterCustomersBySecurityAndRole(snap.docs).toList();
+
+        if (q.isNotEmpty) {
+          final queryWords = q.split(' ').where((e) => e.isNotEmpty).toList();
+          filteredDocs = filteredDocs.where((doc) {
+            final data = doc.data();
+            final searchable = _normalizeText(<String>[
+              data['companyName'],
+              data['name'],
+              data['customerCode'],
+              data['phone'],
+              data['phoneNormalized'],
+              data['email'],
+              data['emailNormalized'],
+              data['gst'],
+              data['city'],
+              data['state'],
+              data['industry'],
+              data['customerStage'],
+              ...(data['tags'] is Iterable ? List<dynamic>.from(data['tags']) : const <dynamic>[]),
+              ...(data['searchKeywords'] is Iterable ? List<dynamic>.from(data['searchKeywords']) : const <dynamic>[]),
+            ].whereType<Object>().map((e) => e.toString()).join(' '));
+
+            // Full-name friendly search:
+            // Example: typing "Afcons Infrastructure Ltd" should match even if
+            // Firestore has punctuation, double spaces, comma, Pvt. Ltd., etc.
+            if (searchable.contains(q)) return true;
+            return queryWords.every(searchable.contains);
+          }).toList();
+        }
+
+        filteredDocs.sort((a, b) {
+          final ad = a.data();
+          final bd = b.data();
+          final an = (ad['companyName'] ?? ad['name'] ?? '').toString().toLowerCase();
+          final bn = (bd['companyName'] ?? bd['name'] ?? '').toString().toLowerCase();
+          return an.compareTo(bn);
+        });
+
+        if (q.isEmpty || _allCustomerDocs.isEmpty) {
+          _allCustomerDocs = List<QueryDocumentSnapshot<Map<String, dynamic>>>.from(filteredDocs);
+        }
+
         _updateSearchCache(q, filteredDocs);
 
         if (mounted) {
@@ -576,21 +604,77 @@ class _ScreensAddInquiryState extends State<ScreensAddInquiry> {
           });
         }
       } catch (e, st) {
-        if (currentEpoch == _customerSearchEpoch) {
-          _handleError('Customer Search Failed', e, st);
+        // Customer search should not disturb the form with a red snackbar.
+        // Log only and keep the dropdown empty for this search attempt.
+        developer.log(
+          'Customer search failed silently',
+          error: e,
+          stackTrace: st,
+          name: 'InquiryModule',
+          level: 900,
+        );
+        if (currentEpoch == _customerSearchEpoch && mounted) {
+          setState(() {
+            _customerSuggestions = <DocumentSnapshot<Map<String, dynamic>>>[];
+          });
         }
       }
     });
   }
 
   Iterable<DocumentSnapshot<Map<String, dynamic>>> _getSyncCustomerOptions(String query) {
-    final q = query.toLowerCase().trim();
+    final q = _normalizeText(query);
     _triggerAsyncCustomerSearch(q);
 
-    if (_customerSearchCache.containsKey(q)) {
-      return _customerSearchCache[q]!;
+    final List<DocumentSnapshot<Map<String, dynamic>>> baseDocs = <DocumentSnapshot<Map<String, dynamic>>>[
+      ...?_customerSearchCache[q],
+      if (!_customerSearchCache.containsKey(q)) ..._allCustomerDocs,
+      if (!_customerSearchCache.containsKey(q) && _allCustomerDocs.isEmpty) ..._customerSuggestions,
+      if (!_customerSearchCache.containsKey(q) && _allCustomerDocs.isEmpty && _customerSuggestions.isEmpty) ...?_customerSearchCache[''],
+    ];
+
+    final Map<String, DocumentSnapshot<Map<String, dynamic>>> uniqueDocs = <String, DocumentSnapshot<Map<String, dynamic>>>{};
+    for (final doc in baseDocs) {
+      uniqueDocs[doc.id] = doc;
     }
-    return _customerSuggestions;
+
+    var docs = uniqueDocs.values.toList();
+
+    if (q.isNotEmpty) {
+      final queryWords = q.split(' ').where((e) => e.isNotEmpty).toList();
+      docs = docs.where((doc) {
+        final data = doc.data() ?? <String, dynamic>{};
+        final searchable = _normalizeText(<String>[
+          (data['companyName'] ?? '').toString(),
+          (data['name'] ?? '').toString(),
+          (data['customerCode'] ?? '').toString(),
+          (data['phone'] ?? '').toString(),
+          (data['phoneNormalized'] ?? '').toString(),
+          (data['email'] ?? '').toString(),
+          (data['emailNormalized'] ?? '').toString(),
+          (data['gst'] ?? '').toString(),
+          (data['city'] ?? '').toString(),
+          (data['state'] ?? '').toString(),
+          (data['industry'] ?? '').toString(),
+          (data['customerStage'] ?? '').toString(),
+          ...(data['tags'] is Iterable ? List<dynamic>.from(data['tags']).map((e) => e.toString()) : const <String>[]),
+          ...(data['searchKeywords'] is Iterable ? List<dynamic>.from(data['searchKeywords']).map((e) => e.toString()) : const <String>[]),
+        ].join(' '));
+
+        if (searchable.contains(q)) return true;
+        return queryWords.every(searchable.contains);
+      }).toList();
+    }
+
+    docs.sort((a, b) {
+      final ad = a.data() ?? <String, dynamic>{};
+      final bd = b.data() ?? <String, dynamic>{};
+      final an = (ad['companyName'] ?? ad['name'] ?? '').toString().toLowerCase();
+      final bn = (bd['companyName'] ?? bd['name'] ?? '').toString().toLowerCase();
+      return an.compareTo(bn);
+    });
+
+    return docs.take(80);
   }
 
   Iterable<QueryDocumentSnapshot<Map<String, dynamic>>> _filterCustomersBySecurityAndRole(
@@ -1322,6 +1406,7 @@ class _ScreensAddInquiryState extends State<ScreensAddInquiry> {
                   validator: (v) => _selectedCustomerId == null ? 'Required' : null,
                   onChanged: (value) {
                     _customerSearchController.text = value;
+                    _triggerAsyncCustomerSearch(value);
                     final normalizedInput = _normalizeText(value);
                     final normalizedSelected = _normalizeText(_customerNameSnapshot);
                     if (_selectedCustomerId != null && normalizedInput != normalizedSelected) {
