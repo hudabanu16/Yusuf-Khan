@@ -5,14 +5,13 @@ import 'package:flutter/material.dart';
 import 'package:QUIK/core/theme/app_theme.dart';
 import 'package:QUIK/modules/administration/users/screen_user_management.dart';
 import 'package:QUIK/modules/crm/customers/screens_customer_list.dart';
-import 'package:QUIK/modules/crm/customer_visits/customer_visit_list_screen.dart'; // ✅ NEW: Imported Customer Visit List Screen
+import 'package:QUIK/modules/crm/customer_visits/customer_visit_list_screen.dart';
 import 'package:QUIK/modules/dashboard/dashboard_screen.dart';
 import 'package:QUIK/modules/inventory/products/screens_product_list.dart';
 import 'package:QUIK/modules/sales/inquiries/screens_inquiry_list.dart';
 import 'package:QUIK/modules/sales/quotations/screens_quotation_list.dart';
 import 'package:QUIK/modules/settings/screen_settings_home.dart';
 import 'package:QUIK/modules/sales/sales_orders/screens_sales_order_list.dart';
-import 'package:QUIK/modules/service/screens_service_home.dart';
 
 // Finance Sub-Modules
 import 'package:QUIK/modules/finance/invoice/screens/invoice_list_screen.dart';
@@ -27,6 +26,9 @@ import 'package:QUIK/modules/finance/outstanding/screens/outstanding_screen.dart
 // Reports
 import 'package:QUIK/modules/reports/sales_report/sales_report_screen.dart';
 
+// Service Sub-Modules
+import 'package:QUIK/modules/service/service_requests/service_request_list_screen.dart';
+
 enum ShellPage {
   dashboard,
 
@@ -38,7 +40,6 @@ enum ShellPage {
   salesMeetings,
 
   // Professional Service Workflow
-  serviceDashboard,
   serviceRequests,
   serviceWorkOrders,
   serviceQuotations,
@@ -113,8 +114,6 @@ extension ShellPageX on ShellPage {
       case ShellPage.salesMeetings:
         return 'Meetings';
 
-      case ShellPage.serviceDashboard:
-        return 'Dashboard';
       case ShellPage.serviceRequests:
         return 'Service Requests';
       case ShellPage.serviceWorkOrders:
@@ -233,8 +232,6 @@ extension ShellPageX on ShellPage {
       case ShellPage.salesMeetings:
         return Icons.groups_outlined;
 
-      case ShellPage.serviceDashboard:
-        return Icons.dashboard_outlined;
       case ShellPage.serviceRequests:
         return Icons.support_agent_outlined;
       case ShellPage.serviceWorkOrders:
@@ -420,8 +417,7 @@ class _ZohoShellState extends State<ZohoShell> {
 
       if (doc.exists && doc.data() != null) {
         final data = doc.data()!;
-        final raw =
-        (data['industryType'] ??
+        final raw = (data['industryType'] ??
             data['businessCategory'] ??
             data['industry'] ??
             '')
@@ -534,8 +530,6 @@ class _ZohoShellState extends State<ZohoShell> {
         return _hasPermission('sales', 'meetings');
 
     // Service (Industrial Workflow)
-      case ShellPage.serviceDashboard:
-        return _hasPermission('service', 'dashboard');
       case ShellPage.serviceRequests:
         return _hasPermission('service', 'serviceRequests');
       case ShellPage.serviceWorkOrders:
@@ -659,7 +653,6 @@ class _ZohoShellState extends State<ZohoShell> {
         title: 'Service',
         icon: Icons.build_outlined,
         children: [
-          ShellPage.serviceDashboard,
           ShellPage.serviceRequests,
           ShellPage.serviceWorkOrders,
           ShellPage.serviceQuotations,
@@ -761,9 +754,8 @@ class _ZohoShellState extends State<ZohoShell> {
     final filtered = <SidebarGroup>[];
 
     for (var group in allGroups) {
-      final allowedChildren = group.children
-          .where((page) => _canViewPage(page))
-          .toList();
+      final allowedChildren =
+      group.children.where((page) => _canViewPage(page)).toList();
 
       if (allowedChildren.isNotEmpty) {
         filtered.add(
@@ -803,16 +795,6 @@ class _ZohoShellState extends State<ZohoShell> {
       case ShellPage.salesInquiries:
       case ShellPage.salesQuotations:
       case ShellPage.salesOrders:
-      case ShellPage.serviceDashboard:
-      case ShellPage.serviceRequests:
-      case ShellPage.serviceWorkOrders:
-      case ShellPage.serviceQuotations:
-      case ShellPage.serviceVisits:
-      case ShellPage.serviceInstallationCommissioning:
-      case ShellPage.serviceTechnicians:
-      case ShellPage.serviceReports:
-      case ShellPage.serviceEquipmentHistory:
-      case ShellPage.serviceClosedWorkOrders:
       case ShellPage.crmCustomers:
       case ShellPage.crmVisits: // ✅ NEW: Registered CRM Visits
       case ShellPage.inventoryProducts:
@@ -825,8 +807,10 @@ class _ZohoShellState extends State<ZohoShell> {
       case ShellPage.financePaymentsReceived:
       case ShellPage.financeOutstanding:
       case ShellPage.reportsSales:
+      case ShellPage.serviceRequests: // ✅ Connected Service Requests
         return true;
       default:
+      // Service modules removed to trigger placeholder correctly
         return false;
     }
   }
@@ -1295,9 +1279,8 @@ class _ZohoShellState extends State<ZohoShell> {
               firstChild: Padding(
                 padding: const EdgeInsets.fromLTRB(6, 0, 6, 6),
                 child: Column(
-                  children: group.children
-                      .map((page) => _subNavItem(page))
-                      .toList(),
+                  children:
+                  group.children.map((page) => _subNavItem(page)).toList(),
                 ),
               ),
               secondChild: const SizedBox.shrink(),
@@ -1309,11 +1292,10 @@ class _ZohoShellState extends State<ZohoShell> {
   }
 
   Widget _subNavItem(ShellPage page) {
-    final bool selected =
-        activePage == page ||
-            (page == ShellPage.financeTaxInvoice &&
-                (activePage == ShellPage.financeExportInvoiceCreate ||
-                    activePage == ShellPage.financeTaxInvoiceCreate));
+    final bool selected = activePage == page ||
+        (page == ShellPage.financeTaxInvoice &&
+            (activePage == ShellPage.financeExportInvoiceCreate ||
+                activePage == ShellPage.financeTaxInvoiceCreate));
 
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 1),
@@ -1419,14 +1401,17 @@ class _ZohoShellState extends State<ZohoShell> {
           child: ScreensInquiryList(),
         );
 
-    // Industrial Service Submodules Routing
-      case ShellPage.serviceDashboard:
+      case ShellPage.serviceRequests:
         return Padding(
           padding: const EdgeInsets.all(10),
-          child: ServiceHomeScreen(),
+          child: ServiceRequestListScreen(
+            companyId: widget.companyId,
+            currentUserUid: widget.userUid,
+            currentUserName: _resolvedEmployeeName(),
+          ),
         );
 
-      case ShellPage.serviceRequests:
+    // Industrial Service Submodules Routing (Now using placeholder fallback)
       case ShellPage.serviceWorkOrders:
       case ShellPage.serviceQuotations:
       case ShellPage.serviceVisits:
@@ -1437,9 +1422,7 @@ class _ZohoShellState extends State<ZohoShell> {
       case ShellPage.serviceClosedWorkOrders:
         return Padding(
           padding: const EdgeInsets.all(10),
-          child: _moduleLandingPage(
-            activePage,
-          ), // Render professional placeholder for now
+          child: _moduleLandingPage(activePage), // Render professional placeholder for now
         );
 
       case ShellPage.crmCustomers:
@@ -1751,7 +1734,6 @@ class _ZohoShellState extends State<ZohoShell> {
         return ['Access', 'Permissions', 'Roles', 'Team'];
       case ShellPage.settingsGeneral:
         return ['Company', 'Security', 'Users', 'Audit'];
-      case ShellPage.serviceDashboard:
       case ShellPage.serviceRequests:
       case ShellPage.serviceWorkOrders:
       case ShellPage.serviceQuotations:
