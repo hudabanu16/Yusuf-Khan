@@ -1137,7 +1137,7 @@ class _ScreensQuotationListState extends State<ScreensQuotationList> {
                     bool isSent = status.toLowerCase() == 'sent';
                     bool isConverted = status.toLowerCase() == 'converted';
 
-                    bool canEdit = !isCancelled && !isApproved && !isSent && !isConverted;
+                    bool canEdit = !isCancelled && !isApproved && !isConverted;
                     bool isConverting = _convertingDocs[doc.id] == true;
 
                     final String createdByUid = _parseSafeString(data['createdBy']);

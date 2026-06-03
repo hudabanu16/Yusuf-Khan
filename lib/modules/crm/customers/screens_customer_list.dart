@@ -215,6 +215,7 @@ class _ScreensCustomerListState extends State<ScreensCustomerList> {
       _currentUserName = _safeString(data['name'] ?? data['userName'] ?? data['displayName']);
       _currentUserData = data;
 
+      await _repairInvalidCustomerCodes();
       _loadCompanyUsersCache();
       await _fetchCustomers(isRefresh: true);
     } catch (e, stack) {
@@ -316,6 +317,119 @@ class _ScreensCustomerListState extends State<ScreensCustomerList> {
   void _onScroll() {
     if (_scrollController.position.pixels >= _scrollController.position.maxScrollExtent - 400) {
       _fetchCustomers();
+    }
+  }
+
+
+  String _formatCustomerCode(dynamic value) {
+    final raw = _safeString(value).toUpperCase();
+
+    final numericMatch = RegExp(r'^CUST[-\s]?(\d+)$').firstMatch(raw);
+    if (numericMatch != null) {
+      final number = int.tryParse(numericMatch.group(1) ?? '');
+      if (number != null && number > 0) {
+        return 'CUST-${number.toString().padLeft(4, '0')}';
+      }
+    }
+
+    return '';
+  }
+
+  bool _isValidNumericCustomerCode(dynamic value) {
+    return _formatCustomerCode(value).isNotEmpty;
+  }
+
+  Future<void> _repairInvalidCustomerCodes() async {
+    if (_companyId.isEmpty) return;
+
+    try {
+      final customersRef = FirebaseFirestore.instance
+          .collection('companies')
+          .doc(_companyId)
+          .collection('customers');
+
+      final snap = await customersRef.orderBy('createdAt').get();
+
+      int maxNumber = 0;
+      final seenCodes = <String>{};
+      final docsToRepair = <QueryDocumentSnapshot<Map<String, dynamic>>>[];
+
+      for (final doc in snap.docs) {
+        final rawCode = _safeString(doc.data()['customerCode']);
+        final formattedCode = _formatCustomerCode(rawCode);
+
+        if (formattedCode.isEmpty) {
+          docsToRepair.add(doc);
+          continue;
+        }
+
+        final number = int.tryParse(formattedCode.replaceAll('CUST-', '')) ?? 0;
+        if (number > maxNumber) maxNumber = number;
+
+        // Repair duplicate numeric IDs also.
+        // Example: if two customers have CUST-0009, keep first one and repair next one.
+        if (seenCodes.contains(formattedCode)) {
+          docsToRepair.add(doc);
+          continue;
+        }
+
+        seenCodes.add(formattedCode);
+
+        // Normalize CUST9 / CUST-9 / cust-0009 to CUST-0009 only if unique.
+        if (rawCode != formattedCode) {
+          docsToRepair.add(doc);
+        }
+      }
+
+      if (docsToRepair.isNotEmpty) {
+        WriteBatch batch = FirebaseFirestore.instance.batch();
+        int operations = 0;
+
+        for (final doc in docsToRepair) {
+          final rawCode = _safeString(doc.data()['customerCode']);
+          final formattedCode = _formatCustomerCode(rawCode);
+
+          String newCode;
+
+          if (formattedCode.isNotEmpty && !seenCodes.contains(formattedCode)) {
+            newCode = formattedCode;
+          } else {
+            do {
+              maxNumber++;
+              newCode = 'CUST-${maxNumber.toString().padLeft(4, '0')}';
+            } while (seenCodes.contains(newCode));
+          }
+
+          seenCodes.add(newCode);
+
+          batch.update(doc.reference, {
+            'customerCode': newCode,
+            'updatedAt': FieldValue.serverTimestamp(),
+          });
+
+          operations++;
+
+          if (operations == 450) {
+            await batch.commit();
+            batch = FirebaseFirestore.instance.batch();
+            operations = 0;
+          }
+        }
+
+        if (operations > 0) {
+          await batch.commit();
+        }
+      }
+
+      // Keep customer counter ahead of the highest existing code.
+      await FirebaseFirestore.instance
+          .collection('companies')
+          .doc(_companyId)
+          .collection('metadata')
+          .doc('customer_counter')
+          .set({'count': maxNumber}, SetOptions(merge: true));
+    } catch (e, stack) {
+      _logError('CRM', '_repairInvalidCustomerCodes', e, stack);
     }
   }
 
@@ -1461,7 +1575,7 @@ class _ScreensCustomerListState extends State<ScreensCustomerList> {
     final canDelete = _hasCustomerPermission(_currentUserData, action: 'delete');
 
     // Advanced Extractions
-    final customerCode = _safeString(data['customerCode']);
+    final customerCode = _formatCustomerCode(data['customerCode']);
     final addressesList = data['addresses'] as List<dynamic>? ?? [];
     final primaryAddr = _extractPrimaryAddress(addressesList);
 
@@ -1825,7 +1939,7 @@ class _ScreensCustomerListState extends State<ScreensCustomerList> {
     if (firebaseUser == null) return const SizedBox.shrink();
 
     final data = doc.data();
-    final customerCode = _safeString(data['customerCode']);
+    final customerCode = _formatCustomerCode(data['customerCode']);
     final companyName = _safeString(data['companyName'].toString().isEmpty ? data['name'] : data['companyName']);
     final status = _safeString(data['status']);
     final customerStage = _safeString(data['customerStage']);
