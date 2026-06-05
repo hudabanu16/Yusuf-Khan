@@ -1,5 +1,5 @@
 import 'dart:async';
-import 'dart:convert';
+import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -11,6 +11,25 @@ import 'package:QUIK/modules/crm/customers/screens_customer_timeline.dart';
 import 'package:QUIK/modules/crm/customers/screens_customer_360.dart';
 import 'package:QUIK/modules/crm/contacts/screens_add_contact.dart';
 import 'package:QUIK/modules/crm/contacts/screens_contact_list.dart';
+
+// ==========================================
+// CACHED ENTERPRISE STYLES
+// ==========================================
+const _kCompanyNameStyle = TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: Color(0xFF1E293B));
+const _kCustomerCodeStyle = TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Color(0xFF3B82F6));
+const _kSecondaryTextStyle = TextStyle(fontSize: 12, color: Color(0xFF475569), fontWeight: FontWeight.w500);
+const _kActivityTextStyle = TextStyle(fontSize: 11, color: Color(0xFF94A3B8), fontWeight: FontWeight.w500);
+const _kTableTextStyle = TextStyle(fontSize: 13, color: Color(0xFF1E293B));
+const _kTableMutedStyle = TextStyle(fontSize: 12, color: Color(0xFF64748B));
+const _kTableHeaderStyle = TextStyle(fontWeight: FontWeight.w700, fontSize: 13, color: Color(0xFF334155));
+
+const _kRowPadding = EdgeInsets.symmetric(horizontal: 16, vertical: 12);
+const _kCardPadding = EdgeInsets.symmetric(horizontal: 16, vertical: 10);
+const _kTableContainerPadding = EdgeInsets.symmetric(horizontal: 16, vertical: 12);
+
+final _kRowBorder = Border(bottom: BorderSide(color: Colors.grey.shade200));
+final _kRowDecoration = BoxDecoration(color: Colors.white, border: _kRowBorder);
+final _kSelectedRowDecoration = BoxDecoration(color: Colors.blue.shade50.withOpacity(0.3), border: _kRowBorder);
 
 // ==========================================
 // ENTERPRISE HELPERS & SAFETY PARSERS
@@ -31,20 +50,6 @@ void _logError(String module, String method, dynamic error, StackTrace? stack) {
   } catch (_) {}
 }
 
-int _safeInt(dynamic val) {
-  if (val == null) return 0;
-  if (val is int) return val;
-  if (val is double) return val.toInt();
-  return int.tryParse(val.toString()) ?? 0;
-}
-
-double _safeDouble(dynamic val) {
-  if (val == null) return 0.0;
-  if (val is double) return val;
-  if (val is int) return val.toDouble();
-  return double.tryParse(val.toString()) ?? 0.0;
-}
-
 bool _safeBool(dynamic val) {
   if (val == null) return false;
   if (val is bool) return val;
@@ -54,7 +59,9 @@ bool _safeBool(dynamic val) {
 }
 
 String _safeString(dynamic val) {
-  return (val ?? '').toString().trim();
+  if (val == null) return '';
+  final s = val.toString().trim();
+  return (s.toLowerCase() == 'null') ? '' : s;
 }
 
 DateTime? _extractDate(dynamic value) {
@@ -64,27 +71,12 @@ DateTime? _extractDate(dynamic value) {
   return null;
 }
 
-String _timeAgo(DateTime? d) {
+String _formatCompactDate(DateTime? d) {
   if (d == null) return '-';
-  final diff = DateTime.now().difference(d);
-  if (diff.inDays > 365) return '${(diff.inDays / 365).floor()}y ago';
-  if (diff.inDays > 30) return '${(diff.inDays / 30).floor()}mo ago';
-  if (diff.inDays > 0) return '${diff.inDays}d ago';
-  if (diff.inHours > 0) return '${diff.inHours}h ago';
-  if (diff.inMinutes > 0) return '${diff.inMinutes}m ago';
-  return 'Just now';
-}
-
-String _formatAnyTimestamp(dynamic value) {
-  final dt = _extractDate(value);
-  if (dt == null) return '-';
-  final day = dt.day.toString().padLeft(2, '0');
-  final month = dt.month.toString().padLeft(2, '0');
-  final year = dt.year.toString();
-  final hour = dt.hour % 12 == 0 ? 12 : dt.hour % 12;
-  final minute = dt.minute.toString().padLeft(2, '0');
-  final amPm = dt.hour >= 12 ? 'PM' : 'AM';
-  return '$day/$month/$year $hour:$minute $amPm';
+  final day = d.day.toString().padLeft(2, '0');
+  final month = d.month.toString().padLeft(2, '0');
+  final year = d.year.toString();
+  return '$day/$month/$year';
 }
 
 Map<String, dynamic>? _extractPrimaryAddress(List<dynamic>? addresses) {
@@ -98,24 +90,220 @@ Map<String, dynamic>? _extractPrimaryAddress(List<dynamic>? addresses) {
   return first is Map<String, dynamic> ? first : null;
 }
 
+String _formatCustomerCode(dynamic value) {
+  final raw = _safeString(value).toUpperCase();
+  final numericMatch = RegExp(r'^CUST[-\s]?(\d+)$').firstMatch(raw);
+  if (numericMatch != null) {
+    final number = int.tryParse(numericMatch.group(1) ?? '');
+    if (number != null && number > 0) {
+      return 'CUST-${number.toString().padLeft(4, '0')}';
+    }
+  }
+  return '';
+}
+
+// ==========================================
+// LIGHTWEIGHT DATA MODEL (MEMORY OPTIMIZED)
+// ==========================================
+
+class CustomerListItem {
+  final String id;
+  final DocumentReference<Map<String, dynamic>> reference;
+
+  final String displayName;
+  final String customerCode;
+  final String contactName;
+  final String phone;
+  final String email;
+  final String locationText;
+
+  final String createdByUid;
+  final String assignedToUid;
+  final String recordOwnerUid;
+
+  final String assignedToName;
+  final String status;
+  final String customerStage;
+
+  final DateTime? lastActivityAt;
+  final DateTime? createdAt;
+  final DateTime? updatedAt;
+
+  final bool isDeleted;
+  final String updatedByUid;
+  final String priority;
+  final String customerType;
+  final String industry;
+  final String citySearch;
+  final String stateSearch;
+
+  CustomerListItem._({
+    required this.id,
+    required this.reference,
+    required this.displayName,
+    required this.customerCode,
+    required this.contactName,
+    required this.phone,
+    required this.email,
+    required this.locationText,
+    required this.createdByUid,
+    required this.assignedToUid,
+    required this.recordOwnerUid,
+    required this.assignedToName,
+    required this.status,
+    required this.customerStage,
+    required this.lastActivityAt,
+    required this.createdAt,
+    required this.updatedAt,
+    required this.isDeleted,
+    required this.updatedByUid,
+    required this.priority,
+    required this.customerType,
+    required this.industry,
+    required this.citySearch,
+    required this.stateSearch,
+  });
+
+  factory CustomerListItem.fromSnapshot(QueryDocumentSnapshot<Map<String, dynamic>> doc) {
+    final data = doc.data();
+    final addressesList = data['addresses'] as List<dynamic>? ?? [];
+    final primaryAddr = _extractPrimaryAddress(addressesList);
+
+    final city = primaryAddr != null ? _safeString(primaryAddr['city']) : _safeString(data['city']);
+    final state = primaryAddr != null ? _safeString(primaryAddr['state']) : _safeString(data['state']);
+    final locText = [city.trim(), state.trim()].where((e) => e.isNotEmpty).join(', ');
+
+    String cByUid = _safeString(data['createdByUid']);
+    if (cByUid.isEmpty) cByUid = _safeString(data['createdBy']);
+
+    return CustomerListItem._(
+      id: doc.id,
+      reference: doc.reference,
+      displayName: _safeString(data['companyName'].toString().isEmpty ? data['name'] : data['companyName']),
+      customerCode: _formatCustomerCode(data['customerCode']),
+      contactName: _safeString(data['contactName']),
+      phone: _safeString(data['companyPhone'].toString().isEmpty ? data['phone'] : data['companyPhone']),
+      email: _safeString(data['businessEmail'].toString().isEmpty ? data['email'] : data['businessEmail']),
+      locationText: locText,
+
+      createdByUid: cByUid,
+      assignedToUid: _safeString(data['assignedToUid']),
+      recordOwnerUid: _safeString(data['recordOwnerUid']),
+
+      assignedToName: _safeString(data['assignedToName']),
+      status: _safeString(data['status']),
+      customerStage: _safeString(data['customerStage']),
+      lastActivityAt: _extractDate(data['lastActivityAt']) ?? _extractDate(data['updatedAt']),
+      createdAt: _extractDate(data['createdAt']),
+      updatedAt: _extractDate(data['updatedAt']),
+      isDeleted: _safeBool(data['isDeleted']),
+      updatedByUid: _safeString(data['updatedByUid'] ?? data['updatedBy']),
+      priority: _safeString(data['priority']),
+      customerType: _safeString(data['customerType']),
+      industry: _safeString(data['industry']),
+      citySearch: city.toLowerCase(),
+      stateSearch: state.toLowerCase(),
+    );
+  }
+}
+
+// ==========================================
+// ACTION CALLBACKS CONFIGURATION
+// ==========================================
+class CustomerActionCallbacks {
+  final Function(CustomerListItem) onProfile;
+  final Function(CustomerListItem) onEdit;
+  final Function(CustomerListItem) onContacts;
+  final Function(CustomerListItem) onTimeline;
+  final Function(CustomerListItem) onAddContact;
+  final Function(CustomerListItem) onDelete;
+
+  const CustomerActionCallbacks({
+    required this.onProfile,
+    required this.onEdit,
+    required this.onContacts,
+    required this.onTimeline,
+    required this.onAddContact,
+    required this.onDelete,
+  });
+}
+
+// ==========================================
+// TARGETED REBUILD WIDGET (O(1) Checkboxes)
+// ==========================================
+class SelectiveRowBuilder extends StatefulWidget {
+  final ValueNotifier<Set<String>> notifier;
+  final String itemId;
+  final Widget Function(BuildContext context, bool isSelected) builder;
+
+  const SelectiveRowBuilder({
+    Key? key,
+    required this.notifier,
+    required this.itemId,
+    required this.builder,
+  }) : super(key: key);
+
+  @override
+  State<SelectiveRowBuilder> createState() => _SelectiveRowBuilderState();
+}
+
+class _SelectiveRowBuilderState extends State<SelectiveRowBuilder> {
+  late bool _isSelected;
+
+  @override
+  void initState() {
+    super.initState();
+    _isSelected = widget.notifier.value.contains(widget.itemId);
+    widget.notifier.addListener(_handleChange);
+  }
+
+  @override
+  void didUpdateWidget(SelectiveRowBuilder oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.notifier != widget.notifier) {
+      oldWidget.notifier.removeListener(_handleChange);
+      widget.notifier.addListener(_handleChange);
+    }
+    if (oldWidget.itemId != widget.itemId) {
+      _isSelected = widget.notifier.value.contains(widget.itemId);
+    }
+  }
+
+  @override
+  void dispose() {
+    widget.notifier.removeListener(_handleChange);
+    super.dispose();
+  }
+
+  void _handleChange() {
+    final currentlySelected = widget.notifier.value.contains(widget.itemId);
+    if (currentlySelected != _isSelected) {
+      setState(() => _isSelected = currentlySelected);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return widget.builder(context, _isSelected);
+  }
+}
+
 // ==========================================
 // MAIN SCREEN
 // ==========================================
 
 class ScreensCustomerList extends StatefulWidget {
-  const ScreensCustomerList({super.key});
+  const ScreensCustomerList({Key? key}) : super(key: key);
 
   @override
   State<ScreensCustomerList> createState() => _ScreensCustomerListState();
 }
 
 class _ScreensCustomerListState extends State<ScreensCustomerList> {
-  // --- CORE UI STATE ---
   final TextEditingController _searchController = TextEditingController();
   final ScrollController _scrollController = ScrollController();
   Timer? _debounceTimer;
 
-  // --- FILTERS STATE ---
   String _searchQuery = '';
   String _ownershipFilter = 'all';
   String _statusFilter = '';
@@ -124,26 +312,23 @@ class _ScreensCustomerListState extends State<ScreensCustomerList> {
   String _industryFilter = '';
   String _cityFilter = '';
   String _customerStageFilter = '';
-  String _followUpFilter = '';
-  String _tagsFilter = '';
-
-  // --- PAGINATION & DATA STATE ---
-  final List<QueryDocumentSnapshot<Map<String, dynamic>>> _allDocs = [];
-  List<QueryDocumentSnapshot<Map<String, dynamic>>> _filteredDocs = [];
-  DocumentSnapshot<Map<String, dynamic>>? _lastDoc;
 
   bool _isLoading = true;
-  bool _isFetchingMore = false;
-  bool _hasMore = true;
-  final int _pageSize = 50;
+  bool _isChangingPage = false;
+  final int _pageSize = 20;
+  int _currentPage = 1;
+  int _totalServerRecords = 0;
 
-  // --- PREFERENCES & ENTERPRISE STATE ---
-  bool _isTableView = false;
+  List<CustomerListItem> _currentItems = [];
+  List<CustomerListItem> _filteredItems = [];
+
+  final Map<int, DocumentSnapshot?> _pageCursors = {1: null};
+
+  bool _isTableView = true;
   String _sortBy = 'updatedAt';
   bool _sortDesc = true;
-  final Set<String> _selectedCustomerIds = {};
+  final ValueNotifier<Set<String>> _selectedCustomerIdsNotifier = ValueNotifier({});
 
-  // --- AUTH CACHE ---
   Map<String, dynamic>? _currentUserData;
   String _companyId = '';
   String _userRole = 'sales';
@@ -154,7 +339,6 @@ class _ScreensCustomerListState extends State<ScreensCustomerList> {
   void initState() {
     super.initState();
     _loadPreferences();
-    _scrollController.addListener(_onScroll);
     _initializeUserAndData();
   }
 
@@ -163,15 +347,15 @@ class _ScreensCustomerListState extends State<ScreensCustomerList> {
     _debounceTimer?.cancel();
     _searchController.dispose();
     _scrollController.dispose();
+    _selectedCustomerIdsNotifier.dispose();
     super.dispose();
   }
 
-  // --- PREFERENCES PERSISTENCE ---
   Future<void> _loadPreferences() async {
     try {
       final prefs = await SharedPreferences.getInstance();
       setState(() {
-        _isTableView = prefs.getBool('erp_customer_view_preference') ?? false;
+        _isTableView = prefs.getBool('erp_customer_view_preference') ?? true;
         _sortBy = prefs.getString('erp_customer_sort_by') ?? 'updatedAt';
         _sortDesc = prefs.getBool('erp_customer_sort_desc') ?? true;
       });
@@ -192,16 +376,18 @@ class _ScreensCustomerListState extends State<ScreensCustomerList> {
     setState(() {
       _sortBy = sortField;
       _sortDesc = desc;
+      _currentPage = 1;
+      _pageCursors.clear();
+      _pageCursors[1] = null;
     });
     try {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString('erp_customer_sort_by', sortField);
       await prefs.setBool('erp_customer_sort_desc', desc);
     } catch (_) {}
-    _fetchCustomers(isRefresh: true);
+    _fetchPageData(1);
   }
 
-  // --- AUTH & PERMISSIONS ---
   Future<void> _initializeUserAndData() async {
     try {
       final user = FirebaseAuth.instance.currentUser;
@@ -211,13 +397,16 @@ class _ScreensCustomerListState extends State<ScreensCustomerList> {
       if (data == null) return;
 
       _companyId = _safeString(data['companyId']);
-      _userRole = _safeString(data['role']).isEmpty ? 'sales' : _safeString(data['role']);
+
+      // Strict role assignment from the robust extraction pipeline
+      _userRole = _safeString(data['resolvedStrictRole']);
+      if (_userRole.isEmpty) _userRole = 'sales';
+
       _currentUserName = _safeString(data['name'] ?? data['userName'] ?? data['displayName']);
       _currentUserData = data;
 
-      await _repairInvalidCustomerCodes();
       _loadCompanyUsersCache();
-      await _fetchCustomers(isRefresh: true);
+      await _fetchPageData(1);
     } catch (e, stack) {
       _logError('CRM', '_initializeUserAndData', e, stack);
     }
@@ -225,7 +414,6 @@ class _ScreensCustomerListState extends State<ScreensCustomerList> {
 
   Future<Map<String, dynamic>?> _loadCurrentUserProfile(String uid) async {
     final firestore = FirebaseFirestore.instance;
-
     final globalDoc = await firestore.collection('users').doc(uid).get();
     final globalData = globalDoc.data() ?? <String, dynamic>{};
 
@@ -244,19 +432,25 @@ class _ScreensCustomerListState extends State<ScreensCustomerList> {
 
     if (companyId.isEmpty) return globalData;
 
-    final companyUserDoc = await firestore
-        .collection('companies')
-        .doc(companyId)
-        .collection('users')
-        .doc(uid)
-        .get();
-
+    final companyUserDoc = await firestore.collection('companies').doc(companyId).collection('users').doc(uid).get();
     final companyData = companyUserDoc.data() ?? <String, dynamic>{};
+
+    // 🚨 CRITICAL ROLE RESOLUTION
+    // Strictly isolates roles so global tests cannot bleed into company-specific security limits
+    String resolvedRole = 'sales';
+    if (companyData['role'] != null && companyData['role'].toString().trim().isNotEmpty) {
+      resolvedRole = companyData['role'].toString().trim().toLowerCase();
+    } else if (globalData['memberships'] is Map && globalData['memberships'][companyId] is Map && globalData['memberships'][companyId]['role'] != null) {
+      resolvedRole = globalData['memberships'][companyId]['role'].toString().trim().toLowerCase();
+    } else if (globalData['role'] != null && globalData['role'].toString().trim().isNotEmpty) {
+      resolvedRole = globalData['role'].toString().trim().toLowerCase();
+    }
 
     return {
       ...globalData,
       ...companyData,
       'companyId': companyId,
+      'resolvedStrictRole': resolvedRole,
     };
   }
 
@@ -273,15 +467,17 @@ class _ScreensCustomerListState extends State<ScreensCustomerList> {
     } catch (_) {}
   }
 
-  bool _isAdminOrManager(String role) {
+  // 🚨 CRITICAL FIX: "manager" and "sales_manager" are NO LONGER considered Admins
+  // Based strictly on your business rule: "ADMIN / OWNER / SUPERADMIN Can see ALL customers"
+  bool _isStrictAdmin(String role) {
     final r = role.toLowerCase().trim();
-    return r == 'owner' || r == 'founder' || r == 'ceo' || r == 'superadmin' || r == 'admin' || r == 'manager';
+    return r == 'owner' || r == 'superadmin' || r == 'admin';
   }
 
   bool _hasCustomerPermission(Map<String, dynamic>? userData, {String action = 'view'}) {
     if (userData == null) return false;
-    final role = (userData['role'] ?? '').toString();
-    if (_isAdminOrManager(role)) return true;
+    final role = (userData['resolvedStrictRole'] ?? userData['role'] ?? '').toString();
+    if (_isStrictAdmin(role)) return true;
 
     final permissions = userData['permissions'];
     if (permissions is! Map) return false;
@@ -289,9 +485,7 @@ class _ScreensCustomerListState extends State<ScreensCustomerList> {
     final crm = permissions['crm'];
     if (crm is Map) {
       final customers = crm['customers'];
-      if (customers is Map && customers[action] == true) {
-        return true;
-      }
+      if (customers is Map && customers[action] == true) return true;
     }
 
     if (permissions['customers'] == true && action == 'view') return true;
@@ -300,390 +494,183 @@ class _ScreensCustomerListState extends State<ScreensCustomerList> {
     return false;
   }
 
-  String _resolveUserName({
-    required String uid,
-    required Map<String, String> userNameMap,
-    String fallbackName = '',
-    bool isCurrentUser = false,
-  }) {
-    if (uid.isEmpty) return '';
-    if (isCurrentUser) return 'You';
-    if (fallbackName.isNotEmpty) return fallbackName;
-    if (userNameMap.containsKey(uid)) return userNameMap[uid]!;
-    return uid;
-  }
+  // =======================================================
+  // 🔒 ERP SECURITY: SERVER-SIDE OWNERSHIP QUERY
+  // =======================================================
+  Query<Map<String, dynamic>> _buildBaseQuery() {
+    final currentUserUid = FirebaseAuth.instance.currentUser?.uid ?? '';
+    final isAdmin = _isStrictAdmin(_userRole);
 
-  // --- FIRESTORE PAGINATION LOGIC ---
-  void _onScroll() {
-    if (_scrollController.position.pixels >= _scrollController.position.maxScrollExtent - 400) {
-      _fetchCustomers();
-    }
-  }
+    Query<Map<String, dynamic>> query = FirebaseFirestore.instance
+        .collection('companies')
+        .doc(_companyId)
+        .collection('customers');
 
-
-  String _formatCustomerCode(dynamic value) {
-    final raw = _safeString(value).toUpperCase();
-
-    final numericMatch = RegExp(r'^CUST[-\s]?(\d+)$').firstMatch(raw);
-    if (numericMatch != null) {
-      final number = int.tryParse(numericMatch.group(1) ?? '');
-      if (number != null && number > 0) {
-        return 'CUST-${number.toString().padLeft(4, '0')}';
-      }
+    // NATIVE FIRESTORE SECURITY ENFORCEMENT
+    // Guaranteed to block unauthorized data from entering memory or pagination.
+    if (!isAdmin) {
+      query = query.where(Filter.or(
+        Filter('createdByUid', isEqualTo: currentUserUid),
+        Filter('assignedToUid', isEqualTo: currentUserUid),
+        Filter('recordOwnerUid', isEqualTo: currentUserUid),
+        Filter('createdBy', isEqualTo: currentUserUid), // Support Legacy Data
+      ));
     }
 
-    return '';
-  }
-
-  bool _isValidNumericCustomerCode(dynamic value) {
-    return _formatCustomerCode(value).isNotEmpty;
-  }
-
-  Future<void> _repairInvalidCustomerCodes() async {
-    if (_companyId.isEmpty) return;
-
-    try {
-      final customersRef = FirebaseFirestore.instance
-          .collection('companies')
-          .doc(_companyId)
-          .collection('customers');
-
-      final snap = await customersRef.orderBy('createdAt').get();
-
-      int maxNumber = 0;
-      final seenCodes = <String>{};
-      final docsToRepair = <QueryDocumentSnapshot<Map<String, dynamic>>>[];
-
-      for (final doc in snap.docs) {
-        final rawCode = _safeString(doc.data()['customerCode']);
-        final formattedCode = _formatCustomerCode(rawCode);
-
-        if (formattedCode.isEmpty) {
-          docsToRepair.add(doc);
-          continue;
-        }
-
-        final number = int.tryParse(formattedCode.replaceAll('CUST-', '')) ?? 0;
-        if (number > maxNumber) maxNumber = number;
-
-        // Repair duplicate numeric IDs also.
-        // Example: if two customers have CUST-0009, keep first one and repair next one.
-        if (seenCodes.contains(formattedCode)) {
-          docsToRepair.add(doc);
-          continue;
-        }
-
-        seenCodes.add(formattedCode);
-
-        // Normalize CUST9 / CUST-9 / cust-0009 to CUST-0009 only if unique.
-        if (rawCode != formattedCode) {
-          docsToRepair.add(doc);
-        }
-      }
-
-      if (docsToRepair.isNotEmpty) {
-        WriteBatch batch = FirebaseFirestore.instance.batch();
-        int operations = 0;
-
-        for (final doc in docsToRepair) {
-          final rawCode = _safeString(doc.data()['customerCode']);
-          final formattedCode = _formatCustomerCode(rawCode);
-
-          String newCode;
-
-          if (formattedCode.isNotEmpty && !seenCodes.contains(formattedCode)) {
-            newCode = formattedCode;
-          } else {
-            do {
-              maxNumber++;
-              newCode = 'CUST-${maxNumber.toString().padLeft(4, '0')}';
-            } while (seenCodes.contains(newCode));
-          }
-
-          seenCodes.add(newCode);
-
-          batch.update(doc.reference, {
-            'customerCode': newCode,
-            'updatedAt': FieldValue.serverTimestamp(),
-          });
-
-          operations++;
-
-          if (operations == 450) {
-            await batch.commit();
-            batch = FirebaseFirestore.instance.batch();
-            operations = 0;
-          }
-        }
-
-        if (operations > 0) {
-          await batch.commit();
-        }
-      }
-
-      // Keep customer counter ahead of the highest existing code.
-      await FirebaseFirestore.instance
-          .collection('companies')
-          .doc(_companyId)
-          .collection('metadata')
-          .doc('customer_counter')
-          .set({'count': maxNumber}, SetOptions(merge: true));
-    } catch (e, stack) {
-      _logError('CRM', '_repairInvalidCustomerCodes', e, stack);
+    if (_searchQuery.isNotEmpty) {
+      query = query.where('searchKeywords', arrayContains: _searchQuery.trim().toLowerCase());
     }
-  }
 
-  Future<void> _fetchCustomers({bool isRefresh = false}) async {
-    if (_companyId.isEmpty) return;
-
-    if (isRefresh) {
-      setState(() {
-        _isLoading = true;
-        _hasMore = true;
-        _lastDoc = null;
-        _allDocs.clear();
-      });
+    if (_sortBy == 'companyName') {
+      query = query.orderBy('companyNameLower', descending: _sortDesc);
     } else {
-      if (!_hasMore || _isFetchingMore || _isLoading) return;
-      setState(() => _isFetchingMore = true);
+      query = query.orderBy(_sortBy, descending: _sortDesc);
     }
 
-    try {
-      Query<Map<String, dynamic>> query = FirebaseFirestore.instance
-          .collection('companies')
-          .doc(_companyId)
-          .collection('customers')
-          .orderBy(_sortBy, descending: _sortDesc)
-          .limit(_pageSize);
+    return query;
+  }
 
-      if (_lastDoc != null) {
-        query = query.startAfterDocument(_lastDoc!);
+  Future<void> _fetchPageData(int targetPage) async {
+    if (_companyId.isEmpty) return;
+
+    setState(() {
+      if (targetPage == 1) _isLoading = true;
+      _isChangingPage = true;
+    });
+
+    try {
+      final query = _buildBaseQuery();
+
+      if (targetPage == 1) {
+        final countSnap = await query.count().get();
+        _totalServerRecords = countSnap.count ?? 0;
       }
 
-      final snapshot = await query.get();
-      debugPrint('[CRM DEBUG] Fetched ${snapshot.docs.length} customers from Firestore.');
+      if (targetPage > 1 && _pageCursors[targetPage] == null) {
+        final skipCount = (targetPage - 1) * _pageSize;
+        final skipSnap = await query.limit(skipCount).get();
+        if (skipSnap.docs.isNotEmpty) {
+          _pageCursors[targetPage] = skipSnap.docs.last;
+        }
+      }
+
+      Query<Map<String, dynamic>> pagedQuery = query.limit(_pageSize);
+      if (targetPage > 1 && _pageCursors[targetPage] != null) {
+        pagedQuery = pagedQuery.startAfterDocument(_pageCursors[targetPage]!);
+      } else if (targetPage > 1) {
+        setState(() => _isChangingPage = false);
+        return;
+      }
+
+      final snapshot = await pagedQuery.get();
 
       if (snapshot.docs.isNotEmpty) {
-        _lastDoc = snapshot.docs.last;
-        _allDocs.addAll(snapshot.docs);
-        if (snapshot.docs.length < _pageSize) {
-          _hasMore = false;
-        }
-      } else {
-        _hasMore = false;
+        _pageCursors[targetPage + 1] = snapshot.docs.last;
+        _currentItems = snapshot.docs.map((doc) => CustomerListItem.fromSnapshot(doc)).toList();
+        _currentPage = targetPage;
+      } else if (targetPage == 1) {
+        _currentItems = [];
       }
 
       _applyLocalFilters();
 
-      if (_hasMore && _filteredDocs.length < 10 && snapshot.docs.length == _pageSize) {
-        await _fetchCustomers();
+      if (_scrollController.hasClients) {
+        _scrollController.jumpTo(0);
       }
 
     } catch (e, stack) {
-      _logError('CRM', '_fetchCustomers', e, stack);
+      _logError('CRM', '_fetchPageData', e, stack);
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-            content: Text('Failed to load customers: $e'), backgroundColor: Colors.red));
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Data load failed: $e'), backgroundColor: Colors.red));
       }
     } finally {
       if (mounted) {
         setState(() {
           _isLoading = false;
-          _isFetchingMore = false;
+          _isChangingPage = false;
         });
       }
     }
   }
 
-  Future<void> _onRefresh() async {
-    await _fetchCustomers(isRefresh: true);
-  }
-
-  // --- SEARCH & FILTER LOGIC ---
   void _onSearchChanged(String query) {
     if (_debounceTimer?.isActive ?? false) _debounceTimer!.cancel();
-    _debounceTimer = Timer(const Duration(milliseconds: 350), () {
+    _debounceTimer = Timer(const Duration(milliseconds: 600), () {
       if (_searchQuery != query) {
-        setState(() => _searchQuery = query);
-        _applyLocalFilters();
+        setState(() {
+          _searchQuery = query;
+          _pageCursors.clear();
+          _pageCursors[1] = null;
+        });
+        _fetchPageData(1);
       }
     });
   }
 
-  List<QueryDocumentSnapshot<Map<String, dynamic>>> _visibleDocsByRole({
-    required List<QueryDocumentSnapshot<Map<String, dynamic>>> docs,
-    required String role,
-    required String currentUserUid,
-  }) {
-    if (_isAdminOrManager(role)) return docs;
-
-    return docs.where((doc) {
-      final data = doc.data();
-      final createdBy = (data['createdByUid'] ?? data['createdBy'] ?? '').toString();
-      final assignedToUid = (data['assignedToUid'] ?? '').toString();
-      return createdBy == currentUserUid || assignedToUid == currentUserUid;
-    }).toList();
-  }
-
+  // =======================================================
+  // 🔍 DEBUGGING & LOCAL DEFENSIVE FILTERS
+  // =======================================================
   void _applyLocalFilters() {
     final currentUserUid = FirebaseAuth.instance.currentUser?.uid ?? '';
+    final isAdmin = _isStrictAdmin(_userRole);
 
-    final visibleDocs = _visibleDocsByRole(
-      docs: _allDocs,
-      role: _userRole,
-      currentUserUid: currentUserUid,
-    );
+    // 🔥 REQUIRED AUDIT LOGS FOR TERMINAL INSPECTION
+    debugPrint('\n=========================================================');
+    debugPrint('🔍 CRM SECURITY AUDIT LOG');
+    debugPrint('Current User UID: $currentUserUid');
+    debugPrint('Current User Role: $_userRole');
+    debugPrint('isAdmin result: $isAdmin');
+    debugPrint('=========================================================');
 
-    final query = _searchQuery.trim().toLowerCase();
-    int deletedCount = 0;
+    final filtered = _currentItems.where((doc) {
+      if (doc.isDeleted) return false;
 
-    final filtered = visibleDocs.where((doc) {
-      final data = doc.data();
-
-      if (_safeBool(data['isDeleted'])) {
-        deletedCount++;
-        return false;
+      // 🔥 DEFENSIVE LAYER 2: Ensure strictly only correct users pass rendering
+      bool isVisible = true;
+      if (!isAdmin) {
+        final isOwner = (doc.createdByUid == currentUserUid) ||
+            (doc.assignedToUid == currentUserUid) ||
+            (doc.recordOwnerUid == currentUserUid);
+        if (!isOwner) isVisible = false;
       }
 
-      final companyName = _safeString(data['companyName'].toString().isEmpty ? data['name'] : data['companyName']).toLowerCase();
-      final phone = _safeString(data['companyPhone'].toString().isEmpty ? data['phone'] : data['companyPhone']).toLowerCase();
-      final email = _safeString(data['businessEmail'].toString().isEmpty ? data['email'] : data['businessEmail']).toLowerCase();
-      final gst = _safeString(data['gst']).toLowerCase();
-      final status = _safeString(data['status']).toLowerCase();
-      final priority = _safeString(data['priority']).toLowerCase();
-      final customerType = _safeString(data['customerType']).toLowerCase();
-      final customerStage = _safeString(data['customerStage']).toLowerCase();
-      final industry = _safeString(data['industry']).toLowerCase();
-      final leadSource = _safeString(data['leadSource']).toLowerCase();
+      debugPrint('Customer ID: ${doc.id}');
+      debugPrint('Customer Name: ${doc.displayName}');
+      debugPrint('createdByUid: ${doc.createdByUid}');
+      debugPrint('assignedToUid: ${doc.assignedToUid}');
+      debugPrint('recordOwnerUid: ${doc.recordOwnerUid}');
+      debugPrint('Visibility Decision: ${isVisible ? "VISIBLE" : "BLOCKED"}');
+      debugPrint('---');
 
-      final createdBy = _safeString(data['createdByUid'].toString().isEmpty ? data['createdBy'] : data['createdByUid']);
-      final assignedToUid = _safeString(data['assignedToUid']);
+      if (!isVisible) return false;
 
-      final customerCode = _safeString(data['customerCode']).toLowerCase();
-      final searchIndex = _safeString(data['searchIndex']).toLowerCase();
-      final searchKeywords = data['searchKeywords'] as List<dynamic>? ?? [];
-      final addressesList = data['addresses'] as List<dynamic>? ?? [];
+      // Standard user-selected UI filters
+      if (_statusFilter.isNotEmpty && doc.status.toLowerCase() != _statusFilter.trim().toLowerCase()) return false;
+      if (_priorityFilter.isNotEmpty && doc.priority.toLowerCase() != _priorityFilter.trim().toLowerCase()) return false;
+      if (_customerTypeFilter.isNotEmpty && doc.customerType.toLowerCase() != _customerTypeFilter.trim().toLowerCase()) return false;
+      if (_industryFilter.isNotEmpty && doc.industry.toLowerCase() != _industryFilter.trim().toLowerCase()) return false;
+      if (_customerStageFilter.isNotEmpty && doc.customerStage.toLowerCase() != _customerStageFilter.trim().toLowerCase()) return false;
 
-      final primaryAddr = _extractPrimaryAddress(addressesList);
-      final docCity = primaryAddr != null ? _safeString(primaryAddr['city']) : _safeString(data['city']);
-      final docState = primaryAddr != null ? _safeString(primaryAddr['state']) : _safeString(data['state']);
-      final citySearch = docCity.toLowerCase();
-      final stateSearch = docState.toLowerCase();
+      if (_ownershipFilter == 'assigned_to_me' && doc.assignedToUid != currentUserUid) return false;
+      if (_ownershipFilter == 'created_by_me' && doc.createdByUid != currentUserUid) return false;
 
-      final int followUpCount = _safeInt(data['followUpCount']);
-      final nextFollowUpDate = _extractDate(data['nextFollowUpDate']);
-      final now = DateTime.now();
-
-      final hasPendingFollowUp = nextFollowUpDate != null &&
-          DateTime(nextFollowUpDate.year, nextFollowUpDate.month, nextFollowUpDate.day)
-              .isBefore(DateTime(now.year, now.month, now.day + 1));
-
-      bool matchesSearch = false;
-      if (query.isEmpty) {
-        matchesSearch = true;
-      } else {
-        if (searchIndex.contains(query)) {
-          matchesSearch = true;
-        } else if (searchKeywords.any((k) => _safeString(k).toLowerCase().contains(query))) {
-          matchesSearch = true;
-        } else if (
-        companyName.contains(query) ||
-            phone.contains(query) ||
-            email.contains(query) ||
-            gst.contains(query) ||
-            citySearch.contains(query) ||
-            stateSearch.contains(query) ||
-            customerCode.contains(query)
-        ) {
-          matchesSearch = true;
-        }
+      if (_cityFilter.isNotEmpty) {
+        final citySearch = _cityFilter.trim().toLowerCase();
+        if (!doc.citySearch.contains(citySearch) && !doc.stateSearch.contains(citySearch)) return false;
       }
 
-      final matchesOwnership = switch (_ownershipFilter) {
-        'assigned_to_me' => assignedToUid == currentUserUid,
-        'created_by_me' => createdBy == currentUserUid,
-        _ => true,
-      };
-
-      final matchesStatus = _statusFilter.isEmpty || status == _statusFilter.trim().toLowerCase();
-      final matchesPriority = _priorityFilter.isEmpty || priority == _priorityFilter.trim().toLowerCase();
-      final matchesCustomerType = _customerTypeFilter.isEmpty || customerType == _customerTypeFilter.trim().toLowerCase();
-      final matchesIndustry = _industryFilter.isEmpty || industry == _industryFilter.trim().toLowerCase();
-      final matchesCustomerStage = _customerStageFilter.isEmpty || customerStage == _customerStageFilter.trim().toLowerCase();
-
-      final matchesCity = _cityFilter.isEmpty ||
-          citySearch.contains(_cityFilter.trim().toLowerCase()) ||
-          stateSearch.contains(_cityFilter.trim().toLowerCase());
-
-      bool matchesTags = true;
-      if (_tagsFilter.isNotEmpty) {
-        final tagsSearch = _tagsFilter.trim().toLowerCase();
-        bool foundTag = false;
-        for (var a in addressesList) {
-          if (a is Map && a['tags'] is List) {
-            if ((a['tags'] as List).any((t) => _safeString(t).toLowerCase().contains(tagsSearch))) {
-              foundTag = true;
-              break;
-            }
-          }
-        }
-        matchesTags = foundTag;
-      }
-
-      final matchesFollowUp = switch (_followUpFilter) {
-        'has_follow_up' => followUpCount > 0,
-        'no_follow_up' => followUpCount == 0,
-        'pending_next_follow_up' => hasPendingFollowUp,
-        _ => true,
-      };
-
-      return matchesSearch &&
-          matchesOwnership &&
-          matchesStatus &&
-          matchesPriority &&
-          matchesCustomerType &&
-          matchesIndustry &&
-          matchesCity &&
-          matchesTags &&
-          matchesCustomerStage &&
-          matchesFollowUp;
+      return true;
     }).toList();
 
-    debugPrint('[CRM DEBUG] Filtered out $deletedCount deleted records successfully.');
-    debugPrint('[CRM DEBUG] Final filtered active list size: ${filtered.length}');
-
-    filtered.sort((a, b) {
-      final aData = a.data();
-      final bData = b.data();
-
-      if (_sortBy == 'updatedAt' || _sortBy == 'createdAt') {
-        final aNext = _extractDate(aData['nextFollowUpDate']);
-        final bNext = _extractDate(bData['nextFollowUpDate']);
-        if (aNext != null && bNext != null) return aNext.compareTo(bNext);
-        if (aNext != null) return -1;
-        if (bNext != null) return 1;
-      }
-
-      final aName = _safeString(aData['companyName'].toString().isEmpty ? aData['name'] : aData['companyName']).toLowerCase();
-      final bName = _safeString(bData['companyName'].toString().isEmpty ? bData['name'] : bData['companyName']).toLowerCase();
-      return aName.compareTo(bName);
-    });
-
     setState(() {
-      _filteredDocs = filtered;
+      _filteredItems = filtered;
     });
   }
 
   bool get _hasActiveFilters {
-    return _ownershipFilter != 'all' ||
-        _statusFilter.isNotEmpty ||
-        _priorityFilter.isNotEmpty ||
-        _customerTypeFilter.isNotEmpty ||
-        _industryFilter.isNotEmpty ||
-        _cityFilter.isNotEmpty ||
-        _tagsFilter.isNotEmpty ||
-        _customerStageFilter.isNotEmpty ||
-        _followUpFilter.isNotEmpty;
+    return _ownershipFilter != 'all' || _statusFilter.isNotEmpty || _priorityFilter.isNotEmpty ||
+        _customerTypeFilter.isNotEmpty || _industryFilter.isNotEmpty || _cityFilter.isNotEmpty ||
+        _customerStageFilter.isNotEmpty;
   }
 
   void _resetFilters() {
@@ -694,34 +681,24 @@ class _ScreensCustomerListState extends State<ScreensCustomerList> {
       _customerTypeFilter = '';
       _industryFilter = '';
       _cityFilter = '';
-      _tagsFilter = '';
       _customerStageFilter = '';
-      _followUpFilter = '';
     });
     _applyLocalFilters();
   }
 
   void _toggleSelection(String id) {
-    setState(() {
-      if (_selectedCustomerIds.contains(id)) {
-        _selectedCustomerIds.remove(id);
-      } else {
-        _selectedCustomerIds.add(id);
-      }
-    });
+    final current = Set<String>.from(_selectedCustomerIdsNotifier.value);
+    if (current.contains(id)) {
+      current.remove(id);
+    } else {
+      current.add(id);
+    }
+    _selectedCustomerIdsNotifier.value = current;
   }
 
   // --- ACTIONS ---
-  void _openCustomer360(DocumentReference<Map<String, dynamic>> customerRef, String customerName) {
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (_) => ScreensCustomer360(
-          customerRef: customerRef,
-          companyId: _companyId,
-        ),
-      ),
-    );
+  void _openCustomer360(DocumentReference<Map<String, dynamic>> customerRef) {
+    Navigator.push(context, MaterialPageRoute(builder: (_) => ScreensCustomer360(customerRef: customerRef, companyId: _companyId)));
   }
 
   void _openAddCustomer({
@@ -731,46 +708,20 @@ class _ScreensCustomerListState extends State<ScreensCustomerList> {
     required String role,
     DocumentReference<Map<String, dynamic>>? existingDoc,
   }) async {
-    final result = await Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (_) => ScreensAddCustomer(
-          existingDoc: existingDoc,
-          companyId: companyId,
-          currentUserUid: userUid,
-          currentUserRole: role,
-        ),
-      ),
-    );
-    if (result == true) {
-      _fetchCustomers(isRefresh: true);
-    }
+    final result = await Navigator.push(context, MaterialPageRoute(
+        builder: (_) => ScreensAddCustomer(existingDoc: existingDoc, companyId: companyId, currentUserUid: userUid, currentUserRole: role)));
+    if (result == true) _fetchPageData(_currentPage);
   }
 
-  Future<void> _deleteCustomer({
-    required BuildContext context,
-    required QueryDocumentSnapshot<Map<String, dynamic>> customerDoc,
-    required String customerName,
-  }) async {
+  Future<void> _deleteCustomer(CustomerListItem customerDoc) async {
     final confirm = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('Delete customer?'),
-        content: Text(
-          'Are you sure you want to delete "$customerName"?\n\nThis will safely archive the customer and hide it from all views.',
-        ),
+        content: Text('Are you sure you want to delete "${customerDoc.displayName}"?\n\nThis will archive the customer and hide it from views.'),
         actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Cancel'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            child: const Text(
-              'Delete',
-              style: TextStyle(color: Colors.red),
-            ),
-          ),
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+          TextButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Delete', style: TextStyle(color: Colors.red))),
         ],
       ),
     );
@@ -787,149 +738,17 @@ class _ScreensCustomerListState extends State<ScreensCustomerList> {
       });
       await batch.commit();
 
-      _fetchCustomers(isRefresh: true);
+      _fetchPageData(_currentPage);
 
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Customer deleted successfully'),
-          backgroundColor: Colors.green,
-        ),
-      );
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Customer deleted successfully'), backgroundColor: Colors.green));
     } catch (e, stack) {
       _logError('CRM', '_deleteCustomer', e, stack);
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Failed to delete customer: $e'),
-          backgroundColor: Colors.red,
-        ),
-      );
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Failed to delete customer: $e'), backgroundColor: Colors.red));
     }
   }
 
-  // --- FUTURE PREP ACTIONS ---
-  void _showCustomerPreview(Map<String, dynamic> data, String customerName, String code) {
-    showDialog(
-        context: context,
-        builder: (context) {
-          final addresses = data['addresses'] as List<dynamic>? ?? [];
-          final qCount = _safeInt(data['quotationCount']);
-          final soCount = _safeInt(data['salesOrderCount']);
-          final invCount = _safeInt(data['invoiceCount']);
-          final lastActivity = _extractDate(data['lastActivityAt']) ?? _extractDate(data['updatedAt']);
-
-          return AlertDialog(
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-            title: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(code.isNotEmpty ? code : 'CUST', style: TextStyle(fontSize: 12, color: Colors.blue.shade700, fontWeight: FontWeight.w800)),
-                Text(customerName, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
-              ],
-            ),
-            content: SingleChildScrollView(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  _detailRow(Icons.timeline, 'Last Activity', _timeAgo(lastActivity)),
-                  _detailRow(Icons.factory_outlined, 'Industry', _safeString(data['industry'])),
-                  _detailRow(Icons.groups_2_outlined, 'Stage', _safeString(data['customerStage'])),
-                  const Divider(height: 24),
-                  const Text('Analytics', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Colors.grey)),
-                  const SizedBox(height: 8),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceAround,
-                    children: [
-                      _miniStatCol('Quotes', qCount),
-                      _miniStatCol('Orders', soCount),
-                      _miniStatCol('Invoices', invCount),
-                    ],
-                  ),
-                  const Divider(height: 24),
-                  const Text('Addresses', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Colors.grey)),
-                  const SizedBox(height: 8),
-                  if (addresses.isEmpty) ...[
-                    Padding(
-                      padding: const EdgeInsets.only(bottom: 6),
-                      child: Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Icon(Icons.location_on, size: 14, color: Colors.grey.shade500),
-                          const SizedBox(width: 6),
-                          Expanded(child: Text('Primary • ${_safeString(data['city'])}, ${_safeString(data['state'])}', style: TextStyle(fontSize: 13, color: Colors.grey.shade800))),
-                        ],
-                      ),
-                    )
-                  ] else ...[
-                    ...addresses.take(3).map((a) {
-                      if (a is! Map) return const SizedBox.shrink();
-                      final type = _safeString(a['type']);
-                      final city = _safeString(a['city']);
-                      final state = _safeString(a['state']);
-                      return Padding(
-                        padding: const EdgeInsets.only(bottom: 6),
-                        child: Row(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Icon(Icons.location_on, size: 14, color: Colors.grey.shade500),
-                            const SizedBox(width: 6),
-                            Expanded(child: Text('$type • $city, $state', style: TextStyle(fontSize: 13, color: Colors.grey.shade800))),
-                          ],
-                        ),
-                      );
-                    }),
-                  ],
-                ],
-              ),
-            ),
-            actions: [
-              TextButton(onPressed: () => Navigator.pop(context), child: const Text('Close')),
-              FilledButton.icon(
-                onPressed: () {
-                  Navigator.pop(context);
-                  // Quick link to Customer 360 from Quick Preview
-                  // Note: Since this is an AlertDialog, context needs to be the root Navigator context.
-                  // However, we don't have doc reference here directly without modifying signature.
-                  // SnackBar for now, handled below in the actual row interactions.
-                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Click View Customer 360 from the Actions menu.')));
-                },
-                icon: const Icon(Icons.person_search, size: 16),
-                label: const Text('View Full Profile'),
-              ),
-            ],
-          );
-        }
-    );
-  }
-
-  Widget _detailRow(IconData icon, String label, String value) {
-    if (value.isEmpty) return const SizedBox.shrink();
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 8),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Icon(icon, size: 16, color: Colors.grey.shade600),
-          const SizedBox(width: 8),
-          Text('$label: ', style: TextStyle(fontSize: 13, color: Colors.grey.shade700, fontWeight: FontWeight.w500)),
-          Expanded(child: Text(value, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600))),
-        ],
-      ),
-    );
-  }
-
-  Widget _miniStatCol(String label, int count) {
-    return Column(
-      children: [
-        Text(count.toString(), style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: Colors.black87)),
-        Text(label, style: TextStyle(fontSize: 11, color: Colors.grey.shade600)),
-      ],
-    );
-  }
-
-  // --- FILTERS SHEET ---
   Future<void> _openFilterSheet() async {
     String tempOwnership = _ownershipFilter;
     String tempStatus = _statusFilter;
@@ -937,10 +756,7 @@ class _ScreensCustomerListState extends State<ScreensCustomerList> {
     String tempCustomerType = _customerTypeFilter;
     String tempIndustry = _industryFilter;
     String tempCustomerStage = _customerStageFilter;
-    String tempFollowUpFilter = _followUpFilter;
-
     final cityController = TextEditingController(text: _cityFilter);
-    final tagsController = TextEditingController(text: _tagsFilter);
 
     await showModalBottomSheet(
       context: context,
@@ -949,76 +765,37 @@ class _ScreensCustomerListState extends State<ScreensCustomerList> {
       backgroundColor: Colors.white,
       builder: (context) {
         return Padding(
-          padding: EdgeInsets.fromLTRB(
-            16,
-            6,
-            16,
-            MediaQuery.of(context).viewInsets.bottom + 16,
-          ),
+          padding: EdgeInsets.fromLTRB(16, 6, 16, MediaQuery.of(context).viewInsets.bottom + 16),
           child: SingleChildScrollView(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text(
-                  'Filters',
-                  style: TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
+                const Text('Filters', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
                 const SizedBox(height: 14),
                 DropdownButtonFormField<String>(
                   initialValue: tempOwnership,
-                  decoration: const InputDecoration(
-                    labelText: 'Ownership',
-                    isDense: true,
-                    border: OutlineInputBorder(),
-                  ),
+                  decoration: const InputDecoration(labelText: 'Ownership', isDense: true, border: OutlineInputBorder()),
                   items: const [
                     DropdownMenuItem(value: 'all', child: Text('All')),
-                    DropdownMenuItem(
-                      value: 'assigned_to_me',
-                      child: Text('Assigned to Me'),
-                    ),
-                    DropdownMenuItem(
-                      value: 'created_by_me',
-                      child: Text('Created by Me'),
-                    ),
+                    DropdownMenuItem(value: 'assigned_to_me', child: Text('Assigned to Me')),
+                    DropdownMenuItem(value: 'created_by_me', child: Text('Created by Me')),
                   ],
-                  onChanged: (value) {
-                    tempOwnership = value ?? 'all';
-                  },
+                  onChanged: (value) => tempOwnership = value ?? 'all',
                 ),
                 const SizedBox(height: 10),
                 DropdownButtonFormField<String>(
                   initialValue: tempCustomerStage.isEmpty ? null : tempCustomerStage,
-                  decoration: const InputDecoration(
-                    labelText: 'Customer Stage',
-                    isDense: true,
-                    border: OutlineInputBorder(),
-                  ),
+                  decoration: const InputDecoration(labelText: 'Customer Stage', isDense: true, border: OutlineInputBorder()),
                   items: const [
-                    DropdownMenuItem(
-                      value: 'potential customer',
-                      child: Text('Potential Customer'),
-                    ),
-                    DropdownMenuItem(
-                      value: 'existing customer',
-                      child: Text('Existing Customer'),
-                    ),
+                    DropdownMenuItem(value: 'potential customer', child: Text('Potential Customer')),
+                    DropdownMenuItem(value: 'existing customer', child: Text('Existing Customer')),
                   ],
-                  onChanged: (value) {
-                    tempCustomerStage = value ?? '';
-                  },
+                  onChanged: (value) => tempCustomerStage = value ?? '',
                 ),
                 const SizedBox(height: 10),
                 DropdownButtonFormField<String>(
                   initialValue: tempStatus.isEmpty ? null : tempStatus,
-                  decoration: const InputDecoration(
-                    labelText: 'Status',
-                    isDense: true,
-                    border: OutlineInputBorder(),
-                  ),
+                  decoration: const InputDecoration(labelText: 'Status', isDense: true, border: OutlineInputBorder()),
                   items: const [
                     DropdownMenuItem(value: 'active', child: Text('Active')),
                     DropdownMenuItem(value: 'prospect', child: Text('Prospect')),
@@ -1026,155 +803,24 @@ class _ScreensCustomerListState extends State<ScreensCustomerList> {
                     DropdownMenuItem(value: 'dormant', child: Text('Dormant')),
                     DropdownMenuItem(value: 'blocked', child: Text('Blocked')),
                   ],
-                  onChanged: (value) {
-                    tempStatus = value ?? '';
-                  },
+                  onChanged: (value) => tempStatus = value ?? '',
                 ),
                 const SizedBox(height: 10),
-                DropdownButtonFormField<String>(
-                  initialValue: tempPriority.isEmpty ? null : tempPriority,
-                  decoration: const InputDecoration(
-                    labelText: 'Priority',
-                    isDense: true,
-                    border: OutlineInputBorder(),
-                  ),
-                  items: const [
-                    DropdownMenuItem(
-                        value: 'critical', child: Text('Critical')),
-                    DropdownMenuItem(value: 'high', child: Text('High')),
-                    DropdownMenuItem(value: 'medium', child: Text('Medium')),
-                    DropdownMenuItem(value: 'low', child: Text('Low')),
-                  ],
-                  onChanged: (value) {
-                    tempPriority = value ?? '';
-                  },
-                ),
-                const SizedBox(height: 10),
-                DropdownButtonFormField<String>(
-                  initialValue:
-                  tempCustomerType.isEmpty ? null : tempCustomerType,
-                  decoration: const InputDecoration(
-                    labelText: 'Customer Type',
-                    isDense: true,
-                    border: OutlineInputBorder(),
-                  ),
-                  items: const [
-                    DropdownMenuItem(
-                        value: 'end customer', child: Text('End Customer')),
-                    DropdownMenuItem(
-                        value: 'distributor', child: Text('Distributor')),
-                    DropdownMenuItem(value: 'dealer', child: Text('Dealer')),
-                    DropdownMenuItem(
-                        value: 'channel partner',
-                        child: Text('Channel Partner')),
-                    DropdownMenuItem(value: 'oem', child: Text('OEM')),
-                    DropdownMenuItem(
-                        value: 'system integrator',
-                        child: Text('System Integrator')),
-                    DropdownMenuItem(
-                        value: 'contractor', child: Text('Contractor')),
-                    DropdownMenuItem(
-                        value: 'fabricator', child: Text('Fabricator')),
-                    DropdownMenuItem(
-                        value: 'manufacturer', child: Text('Manufacturer')),
-                    DropdownMenuItem(
-                        value: 'consultant', child: Text('Consultant')),
-                    DropdownMenuItem(
-                        value: 'government', child: Text('Government')),
-                    DropdownMenuItem(
-                        value: 'public sector', child: Text('Public Sector')),
-                    DropdownMenuItem(
-                        value: 'educational institution',
-                        child: Text('Educational Institution')),
-                    DropdownMenuItem(
-                        value: 'service provider',
-                        child: Text('Service Provider')),
-                    DropdownMenuItem(
-                        value: 'retailer', child: Text('Retailer')),
-                    DropdownMenuItem(value: 'trader', child: Text('Trader')),
-                    DropdownMenuItem(value: 'other', child: Text('Other')),
-                  ],
-                  onChanged: (value) {
-                    tempCustomerType = value ?? '';
-                  },
-                ),
-                const SizedBox(height: 10),
-                DropdownButtonFormField<String>(
-                  initialValue:
-                  tempFollowUpFilter.isEmpty ? null : tempFollowUpFilter,
-                  decoration: const InputDecoration(
-                    labelText: 'Follow-up',
-                    isDense: true,
-                    border: OutlineInputBorder(),
-                  ),
-                  items: const [
-                    DropdownMenuItem(
-                      value: 'has_follow_up',
-                      child: Text('Has Follow-up History'),
-                    ),
-                    DropdownMenuItem(
-                      value: 'no_follow_up',
-                      child: Text('No Follow-up History'),
-                    ),
-                    DropdownMenuItem(
-                      value: 'pending_next_follow_up',
-                      child: Text('Pending Next Follow-up'),
-                    ),
-                  ],
-                  onChanged: (value) {
-                    tempFollowUpFilter = value ?? '';
-                  },
-                ),
-                const SizedBox(height: 10),
-                TextField(
-                  controller: cityController,
-                  decoration: const InputDecoration(
-                    labelText: 'City / State',
-                    isDense: true,
-                    border: OutlineInputBorder(),
-                  ),
-                ),
-                const SizedBox(height: 10),
-                TextField(
-                  controller: tagsController,
-                  decoration: const InputDecoration(
-                    labelText: 'Tags (e.g. HQ, Dispatch)',
-                    isDense: true,
-                    border: OutlineInputBorder(),
-                  ),
-                ),
+                TextField(controller: cityController, decoration: const InputDecoration(labelText: 'City / State', isDense: true, border: OutlineInputBorder())),
                 const SizedBox(height: 14),
                 Row(
                   children: [
-                    Expanded(
-                      child: TextButton(
-                        onPressed: () {
-                          _resetFilters();
-                          Navigator.pop(context);
-                        },
-                        child: const Text('Reset'),
-                      ),
-                    ),
-                    Expanded(
-                      child: ElevatedButton(
-                        onPressed: () {
-                          setState(() {
-                            _ownershipFilter = tempOwnership;
-                            _statusFilter = tempStatus;
-                            _priorityFilter = tempPriority;
-                            _customerTypeFilter = tempCustomerType;
-                            _industryFilter = tempIndustry;
-                            _cityFilter = cityController.text.trim();
-                            _tagsFilter = tagsController.text.trim();
-                            _customerStageFilter = tempCustomerStage;
-                            _followUpFilter = tempFollowUpFilter;
-                          });
-                          _applyLocalFilters();
-                          Navigator.pop(context);
-                        },
-                        child: const Text('Apply'),
-                      ),
-                    ),
+                    Expanded(child: TextButton(onPressed: () { _resetFilters(); Navigator.pop(context); }, child: const Text('Reset'))),
+                    Expanded(child: ElevatedButton(onPressed: () {
+                      setState(() {
+                        _ownershipFilter = tempOwnership;
+                        _statusFilter = tempStatus;
+                        _customerStageFilter = tempCustomerStage;
+                        _cityFilter = cityController.text.trim();
+                      });
+                      _applyLocalFilters();
+                      Navigator.pop(context);
+                    }, child: const Text('Apply'))),
                   ],
                 ),
               ],
@@ -1189,594 +835,561 @@ class _ScreensCustomerListState extends State<ScreensCustomerList> {
   @override
   Widget build(BuildContext context) {
     if (_currentUserData == null) {
-      return const Scaffold(
-        body: Center(
-          child: CircularProgressIndicator(),
-        ),
-      );
+      return const Scaffold(body: Center(child: CircularProgressIndicator()));
     }
 
     final firebaseUser = FirebaseAuth.instance.currentUser;
-    if (firebaseUser == null) {
-      return const Scaffold(
-        body: Center(
-          child: Text('Please log in again. No user found.'),
-        ),
-      );
+    if (firebaseUser == null || _companyId.isEmpty || !_hasCustomerPermission(_currentUserData, action: 'view')) {
+      return const Scaffold(body: Center(child: Text('Permission Denied or Unauthenticated')));
     }
 
-    if (_companyId.isEmpty) {
-      return const Scaffold(
-        body: Center(
-          child: Text('No company linked to this user'),
-        ),
-      );
-    }
-
-    // 1. Check if user can VIEW the page at all
-    if (!_hasCustomerPermission(_currentUserData, action: 'view')) {
-      return const Scaffold(
-        body: Center(
-          child: Text('You do not have permission to view customers'),
-        ),
-      );
-    }
-
-    // 2. Resolve Create, Edit, Delete Permissions
     final bool canCreate = _hasCustomerPermission(_currentUserData, action: 'create');
 
-    final assignedCount = _filteredDocs.where((doc) {
-      final assignedToUid = _safeString(doc.data()['assignedToUid']);
-      return assignedToUid.isNotEmpty;
-    }).length;
-
-    final myCustomersCount = _filteredDocs.where((doc) {
-      final data = doc.data();
-      final createdBy = _safeString(data['createdByUid'].toString().isEmpty ? data['createdBy'] : data['createdByUid']);
-      final assignedToUid = _safeString(data['assignedToUid']);
-      return createdBy == firebaseUser.uid || assignedToUid == firebaseUser.uid;
-    }).length;
+    final actionCallbacks = CustomerActionCallbacks(
+      onProfile: (doc) => _openCustomer360(doc.reference),
+      onEdit: (doc) => _openAddCustomer(context: context, companyId: _companyId, userUid: firebaseUser.uid, role: _userRole, existingDoc: doc.reference),
+      onContacts: (doc) => Navigator.push(context, MaterialPageRoute(builder: (_) => ScreensContactList(companyRef: doc.reference, companyName: doc.displayName))),
+      onTimeline: (doc) => Navigator.push(context, MaterialPageRoute(builder: (_) => ScreensCustomerTimeline(customerRef: doc.reference, companyId: _companyId, currentUserUid: firebaseUser.uid, currentUserName: _currentUserName, customerName: doc.displayName))),
+      onAddContact: (doc) => Navigator.push(context, MaterialPageRoute(builder: (_) => ScreensAddContact(companyRef: doc.reference))),
+      onDelete: (doc) => _deleteCustomer(doc),
+    );
 
     return Scaffold(
-      appBar: AppBar(
-        elevation: 0,
-        toolbarHeight: 6,
-        automaticallyImplyLeading: false,
-        backgroundColor: Colors.white,
-      ),
-      floatingActionButton: canCreate
-          ? FloatingActionButton(
-        tooltip: 'Add Customer',
-        onPressed: () => _openAddCustomer(
-          context: context,
-          companyId: _companyId,
-          userUid: firebaseUser.uid,
-          role: _userRole,
-        ),
-        child: const Icon(Icons.add),
-      )
-          : null,
+      appBar: AppBar(elevation: 0, toolbarHeight: 6, automaticallyImplyLeading: false, backgroundColor: Colors.white),
+      floatingActionButton: canCreate ? FloatingActionButton(tooltip: 'Add Customer', onPressed: () => _openAddCustomer(context: context, companyId: _companyId, userUid: firebaseUser.uid, role: _userRole), child: const Icon(Icons.add)) : null,
+      floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
       backgroundColor: Colors.grey.shade50,
-      body: Column(
-        children: [
-          // ENTERPRISE HEADER
-          Container(
-            color: Colors.white,
-            padding: const EdgeInsets.fromLTRB(16, 6, 16, 8),
-            child: Row(
-              children: [
-                ConstrainedBox(
-                  constraints: const BoxConstraints(maxWidth: 320),
-                  child: SizedBox(
-                    height: 38,
-                    child: TextField(
-                      controller: _searchController,
-                      onChanged: _onSearchChanged,
-                      decoration: InputDecoration(
-                        hintText: 'Search code, name, phone, tags...',
-                        prefixIcon: const Icon(Icons.search, size: 18),
-                        suffixIcon: _searchQuery.trim().isEmpty
-                            ? null
-                            : IconButton(
-                          tooltip: 'Clear',
-                          icon: const Icon(Icons.close, size: 17),
-                          onPressed: () {
-                            _searchController.clear();
-                            _onSearchChanged('');
-                          },
-                        ),
-                        isDense: true,
-                        filled: true,
-                        fillColor: Colors.grey.shade100,
-                        contentPadding: const EdgeInsets.symmetric(
-                          horizontal: 10,
-                          vertical: 8,
-                        ),
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(10),
-                          borderSide: BorderSide.none,
-                        ),
-                        enabledBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(10),
-                          borderSide: BorderSide.none,
-                        ),
-                        focusedBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(10),
-                          borderSide: BorderSide.none,
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                SizedBox(
-                  height: 38,
-                  width: 38,
-                  child: Material(
-                    color: Colors.grey.shade100,
-                    borderRadius: BorderRadius.circular(10),
-                    child: InkWell(
-                      borderRadius: BorderRadius.circular(10),
-                      onTap: _openFilterSheet,
-                      child: Stack(
-                        alignment: Alignment.center,
-                        children: [
-                          Icon(
-                            Icons.tune_rounded,
-                            size: 18,
-                            color: Colors.grey.shade800,
+      body: LayoutBuilder(
+        builder: (context, constraints) {
+          final forceCardView = constraints.maxWidth < 1100;
+          final effectiveTableView = forceCardView ? false : _isTableView;
+
+          return Column(
+            children: [
+              // ENTERPRISE HEADER
+              Container(
+                color: Colors.white,
+                padding: const EdgeInsets.fromLTRB(16, 6, 16, 8),
+                child: Row(
+                  children: [
+                    ConstrainedBox(
+                      constraints: const BoxConstraints(maxWidth: 320),
+                      child: SizedBox(
+                        height: 38,
+                        child: TextField(
+                          controller: _searchController,
+                          onChanged: _onSearchChanged,
+                          decoration: InputDecoration(
+                            hintText: 'Search...',
+                            prefixIcon: const Icon(Icons.search, size: 18),
+                            suffixIcon: _searchQuery.trim().isEmpty ? null : IconButton(icon: const Icon(Icons.close, size: 17), onPressed: () { _searchController.clear(); _onSearchChanged(''); }),
+                            isDense: true, filled: true, fillColor: Colors.grey.shade100,
+                            contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                            border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide.none),
                           ),
-                          if (_hasActiveFilters)
-                            Positioned(
-                              right: 8,
-                              top: 8,
-                              child: Container(
-                                width: 7,
-                                height: 7,
-                                decoration: BoxDecoration(
-                                  color: Colors.blue.shade700,
-                                  shape: BoxShape.circle,
-                                ),
-                              ),
-                            ),
-                        ],
+                        ),
                       ),
                     ),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                PopupMenuButton<String>(
-                  icon: Icon(Icons.sort, size: 20, color: Colors.grey.shade700),
-                  tooltip: 'Sort by',
-                  onSelected: (val) {
-                    final parts = val.split('_');
-                    _updateSort(parts[0], parts[1] == 'desc');
-                  },
-                  itemBuilder: (ctx) => [
-                    const PopupMenuItem(value: 'updatedAt_desc', child: Text('Last Activity (Newest)')),
-                    const PopupMenuItem(value: 'createdAt_desc', child: Text('Created Date (Newest)')),
-                    const PopupMenuItem(value: 'companyNameLower_asc', child: Text('Company Name (A-Z)')),
-                    const PopupMenuItem(value: 'companyNameLower_desc', child: Text('Company Name (Z-A)')),
+                    const SizedBox(width: 8),
+                    SizedBox(height: 38, width: 38, child: Material(color: Colors.grey.shade100, borderRadius: BorderRadius.circular(10), child: InkWell(borderRadius: BorderRadius.circular(10), onTap: _openFilterSheet, child: Stack(alignment: Alignment.center, children: [Icon(Icons.tune_rounded, size: 18, color: Colors.grey.shade800), if (_hasActiveFilters) Positioned(right: 8, top: 8, child: Container(width: 7, height: 7, decoration: BoxDecoration(color: Colors.blue.shade700, shape: BoxShape.circle)))])))),
+                    const SizedBox(width: 8),
+                    PopupMenuButton<String>(
+                      icon: Icon(Icons.sort, size: 20, color: Colors.grey.shade700),
+                      onSelected: (val) { final parts = val.split('_'); _updateSort(parts[0], parts[1] == 'desc'); },
+                      itemBuilder: (ctx) => const [
+                        PopupMenuItem(value: 'updatedAt_desc', child: Text('Last Activity (Newest)')),
+                        PopupMenuItem(value: 'createdAt_desc', child: Text('Created Date (Newest)')),
+                        PopupMenuItem(value: 'companyName_asc', child: Text('Company Name (A-Z)')),
+                      ],
+                    ),
+                    const SizedBox(width: 8),
+                    IconButton(icon: Icon(_isTableView ? Icons.grid_view_rounded : Icons.table_rows_rounded, size: 20), onPressed: _toggleViewMode, color: Colors.grey.shade700),
                   ],
                 ),
-                const SizedBox(width: 8),
-                IconButton(
-                  icon: Icon(_isTableView ? Icons.grid_view_rounded : Icons.table_rows_rounded, size: 20),
-                  tooltip: _isTableView ? 'Switch to List View' : 'Switch to Table View',
-                  onPressed: _toggleViewMode,
-                  color: Colors.grey.shade700,
-                ),
-                const Spacer(),
-                _MiniStatText(
-                  label: 'Visible',
-                  value: _filteredDocs.length.toString(),
-                ),
-                const SizedBox(width: 10),
-                _MiniStatText(
-                  label: 'Assigned',
-                  value: assignedCount.toString(),
-                ),
-                const SizedBox(width: 10),
-                _MiniStatText(
-                  label: 'Mine',
-                  value: myCustomersCount.toString(),
-                ),
-              ],
-            ),
-          ),
-          if (_hasActiveFilters)
-            Container(
-              color: Colors.white,
-              padding: const EdgeInsets.fromLTRB(16, 0, 16, 4),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      'Filters applied',
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: Colors.grey.shade700,
-                        fontWeight: FontWeight.w500,
-                      ),
-                    ),
-                  ),
-                  TextButton(
-                    onPressed: _resetFilters,
-                    child: const Text('Clear'),
-                  ),
-                ],
               ),
-            ),
-          const Divider(height: 1, thickness: 1),
-          // MAIN CONTENT
-          Expanded(
-            child: _isLoading && _allDocs.isEmpty
-                ? _buildSkeletonLoader()
-                : RefreshIndicator(
-              onRefresh: _onRefresh,
-              child: _filteredDocs.isEmpty
-                  ? _EmptyCustomersState(
-                hasSearch: _searchQuery.trim().isNotEmpty || _hasActiveFilters,
-                onReset: () {
-                  _searchController.clear();
-                  _onSearchChanged('');
-                  _resetFilters();
-                },
-              )
-                  : LayoutBuilder(
-                builder: (context, constraints) {
-                  final forceCardView = constraints.maxWidth < 1100;
-                  final effectiveTableView = forceCardView ? false : _isTableView;
+              if (_hasActiveFilters) Container(color: Colors.white, padding: const EdgeInsets.fromLTRB(16, 0, 16, 4), child: Row(children: [Expanded(child: Text('Filters applied', style: TextStyle(fontSize: 12, color: Colors.grey.shade700, fontWeight: FontWeight.w500))), TextButton(onPressed: _resetFilters, child: const Text('Clear'))])),
+              const Divider(height: 1, thickness: 1),
 
-                  return effectiveTableView ? _buildTableView() : _buildListView();
-                },
+              // MAIN CONTENT LIST OR TABLE
+              Expanded(
+                child: _isLoading
+                    ? const _SkeletonLoader()
+                    : _filteredItems.isEmpty
+                    ? _EmptyCustomersState(hasSearch: _searchQuery.trim().isNotEmpty || _hasActiveFilters, onReset: () { _searchController.clear(); _onSearchChanged(''); _resetFilters(); })
+                    : effectiveTableView
+                    ? _buildTableView(actionCallbacks, constraints.maxWidth, canEdit: _hasCustomerPermission(_currentUserData, action: 'edit'), canDelete: _hasCustomerPermission(_currentUserData, action: 'delete'), canCreate: canCreate)
+                    : _buildListView(actionCallbacks, canEdit: _hasCustomerPermission(_currentUserData, action: 'edit'), canDelete: _hasCustomerPermission(_currentUserData, action: 'delete'), currentUserId: firebaseUser.uid, canCreate: canCreate),
               ),
-            ),
-          ),
-          if (_isFetchingMore)
-            Container(
-              padding: const EdgeInsets.all(12),
-              color: Colors.white,
-              child: const Center(
-                child: SizedBox(
-                  width: 24,
-                  height: 24,
-                  child: CircularProgressIndicator(strokeWidth: 2),
-                ),
-              ),
-            ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildSkeletonLoader() {
-    return ListView.separated(
-      padding: const EdgeInsets.fromLTRB(16, 16, 16, 90),
-      itemCount: 5,
-      separatorBuilder: (_, __) => const SizedBox(height: 12),
-      itemBuilder: (ctx, i) => TweenAnimationBuilder<double>(
-        duration: const Duration(milliseconds: 1000),
-        curve: Curves.easeInOutSine,
-        tween: Tween(begin: 0.3, end: 0.7),
-        builder: (context, opacity, child) {
-          return Opacity(
-            opacity: opacity,
-            child: Container(
-              height: 160,
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(14),
-                border: Border.all(color: Colors.grey.shade200),
-              ),
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      Container(height: 40, width: 40, decoration: BoxDecoration(color: Colors.grey.shade200, shape: BoxShape.circle)),
-                      const SizedBox(width: 10),
-                      Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Container(height: 16, width: 150, color: Colors.grey.shade200),
-                          const SizedBox(height: 6),
-                          Container(height: 12, width: 100, color: Colors.grey.shade200),
-                        ],
-                      )
-                    ],
-                  ),
-                  const SizedBox(height: 16),
-                  Container(height: 14, width: double.infinity, color: Colors.grey.shade200),
-                  const SizedBox(height: 8),
-                  Container(height: 14, width: 250, color: Colors.grey.shade200),
-                ],
-              ),
-            ),
+            ],
           );
         },
       ),
     );
   }
 
-  Widget _buildListView() {
-    return ListView.separated(
-      controller: _scrollController,
-      physics: const AlwaysScrollableScrollPhysics(),
-      padding: const EdgeInsets.fromLTRB(16, 12, 16, 90),
-      itemCount: _filteredDocs.length,
-      separatorBuilder: (_, __) => const SizedBox(height: 12),
-      itemBuilder: (context, index) {
-        final doc = _filteredDocs[index];
-        return _buildCustomerCard(doc);
-      },
+  Widget _buildPaginationBar(bool hasFab) {
+    int totalPages = (_totalServerRecords / _pageSize).ceil();
+    if (totalPages == 0) totalPages = 1;
+
+    int startIndex = ((_currentPage - 1) * _pageSize) + 1;
+    int endIndex = startIndex + _currentItems.length - 1;
+    if (_totalServerRecords == 0) {
+      startIndex = 0;
+      endIndex = 0;
+    }
+
+    List<Widget> pageButtons = [];
+    int startPage = math.max(1, _currentPage - 2);
+    int endPage = math.min(totalPages, startPage + 4);
+    if (endPage - startPage < 4) {
+      startPage = math.max(1, endPage - 4);
+    }
+
+    for (int i = startPage; i <= endPage; i++) {
+      bool isCurrent = i == _currentPage;
+      pageButtons.add(
+          InkWell(
+            onTap: isCurrent ? null : () => _fetchPageData(i),
+            borderRadius: BorderRadius.circular(6),
+            child: Container(
+              margin: const EdgeInsets.symmetric(horizontal: 2),
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+              decoration: BoxDecoration(
+                  color: isCurrent ? Colors.blue.shade50 : Colors.transparent,
+                  borderRadius: BorderRadius.circular(6),
+                  border: Border.all(color: isCurrent ? Colors.blue.shade200 : Colors.transparent)
+              ),
+              child: Text('$i', style: TextStyle(fontWeight: isCurrent ? FontWeight.bold : FontWeight.w600, color: isCurrent ? Colors.blue.shade800 : Colors.grey.shade600, fontSize: 13)),
+            ),
+          )
+      );
+    }
+
+    return Container(
+      padding: EdgeInsets.only(
+        left: 16,
+        right: hasFab ? 88.0 : 16.0,
+        top: 12,
+        bottom: 12 + MediaQuery.of(context).padding.bottom,
+      ),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        border: Border(top: BorderSide(color: Colors.grey.shade200)),
+      ),
+      child: Row(
+        children: [
+          Text(
+            '$startIndex - $endIndex of $_totalServerRecords',
+            style: const TextStyle(fontSize: 12, color: Colors.black87, fontWeight: FontWeight.w600),
+          ),
+          const Spacer(),
+          if (_isChangingPage)
+            const Padding(
+              padding: EdgeInsets.only(right: 16),
+              child: SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2)),
+            ),
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              OutlinedButton(
+                style: OutlinedButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(horizontal: 10),
+                    minimumSize: const Size(0, 32),
+                    textStyle: const TextStyle(fontWeight: FontWeight.w600, fontSize: 12)
+                ),
+                onPressed: _currentPage > 1 ? () => _fetchPageData(_currentPage - 1) : null,
+                child: const Text('Prev'),
+              ),
+              const SizedBox(width: 4),
+              ...pageButtons,
+              const SizedBox(width: 4),
+              OutlinedButton(
+                style: OutlinedButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(horizontal: 10),
+                    minimumSize: const Size(0, 32),
+                    textStyle: const TextStyle(fontWeight: FontWeight.w600, fontSize: 12)
+                ),
+                onPressed: _currentPage < totalPages ? () => _fetchPageData(_currentPage + 1) : null,
+                child: const Text('Next'),
+              ),
+            ],
+          )
+        ],
+      ),
     );
   }
 
-  Widget _buildTableView() {
-    return SingleChildScrollView(
+  Widget _buildListView(CustomerActionCallbacks callbacks, {required bool canEdit, required bool canDelete, required String currentUserId, required bool canCreate}) {
+    return CustomScrollView(
       controller: _scrollController,
       physics: const AlwaysScrollableScrollPhysics(),
-      child: SingleChildScrollView(
-        scrollDirection: Axis.horizontal,
-        child: ConstrainedBox(
-          constraints: BoxConstraints(minWidth: MediaQuery.of(context).size.width),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Container(
-                color: Colors.grey.shade100,
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                child: const Row(
-                  children: [
-                    SizedBox(width: 40), // Checkbox
-                    SizedBox(width: 250, child: Text('Company', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13))),
-                    SizedBox(width: 180, child: Text('Location', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13))),
-                    SizedBox(width: 120, child: Text('Status / Stage', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13))),
-                    SizedBox(width: 140, child: Text('Primary Contact', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13))),
-                    SizedBox(width: 130, child: Text('Assigned To', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13))),
-                    SizedBox(width: 100, child: Text('Last Activity', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13))),
-                    SizedBox(width: 60, child: Text('Actions', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13))),
-                  ],
+      slivers: [
+        SliverList(
+          delegate: SliverChildBuilderDelegate(
+                (context, index) {
+              final doc = _filteredItems[index];
+              return SelectiveRowBuilder(
+                notifier: _selectedCustomerIdsNotifier,
+                itemId: doc.id,
+                builder: (context, isSelected) {
+                  return CustomerCardWidget(
+                    doc: doc,
+                    isSelected: isSelected,
+                    onToggleSelection: _toggleSelection,
+                    userNameCache: _userNameCache,
+                    canEdit: canEdit,
+                    canDelete: canDelete,
+                    currentUserId: currentUserId,
+                    callbacks: callbacks,
+                  );
+                },
+              );
+            },
+            childCount: _filteredItems.length,
+          ),
+        ),
+        SliverToBoxAdapter(
+          child: _buildPaginationBar(canCreate),
+        )
+      ],
+    );
+  }
+
+  Widget _buildTableView(CustomerActionCallbacks callbacks, double maxWidth, {required bool canEdit, required bool canDelete, required bool canCreate}) {
+    final double minWidth = math.max(1020.0, maxWidth);
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      child: ConstrainedBox(
+        constraints: BoxConstraints(minWidth: minWidth),
+        child: SizedBox(
+          width: minWidth,
+          child: CustomScrollView(
+            controller: _scrollController,
+            physics: const AlwaysScrollableScrollPhysics(),
+            slivers: [
+              SliverToBoxAdapter(
+                child: Container(
+                  color: Colors.grey.shade100,
+                  padding: _kTableContainerPadding,
+                  child: const Row(
+                    children: [
+                      SizedBox(width: 40),
+                      SizedBox(width: 250, child: Text('Company', style: _kTableHeaderStyle)),
+                      SizedBox(width: 160, child: Text('Location', style: _kTableHeaderStyle)),
+                      SizedBox(width: 140, child: Text('Contact', style: _kTableHeaderStyle)),
+                      SizedBox(width: 120, child: Text('Status / Stage', style: _kTableHeaderStyle)),
+                      SizedBox(width: 130, child: Text('Assigned To', style: _kTableHeaderStyle)),
+                      SizedBox(width: 120, child: Text('Activity & Audit', style: _kTableHeaderStyle)),
+                      SizedBox(width: 60, child: Text('Actions', style: _kTableHeaderStyle)),
+                    ],
+                  ),
                 ),
               ),
-              ..._filteredDocs.map((doc) => _buildCustomerTableRow(doc)),
-              const SizedBox(height: 90),
+              SliverFixedExtentList(
+                itemExtent: 48.0,
+                delegate: SliverChildBuilderDelegate(
+                      (context, index) {
+                    final doc = _filteredItems[index];
+                    return SelectiveRowBuilder(
+                      notifier: _selectedCustomerIdsNotifier,
+                      itemId: doc.id,
+                      builder: (context, isSelected) {
+                        return CustomerTableRowWidget(
+                          doc: doc,
+                          isSelected: isSelected,
+                          onToggleSelection: _toggleSelection,
+                          userNameCache: _userNameCache,
+                          canEdit: canEdit,
+                          canDelete: canDelete,
+                          callbacks: callbacks,
+                        );
+                      },
+                    );
+                  },
+                  childCount: _filteredItems.length,
+                ),
+              ),
+              SliverToBoxAdapter(
+                child: _buildPaginationBar(canCreate),
+              )
             ],
           ),
         ),
       ),
     );
   }
+}
 
-  Widget _buildHealthIndicator(Map<String, dynamic> data, DateTime? lastActivity) {
-    final invCount = _safeInt(data['invoiceCount']);
-    final isDormant = lastActivity != null && DateTime.now().difference(lastActivity).inDays > 90;
+// ==========================================
+// OPTIMIZED ENTERPRISE UI COMPONENTS
+// ==========================================
 
-    if (invCount > 5 || _safeDouble(data['totalBusinessValue']) > 100000) {
-      return _InfoChip(label: 'High Value', backgroundColor: Colors.amber.shade50, textColor: Colors.amber.shade900);
-    }
-    if (isDormant) {
-      return _InfoChip(label: 'Dormant', backgroundColor: Colors.grey.shade200, textColor: Colors.grey.shade700);
-    }
-    return const SizedBox.shrink();
+class _SkeletonLoader extends StatelessWidget {
+  const _SkeletonLoader({Key? key}) : super(key: key);
+
+  @override
+  Widget build(BuildContext context) {
+    return ListView.builder(
+      itemCount: 15,
+      itemBuilder: (ctx, i) => Container(
+        decoration: _kRowDecoration,
+        padding: _kRowPadding,
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            Container(height: 20, width: 20, color: Colors.grey.shade100),
+            const SizedBox(width: 16),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Container(height: 14, width: 200, color: Colors.grey.shade100),
+                  const SizedBox(height: 8),
+                  Container(height: 12, width: 120, color: Colors.grey.shade100),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class CustomerCardWidget extends StatelessWidget {
+  final CustomerListItem doc;
+  final bool isSelected;
+  final ValueChanged<String> onToggleSelection;
+  final Map<String, String> userNameCache;
+  final bool canEdit;
+  final bool canDelete;
+  final String currentUserId;
+  final CustomerActionCallbacks callbacks;
+
+  const CustomerCardWidget({
+    Key? key,
+    required this.doc,
+    required this.isSelected,
+    required this.onToggleSelection,
+    required this.userNameCache,
+    required this.canEdit,
+    required this.canDelete,
+    required this.currentUserId,
+    required this.callbacks,
+  }) : super(key: key);
+
+  String _resolveUserName(String uid, String fallback) {
+    if (uid.isEmpty) return '';
+    if (uid == currentUserId) return 'You';
+    if (userNameCache.containsKey(uid)) return userNameCache[uid]!;
+    return fallback.isNotEmpty ? fallback : uid;
   }
 
-  // --- ORIGINAL UI CARD WRAPPER WITH ENTERPRISE ENHANCEMENTS ---
-  Widget _buildCustomerCard(QueryDocumentSnapshot<Map<String, dynamic>> doc) {
-    final firebaseUser = FirebaseAuth.instance.currentUser;
-    if (firebaseUser == null) return const SizedBox.shrink();
-
-    final data = doc.data();
-    final customer = Customer.fromMap(doc.id, data);
-
-    final canEdit = _hasCustomerPermission(_currentUserData, action: 'edit');
-    final canDelete = _hasCustomerPermission(_currentUserData, action: 'delete');
-
-    // Advanced Extractions
-    final customerCode = _formatCustomerCode(data['customerCode']);
-    final addressesList = data['addresses'] as List<dynamic>? ?? [];
-    final primaryAddr = _extractPrimaryAddress(addressesList);
-
-    final String city = primaryAddr != null ? _safeString(primaryAddr['city']) : _safeString(data['city']);
-    final String state = primaryAddr != null ? _safeString(primaryAddr['state']) : _safeString(data['state']);
-    final String addressType = primaryAddr != null ? _safeString(primaryAddr['type']) : '';
-
-    final locationText = [
-      if (addressType.isNotEmpty) addressType,
-      city.trim(),
-      state.trim(),
-    ].where((e) => e.isNotEmpty).join(', ');
-
-    final Set<String> allTags = {};
-    for (var a in addressesList) {
-      if (a is Map && a['tags'] is List) {
-        for (var t in a['tags']) allTags.add(t.toString());
-      }
-    }
-
-    final assignedToUid = (data['assignedToUid'] ?? '').toString();
-    final assignedToName = (data['assignedToName'] ?? '').toString();
-    final updatedByUid = (data['updatedByUid'] ?? data['updatedBy'] ?? '').toString();
-    final updatedByName = (data['updatedByName'] ?? '').toString();
-    final contactName = (data['contactName'] ?? '').toString();
-    final updatedAt = data['updatedAt'];
-
-    final customerStage = (data['customerStage'] ?? '').toString();
-    final status = (data['status'] ?? '').toString();
-    final priority = (data['priority'] ?? '').toString();
-    final customerType = (data['customerType'] ?? '').toString();
-    final industry = (data['industry'] ?? '').toString();
-
-    final lastFollowUpAt = _extractDate(data['lastFollowUpAt']);
-    final nextFollowUpDate = _extractDate(data['nextFollowUpDate']);
-    final lastFollowUpMode = (data['lastFollowUpMode'] ?? '').toString();
-    final lastFollowUpSummary = (data['lastFollowUpSummary'] ?? '').toString();
-    final lastFollowUpOutcome = (data['lastFollowUpOutcome'] ?? '').toString();
-
-    final lastActivityAt = _extractDate(data['lastActivityAt']) ?? _extractDate(data['updatedAt']);
-
-    final followUpCount = _safeInt(data['followUpCount']);
-    final qCount = _safeInt(data['quotationCount']);
-    final soCount = _safeInt(data['salesOrderCount']);
-    final invCount = _safeInt(data['invoiceCount']);
-
-    final displayName = _safeString(data['companyName'].toString().isEmpty ? data['name'] : data['companyName']);
-
-    final phone = _safeString(data['companyPhone'].toString().isEmpty ? data['phone'] : data['companyPhone']);
-
-    final email = _safeString(data['businessEmail'].toString().isEmpty ? data['email'] : data['businessEmail']);
-
-    final assignedDisplay = assignedToUid.isEmpty
-        ? ''
-        : _resolveUserName(
-      uid: assignedToUid,
-      userNameMap: _userNameCache,
-      fallbackName: assignedToName,
-      isCurrentUser: assignedToUid == firebaseUser.uid,
-    );
-
-    final updatedByDisplay = updatedByUid.isEmpty
-        ? ''
-        : _resolveUserName(
-      uid: updatedByUid,
-      userNameMap: _userNameCache,
-      fallbackName: updatedByName,
-      isCurrentUser: updatedByUid == firebaseUser.uid,
-    );
+  @override
+  Widget build(BuildContext context) {
+    final assignedDisplay = _resolveUserName(doc.assignedToUid, doc.assignedToName);
+    final createdByDisplay = _resolveUserName(doc.createdByUid, '');
+    final updatedByDisplay = _resolveUserName(doc.updatedByUid, '');
 
     return InkWell(
-      borderRadius: BorderRadius.circular(10),
-      onTap: () {
-        _openCustomer360(doc.reference, displayName);
-      },
+      onTap: () => callbacks.onProfile(doc),
       child: Container(
-        decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(10),
-            border: Border.all(
-              color: _selectedCustomerIds.contains(doc.id) ? Colors.blue.shade300 : Colors.grey.shade200,
-              width: _selectedCustomerIds.contains(doc.id) ? 1.5 : 0.8,
-            ),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withOpacity(0.015),
-                blurRadius: 6,
-                offset: const Offset(0, 2),
-              )
-            ]
-        ),
-        child: Padding(
-          padding: const EdgeInsets.all(10),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
+        padding: _kCardPadding,
+        decoration: isSelected ? _kSelectedRowDecoration : _kRowDecoration,
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            Checkbox(value: isSelected, onChanged: (_) => onToggleSelection(doc.id), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4))),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Padding(
-                    padding: const EdgeInsets.only(right: 8, top: 4),
-                    child: SizedBox(
-                      width: 24,
-                      height: 24,
-                      child: Checkbox(
-                        value: _selectedCustomerIds.contains(doc.id),
-                        onChanged: (v) => _toggleSelection(doc.id),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
-                      ),
-                    ),
-                  ),
-                  CircleAvatar(
-                    radius: 20,
-                    backgroundColor: Colors.blue.shade50,
-                    child: Text(
-                      displayName.isNotEmpty ? displayName[0].toUpperCase() : '?',
-                      style: TextStyle(
-                        fontSize: 15,
-                        fontWeight: FontWeight.w700,
-                        color: Colors.blue.shade800,
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
+                  Wrap(
+                      crossAxisAlignment: WrapCrossAlignment.center,
+                      spacing: 6,
                       children: [
-                        Row(
-                          children: [
-                            if (customerCode.isNotEmpty)
-                              Padding(
-                                padding: const EdgeInsets.only(right: 6),
-                                child: Container(
-                                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                  decoration: BoxDecoration(
-                                    color: Colors.blue.shade50,
-                                    borderRadius: BorderRadius.circular(4),
-                                    border: Border.all(color: Colors.blue.shade100),
-                                  ),
-                                  child: Text(
-                                    customerCode,
-                                    style: TextStyle(
-                                      fontSize: 10.5,
-                                      fontWeight: FontWeight.w800,
-                                      color: Colors.blue.shade800,
-                                      letterSpacing: 0.3,
-                                    ),
-                                  ),
-                                ),
-                              ),
-                            Expanded(
-                              child: Text(
-                                displayName.isNotEmpty ? displayName : '(No Company Name)',
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: const TextStyle(
-                                  fontSize: 14,
-                                  fontWeight: FontWeight.w700,
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                        if (industry.isNotEmpty) ...[
-                          const SizedBox(height: 3),
-                          Text(
-                            industry,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                              fontSize: 12,
-                              color: Colors.grey.shade700,
-                              fontWeight: FontWeight.w500,
-                            ),
-                          ),
-                        ],
-                      ],
-                    ),
+                        Text(doc.displayName.isNotEmpty ? doc.displayName : '(Unnamed)', style: _kCompanyNameStyle),
+                        if (doc.customerCode.isNotEmpty) Text(doc.customerCode, style: _kCustomerCodeStyle),
+                        const SizedBox(width: 6),
+                        if (doc.status.isNotEmpty) _CompactChip(label: doc.status, backgroundColor: _statusBg(doc.status), textColor: _statusFg(doc.status)),
+                      ]
                   ),
-                  PopupMenuButton<String>(
+                  const SizedBox(height: 6),
+                  Wrap(
+                    spacing: 16, runSpacing: 4,
+                    children: [
+                      if (doc.contactName.isNotEmpty) _IconText(Icons.person_outline, doc.contactName),
+                      if (doc.phone.isNotEmpty) _IconText(Icons.phone_outlined, doc.phone),
+                      if (assignedDisplay.isNotEmpty) _IconText(Icons.assignment_ind_outlined, assignedDisplay),
+                    ],
+                  ),
+                  const SizedBox(height: 4),
+                  // AUDIT TRAIL INFO ROW
+                  Wrap(
+                    spacing: 8, runSpacing: 4,
+                    crossAxisAlignment: WrapCrossAlignment.center,
+                    children: [
+                      Text('Created: ${_formatCompactDate(doc.createdAt)} by $createdByDisplay', style: _kActivityTextStyle),
+                      const Text('•', style: _kActivityTextStyle),
+                      Text('Updated: ${_formatCompactDate(doc.updatedAt)} by $updatedByDisplay', style: _kActivityTextStyle),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 8),
+            if (doc.email.isNotEmpty) Tooltip(message: doc.email, child: const Icon(Icons.email_outlined, size: 16, color: Color(0xFF94A3B8))),
+            if (doc.email.isNotEmpty && doc.locationText.isNotEmpty) const SizedBox(width: 12),
+            if (doc.locationText.isNotEmpty) Tooltip(message: doc.locationText, child: const Icon(Icons.location_on_outlined, size: 16, color: Color(0xFF94A3B8))),
+            const SizedBox(width: 12),
+            PopupMenuButton<String>(
+              padding: EdgeInsets.zero,
+              constraints: const BoxConstraints(),
+              icon: const Icon(Icons.more_vert, size: 20, color: Color(0xFF64748B)),
+              tooltip: 'Actions',
+              onSelected: (value) {
+                if (value == 'profile') callbacks.onProfile(doc);
+                else if (value == 'edit') callbacks.onEdit(doc);
+                else if (value == 'contacts') callbacks.onContacts(doc);
+                else if (value == 'timeline') callbacks.onTimeline(doc);
+                else if (value == 'add_contact') callbacks.onAddContact(doc);
+                else if (value == 'delete') callbacks.onDelete(doc);
+              },
+              itemBuilder: (context) => [
+                const PopupMenuItem(value: 'profile', child: Text('View Customer 360')),
+                if (canEdit) const PopupMenuItem(value: 'edit', child: Text('Edit Customer')),
+                const PopupMenuItem(value: 'contacts', child: Text('View Contacts')),
+                const PopupMenuItem(value: 'timeline', child: Text('Activity Timeline')),
+                if (canEdit) const PopupMenuItem(value: 'add_contact', child: Text('Add Contact')),
+                if (canDelete) const PopupMenuDivider(),
+                if (canDelete) const PopupMenuItem(value: 'delete', child: Text('Delete Customer', style: TextStyle(color: Colors.red))),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class CustomerTableRowWidget extends StatelessWidget {
+  final CustomerListItem doc;
+  final bool isSelected;
+  final ValueChanged<String> onToggleSelection;
+  final Map<String, String> userNameCache;
+  final bool canEdit;
+  final bool canDelete;
+  final CustomerActionCallbacks callbacks;
+
+  const CustomerTableRowWidget({
+    Key? key,
+    required this.doc,
+    required this.isSelected,
+    required this.onToggleSelection,
+    required this.userNameCache,
+    required this.canEdit,
+    required this.canDelete,
+    required this.callbacks,
+  }) : super(key: key);
+
+  String _resolveUserName(String uid, String fallback) {
+    if (uid.isEmpty) return '';
+    if (userNameCache.containsKey(uid)) return userNameCache[uid]!;
+    return fallback.isNotEmpty ? fallback : uid;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final assignedDisplay = doc.assignedToUid.isNotEmpty ? _resolveUserName(doc.assignedToUid, doc.assignedToName) : '-';
+
+    return InkWell(
+      onTap: () => callbacks.onProfile(doc),
+      child: Container(
+        decoration: isSelected ? _kSelectedRowDecoration : _kRowDecoration,
+        padding: _kCardPadding,
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            SizedBox(width: 40, child: Checkbox(value: isSelected, onChanged: (_) => onToggleSelection(doc.id))),
+            SizedBox(
+              width: 250,
+              child: Container(
+                alignment: Alignment.centerLeft,
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(doc.displayName.isNotEmpty ? doc.displayName : '(Unnamed)', style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13), maxLines: 1, overflow: TextOverflow.ellipsis),
+                    if (doc.customerCode.isNotEmpty) Text(doc.customerCode, style: _kCustomerCodeStyle, maxLines: 1, overflow: TextOverflow.ellipsis),
+                  ],
+                ),
+              ),
+            ),
+            SizedBox(width: 160, child: Container(alignment: Alignment.centerLeft, child: Text(doc.locationText.isNotEmpty ? doc.locationText : '-', style: _kTableTextStyle, maxLines: 1, overflow: TextOverflow.ellipsis))),
+            SizedBox(
+              width: 140,
+              child: Container(
+                alignment: Alignment.centerLeft,
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(doc.contactName.isNotEmpty ? doc.contactName : '-', style: _kTableTextStyle, maxLines: 1, overflow: TextOverflow.ellipsis),
+                    Text(doc.phone, style: _kTableMutedStyle, maxLines: 1, overflow: TextOverflow.ellipsis),
+                  ],
+                ),
+              ),
+            ),
+            SizedBox(
+              width: 120,
+              child: Container(
+                alignment: Alignment.centerLeft,
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(doc.status.isNotEmpty ? doc.status : '-', style: TextStyle(fontSize: 12, color: _statusFg(doc.status), fontWeight: FontWeight.w600), maxLines: 1, overflow: TextOverflow.ellipsis),
+                    Text(doc.customerStage, style: _kTableMutedStyle, maxLines: 1, overflow: TextOverflow.ellipsis),
+                  ],
+                ),
+              ),
+            ),
+            SizedBox(width: 130, child: Container(alignment: Alignment.centerLeft, child: Text(assignedDisplay, style: _kTableTextStyle, maxLines: 1, overflow: TextOverflow.ellipsis))),
+            SizedBox(
+                width: 120,
+                child: Container(
+                  alignment: Alignment.centerLeft,
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('C: ${_formatCompactDate(doc.createdAt)}', style: _kActivityTextStyle, maxLines: 1, overflow: TextOverflow.ellipsis),
+                      Text('U: ${_formatCompactDate(doc.updatedAt)}', style: _kActivityTextStyle, maxLines: 1, overflow: TextOverflow.ellipsis),
+                    ],
+                  ),
+                )
+            ),
+            SizedBox(
+                width: 60,
+                child: Container(
+                  alignment: Alignment.centerLeft,
+                  child: PopupMenuButton<String>(
+                    icon: Icon(Icons.more_vert, color: Colors.grey.shade600),
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints(),
                     tooltip: 'Actions',
-                    onSelected: (value) {
-                      if (value == 'edit') {
-                        _openAddCustomer(context: context, companyId: _companyId, userUid: firebaseUser.uid, role: _userRole, existingDoc: doc.reference);
-                      } else if (value == 'preview') {
-                        _showCustomerPreview(data, displayName, customerCode);
-                      } else if (value == 'profile') {
-                        _openCustomer360(doc.reference, displayName);
-                      } else if (value == 'contacts') {
-                        Navigator.push(context, MaterialPageRoute(builder: (_) => ScreensContactList(companyRef: doc.reference, companyName: displayName)));
-                      } else if (value == 'timeline') {
-                        Navigator.push(context, MaterialPageRoute(builder: (_) => ScreensCustomerTimeline(customerRef: doc.reference, companyId: _companyId, currentUserUid: firebaseUser.uid, currentUserName: _currentUserName, customerName: displayName)));
-                      } else if (value == 'add_contact') {
-                        Navigator.push(context, MaterialPageRoute(builder: (_) => ScreensAddContact(companyRef: doc.reference)));
-                      } else if (value == 'delete') {
-                        _deleteCustomer(context: context, customerDoc: doc, customerName: displayName);
-                      }
+                    onSelected: (val) {
+                      if (val == 'edit') callbacks.onEdit(doc);
+                      if (val == 'profile') callbacks.onProfile(doc);
+                      if (val == 'contacts') callbacks.onContacts(doc);
+                      if (val == 'timeline') callbacks.onTimeline(doc);
+                      if (val == 'add_contact') callbacks.onAddContact(doc);
+                      if (val == 'delete') callbacks.onDelete(doc);
                     },
-                    itemBuilder: (context) => [
-                      const PopupMenuItem(value: 'preview', child: Text('Quick Preview')),
+                    itemBuilder: (ctx) => [
                       const PopupMenuItem(value: 'profile', child: Text('View Customer 360')),
                       if (canEdit) const PopupMenuItem(value: 'edit', child: Text('Edit Customer')),
                       const PopupMenuItem(value: 'contacts', child: Text('View Contacts')),
@@ -1786,250 +1399,6 @@ class _ScreensCustomerListState extends State<ScreensCustomerList> {
                       if (canDelete) const PopupMenuItem(value: 'delete', child: Text('Delete Customer', style: TextStyle(color: Colors.red))),
                     ],
                   ),
-                ],
-              ),
-              const SizedBox(height: 10),
-              Wrap(
-                spacing: 6,
-                runSpacing: 6,
-                children: [
-                  if (customerStage.isNotEmpty)
-                    _InfoChip(
-                      label: customerStage,
-                      backgroundColor: customerStage.toLowerCase() == 'existing customer'
-                          ? Colors.green.shade50
-                          : Colors.orange.shade50,
-                      textColor: customerStage.toLowerCase() == 'existing customer'
-                          ? Colors.green.shade800
-                          : Colors.orange.shade800,
-                    ),
-                  if (status.isNotEmpty) _InfoChip(label: status, backgroundColor: _statusBg(status), textColor: _statusFg(status)),
-                  if (priority.isNotEmpty) _InfoChip(label: priority, backgroundColor: _priorityBg(priority), textColor: _priorityFg(priority)),
-                  if (customerType.isNotEmpty) _InfoChip(label: customerType, backgroundColor: Colors.blue.shade50, textColor: Colors.blue.shade800),
-                  if (locationText.isNotEmpty) _InfoChip(label: locationText, backgroundColor: Colors.grey.shade100, textColor: Colors.grey.shade800),
-                  _InfoChip(label: 'Timeline: $followUpCount', backgroundColor: Colors.purple.shade50, textColor: Colors.purple.shade800),
-                  if (qCount > 0) _InfoChip(label: 'Quotes: $qCount', backgroundColor: Colors.teal.shade50, textColor: Colors.teal.shade800),
-                  if (soCount > 0) _InfoChip(label: 'Orders: $soCount', backgroundColor: Colors.indigo.shade50, textColor: Colors.indigo.shade800),
-                  if (invCount > 0) _InfoChip(label: 'Invoices: $invCount', backgroundColor: Colors.brown.shade50, textColor: Colors.brown.shade800),
-                  _buildHealthIndicator(data, lastActivityAt),
-                  ...allTags.take(3).map((t) => Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
-                    decoration: BoxDecoration(color: Colors.grey.shade200, borderRadius: BorderRadius.circular(4)),
-                    child: Text(t, style: TextStyle(fontSize: 10, color: Colors.grey.shade700, fontWeight: FontWeight.w600)),
-                  ))
-                ],
-              ),
-              const SizedBox(height: 10),
-              Wrap(
-                spacing: 12,
-                runSpacing: 6,
-                children: [
-                  _InlineInfo(icon: Icons.phone_outlined, text: phone.isEmpty ? '-' : phone),
-                  _InlineInfo(icon: Icons.email_outlined, text: email.isEmpty ? '-' : email),
-                  if (contactName.isNotEmpty) _InlineInfo(icon: Icons.person_outline, text: contactName),
-                  _CustomerContactsCount(customerRef: doc.reference),
-                  if (assignedDisplay.isNotEmpty) _InlineInfo(icon: Icons.assignment_ind_outlined, text: 'Assigned: $assignedDisplay'),
-                  if (updatedByDisplay.isNotEmpty) _InlineInfo(icon: Icons.edit_outlined, text: 'Updated by: $updatedByDisplay'),
-                  _InlineInfo(icon: Icons.update_outlined, text: 'Updated ${_formatAnyTimestamp(updatedAt)}'),
-                ],
-              ),
-              if (lastFollowUpSummary.isNotEmpty || lastFollowUpAt != null || nextFollowUpDate != null) ...[
-                const SizedBox(height: 12),
-                Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.all(10),
-                  decoration: BoxDecoration(
-                    color: Colors.grey.shade50,
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: Colors.grey.shade200),
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        children: [
-                          Icon(Icons.history, size: 16, color: Colors.grey.shade800),
-                          const SizedBox(width: 6),
-                          Text('Timeline & Recent Activities', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Colors.grey.shade800)),
-                        ],
-                      ),
-                      const SizedBox(height: 6),
-                      if (lastFollowUpAt != null)
-                        _InlineInfo(icon: Icons.call_outlined, text: 'Last Follow-up: ${_formatAnyTimestamp(lastFollowUpAt)}${lastFollowUpMode.isNotEmpty ? ' • $lastFollowUpMode' : ''}'),
-                      if (lastFollowUpOutcome.isNotEmpty)
-                        _InlineInfo(icon: Icons.track_changes_outlined, text: 'Outcome: $lastFollowUpOutcome'),
-                      if (lastFollowUpSummary.isNotEmpty)
-                        Padding(
-                          padding: const EdgeInsets.only(top: 6),
-                          child: Text(
-                            lastFollowUpSummary,
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(fontSize: 12, color: Colors.grey.shade800, fontWeight: FontWeight.w500),
-                          ),
-                        ),
-                      if (nextFollowUpDate != null)
-                        Padding(
-                          padding: const EdgeInsets.only(top: 6),
-                          child: _InlineInfo(icon: Icons.event_repeat_outlined, text: 'Next Scheduled Activity: ${_formatAnyTimestamp(nextFollowUpDate)}'),
-                        ),
-                    ],
-                  ),
-                ),
-              ],
-              const SizedBox(height: 10),
-              Row(
-                children: [
-                  Expanded(
-                    child: OutlinedButton.icon(
-                      style: OutlinedButton.styleFrom(
-                        elevation: 0,
-                        side: BorderSide(color: Colors.grey.shade300),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                      ),
-                      icon: const Icon(Icons.people_alt_outlined, size: 16),
-                      label: const Text('Contacts', style: TextStyle(fontSize: 12)),
-                      onPressed: () {
-                        Navigator.push(context, MaterialPageRoute(builder: (_) => ScreensContactList(companyRef: doc.reference, companyName: displayName)));
-                      },
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: OutlinedButton.icon(
-                      style: OutlinedButton.styleFrom(
-                        elevation: 0,
-                        side: BorderSide(color: Colors.grey.shade300),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                      ),
-                      icon: const Icon(Icons.history, size: 16),
-                      label: const Text('Timeline', style: TextStyle(fontSize: 12)),
-                      onPressed: () {
-                        Navigator.push(context, MaterialPageRoute(builder: (_) => ScreensCustomerTimeline(customerRef: doc.reference, companyId: _companyId, currentUserUid: firebaseUser.uid, currentUserName: _currentUserName, customerName: displayName)));
-                      },
-                    ),
-                  ),
-                  if (canEdit) ...[
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: ElevatedButton.icon(
-                        style: ElevatedButton.styleFrom(
-                          elevation: 0,
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                        ),
-                        icon: const Icon(Icons.person_add_alt_1, size: 16),
-                        label: const Text('Add Contact', style: TextStyle(fontSize: 12)),
-                        onPressed: () {
-                          Navigator.push(context, MaterialPageRoute(builder: (_) => ScreensAddContact(companyRef: doc.reference)));
-                        },
-                      ),
-                    ),
-                  ],
-                ],
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildCustomerTableRow(QueryDocumentSnapshot<Map<String, dynamic>> doc) {
-    final firebaseUser = FirebaseAuth.instance.currentUser;
-    if (firebaseUser == null) return const SizedBox.shrink();
-
-    final data = doc.data();
-    final customerCode = _formatCustomerCode(data['customerCode']);
-    final companyName = _safeString(data['companyName'].toString().isEmpty ? data['name'] : data['companyName']);
-    final status = _safeString(data['status']);
-    final customerStage = _safeString(data['customerStage']);
-
-    final addressesList = data['addresses'] as List<dynamic>? ?? [];
-    final primaryAddr = _extractPrimaryAddress(addressesList);
-
-    final docCity = primaryAddr != null ? _safeString(primaryAddr['city']) : _safeString(data['city']);
-    final docState = primaryAddr != null ? _safeString(primaryAddr['state']) : _safeString(data['state']);
-
-    String locationText = '';
-    if (docCity.isNotEmpty && docState.isNotEmpty) {
-      locationText = '$docCity, $docState';
-    } else if (docCity.isNotEmpty) {
-      locationText = docCity;
-    } else if (docState.isNotEmpty) {
-      locationText = docState;
-    }
-
-    final contactName = _safeString(data['contactName']);
-    final assignedToUid = _safeString(data['assignedToUid']);
-    final assignedDisplay = assignedToUid.isNotEmpty
-        ? _resolveUserName(uid: assignedToUid, userNameMap: _userNameCache, fallbackName: _safeString(data['assignedToName']))
-        : 'Unassigned';
-    final lastActivityAt = _extractDate(data['lastActivityAt']) ?? _extractDate(data['updatedAt']);
-
-    final canEdit = _hasCustomerPermission(_currentUserData, action: 'edit');
-    final canDelete = _hasCustomerPermission(_currentUserData, action: 'delete');
-
-    return InkWell(
-      onTap: () {
-        _openCustomer360(doc.reference, companyName);
-      },
-      child: Container(
-        decoration: BoxDecoration(border: Border(bottom: BorderSide(color: Colors.grey.shade200))),
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-        child: Row(
-          children: [
-            SizedBox(
-              width: 40,
-              child: Checkbox(value: _selectedCustomerIds.contains(doc.id), onChanged: (v) => _toggleSelection(doc.id)),
-            ),
-            SizedBox(
-              width: 250,
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(companyName.isNotEmpty ? companyName : '(Unnamed)', style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13), maxLines: 1, overflow: TextOverflow.ellipsis),
-                  if (customerCode.isNotEmpty) Text(customerCode, style: TextStyle(fontSize: 11, color: Colors.blue.shade700, fontWeight: FontWeight.w600)),
-                ],
-              ),
-            ),
-            SizedBox(width: 180, child: Text(locationText.isNotEmpty ? locationText : '-', style: const TextStyle(fontSize: 13), maxLines: 1, overflow: TextOverflow.ellipsis)),
-            SizedBox(
-              width: 120,
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(status.isNotEmpty ? status : '-', style: TextStyle(fontSize: 12, color: _statusFg(status), fontWeight: FontWeight.w600)),
-                  Text(customerStage, style: TextStyle(fontSize: 11, color: Colors.grey.shade600)),
-                ],
-              ),
-            ),
-            SizedBox(width: 140, child: Text(contactName.isNotEmpty ? contactName : '-', style: const TextStyle(fontSize: 13), maxLines: 1, overflow: TextOverflow.ellipsis)),
-            SizedBox(width: 130, child: Text(assignedDisplay, style: const TextStyle(fontSize: 13), maxLines: 1, overflow: TextOverflow.ellipsis)),
-            SizedBox(width: 100, child: Text(_timeAgo(lastActivityAt), style: const TextStyle(fontSize: 13))),
-            SizedBox(
-                width: 60,
-                child: PopupMenuButton<String>(
-                  icon: Icon(Icons.more_vert, color: Colors.grey.shade600),
-                  tooltip: 'Actions',
-                  onSelected: (val) {
-                    if (val == 'edit') _openAddCustomer(context: context, companyId: _companyId, userUid: firebaseUser.uid, role: _userRole, existingDoc: doc.reference);
-                    if (val == 'preview') _showCustomerPreview(data, companyName, customerCode);
-                    if (val == 'profile') _openCustomer360(doc.reference, companyName);
-                    if (val == 'contacts') Navigator.push(context, MaterialPageRoute(builder: (_) => ScreensContactList(companyRef: doc.reference, companyName: companyName)));
-                    if (val == 'timeline') Navigator.push(context, MaterialPageRoute(builder: (_) => ScreensCustomerTimeline(customerRef: doc.reference, companyId: _companyId, currentUserUid: firebaseUser.uid, currentUserName: _currentUserName, customerName: companyName)));
-                    if (val == 'add_contact') Navigator.push(context, MaterialPageRoute(builder: (_) => ScreensAddContact(companyRef: doc.reference)));
-                    if (val == 'delete') _deleteCustomer(context: context, customerDoc: doc, customerName: companyName);
-                  },
-                  itemBuilder: (ctx) => [
-                    const PopupMenuItem(value: 'preview', child: Text('Quick Preview')),
-                    const PopupMenuItem(value: 'profile', child: Text('View Customer 360')),
-                    if (canEdit) const PopupMenuItem(value: 'edit', child: Text('Edit Customer')),
-                    const PopupMenuItem(value: 'contacts', child: Text('View Contacts')),
-                    const PopupMenuItem(value: 'timeline', child: Text('Activity Timeline')),
-                    if (canEdit) const PopupMenuItem(value: 'add_contact', child: Text('Add Contact')),
-                    if (canDelete) const PopupMenuDivider(),
-                    if (canDelete) const PopupMenuItem(value: 'delete', child: Text('Delete Customer', style: TextStyle(color: Colors.red))),
-                  ],
                 )
             ),
           ],
@@ -2039,116 +1408,36 @@ class _ScreensCustomerListState extends State<ScreensCustomerList> {
   }
 }
 
-// ==========================================
-// ORIGINAL HELPERS & COMPONENTS PRESERVED
-// ==========================================
-
-class _CustomerContactsCount extends StatelessWidget {
-  final DocumentReference<Map<String, dynamic>> customerRef;
-
-  const _CustomerContactsCount({
-    required this.customerRef,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-      stream: customerRef.collection('contacts').snapshots(),
-      builder: (context, snapshot) {
-        final count = snapshot.data?.docs.length ?? 0;
-        return _InlineInfo(
-          icon: Icons.groups_outlined,
-          text: 'Contacts: $count',
-        );
-      },
-    );
-  }
-}
-
-class _MiniStatText extends StatelessWidget {
-  final String label;
-  final String value;
-
-  const _MiniStatText({
-    required this.label,
-    required this.value,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Text(
-      '$label: $value',
-      style: TextStyle(
-        fontSize: 12,
-        color: Colors.grey.shade700,
-        fontWeight: FontWeight.w600,
-      ),
-    );
-  }
-}
-
-class _InlineInfo extends StatelessWidget {
+class _IconText extends StatelessWidget {
   final IconData icon;
   final String text;
-
-  const _InlineInfo({
-    required this.icon,
-    required this.text,
-  });
+  const _IconText(this.icon, this.text);
 
   @override
   Widget build(BuildContext context) {
-    return ConstrainedBox(
-      constraints: const BoxConstraints(maxWidth: 300),
-      child: Row(
+    return Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(icon, size: 14, color: Colors.grey.shade700),
-          const SizedBox(width: 5),
-          Flexible(
-            child: Text(
-              text,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                fontSize: 12,
-                color: Colors.grey.shade800,
-                fontWeight: FontWeight.w500,
-              ),
-            ),
-          ),
-        ],
-      ),
+          Icon(icon, size: 14, color: const Color(0xFF64748B)),
+          const SizedBox(width: 4),
+          Flexible(child: Text(text, maxLines: 1, overflow: TextOverflow.ellipsis, style: _kSecondaryTextStyle))
+        ]
     );
   }
 }
 
-class _InfoChip extends StatelessWidget {
+class _CompactChip extends StatelessWidget {
   final String label;
   final Color backgroundColor;
   final Color textColor;
-
-  const _InfoChip({
-    required this.label,
-    required this.backgroundColor,
-    required this.textColor,
-  });
+  const _CompactChip({required this.label, required this.backgroundColor, required this.textColor});
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-      decoration: BoxDecoration(
-        color: backgroundColor,
-        borderRadius: BorderRadius.circular(6),
-      ),
-      child: Text(
-        label,
-        style: TextStyle(
-          fontSize: 11,
-          fontWeight: FontWeight.w700,
-          color: textColor,
-        ),
-      ),
+        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+        decoration: BoxDecoration(color: backgroundColor, borderRadius: BorderRadius.circular(4)),
+        child: Text(label, style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: textColor))
     );
   }
 }
@@ -2156,135 +1445,28 @@ class _InfoChip extends StatelessWidget {
 class _EmptyCustomersState extends StatelessWidget {
   final bool hasSearch;
   final VoidCallback onReset;
-
-  const _EmptyCustomersState({
-    required this.hasSearch,
-    required this.onReset,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        return SingleChildScrollView(
-          padding: const EdgeInsets.all(28),
-          child: ConstrainedBox(
-            constraints: BoxConstraints(
-              minHeight: constraints.maxHeight - 40,
-            ),
-            child: IntrinsicHeight(
-              child: Center(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    CircleAvatar(
-                      radius: 34,
-                      backgroundColor: Colors.blue.shade50,
-                      child: Icon(
-                        hasSearch ? Icons.search_off : Icons.groups_outlined,
-                        size: 34,
-                        color: Colors.blue.shade700,
-                      ),
-                    ),
-                    const SizedBox(height: 18),
-                    Text(
-                      hasSearch
-                          ? 'No matching customers found'
-                          : 'No customers found',
-                      style: const TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w700,
-                      ),
-                      textAlign: TextAlign.center,
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      hasSearch
-                          ? 'Try changing the search text or filter.'
-                          : 'No customer records are available yet.',
-                      textAlign: TextAlign.center,
-                      style: TextStyle(
-                        color: Colors.grey.shade700,
-                        fontSize: 13,
-                      ),
-                    ),
-                    const SizedBox(height: 18),
-                    if (hasSearch)
-                      OutlinedButton(
-                        onPressed: onReset,
-                        child: const Text('Reset Filters'),
-                      ),
-                  ],
-                ),
-              ),
-            ),
-          ),
-        );
-      },
-    );
-  }
+  const _EmptyCustomersState({Key? key, required this.hasSearch, required this.onReset}) : super(key: key);
+  @override Widget build(BuildContext context) { return Center(child: Column(mainAxisSize: MainAxisSize.min, children: [Icon(hasSearch ? Icons.search_off : Icons.business, size: 40, color: Colors.grey.shade400), const SizedBox(height: 16), Text(hasSearch ? 'No matching customers found' : 'No customers yet', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: Colors.grey.shade800)), if (hasSearch) Padding(padding: const EdgeInsets.only(top: 16), child: OutlinedButton(onPressed: onReset, child: const Text('Reset Filters')))])); }
 }
 
 Color _statusBg(String status) {
   switch (status.toLowerCase()) {
-    case 'active':
-      return Colors.green.shade50;
-    case 'prospect':
-      return Colors.blue.shade50;
-    case 'lead':
-      return Colors.orange.shade50;
-    case 'dormant':
-      return Colors.grey.shade200;
-    case 'blocked':
-      return Colors.red.shade50;
-    default:
-      return Colors.grey.shade100;
+    case 'active': return Colors.green.shade50;
+    case 'prospect': return Colors.blue.shade50;
+    case 'lead': return Colors.orange.shade50;
+    case 'dormant': return Colors.grey.shade100;
+    case 'blocked': return Colors.red.shade50;
+    default: return Colors.grey.shade50;
   }
 }
 
 Color _statusFg(String status) {
   switch (status.toLowerCase()) {
-    case 'active':
-      return Colors.green.shade800;
-    case 'prospect':
-      return Colors.blue.shade800;
-    case 'lead':
-      return Colors.orange.shade800;
-    case 'dormant':
-      return Colors.grey.shade800;
-    case 'blocked':
-      return Colors.red.shade800;
-    default:
-      return Colors.grey.shade800;
-  }
-}
-
-Color _priorityBg(String priority) {
-  switch (priority.toLowerCase()) {
-    case 'critical':
-      return Colors.red.shade50;
-    case 'high':
-      return Colors.orange.shade50;
-    case 'medium':
-      return Colors.blue.shade50;
-    case 'low':
-      return Colors.grey.shade100;
-    default:
-      return Colors.grey.shade100;
-  }
-}
-
-Color _priorityFg(String priority) {
-  switch (priority.toLowerCase()) {
-    case 'critical':
-      return Colors.red.shade800;
-    case 'high':
-      return Colors.orange.shade800;
-    case 'medium':
-      return Colors.blue.shade800;
-    case 'low':
-      return Colors.grey.shade800;
-    default:
-      return Colors.grey.shade800;
+    case 'active': return Colors.green.shade800;
+    case 'prospect': return Colors.blue.shade800;
+    case 'lead': return Colors.orange.shade800;
+    case 'dormant': return Colors.grey.shade700;
+    case 'blocked': return Colors.red.shade800;
+    default: return Colors.grey.shade700;
   }
 }

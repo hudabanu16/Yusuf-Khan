@@ -43,7 +43,7 @@ bool _parseBool(dynamic value, {bool fallback = false}) {
 String _normalizePhone(String phone) {
   String cleaned = phone.replaceAll(RegExp(r'[^\d+]'), '');
   if (cleaned.isNotEmpty && !cleaned.startsWith('+') && cleaned.length >= 10) {
-    // Optional: Add default country code if missing, though preserving raw digits is safer for varied inputs.
+    // Optional: Add default country code if missing
   }
   return cleaned;
 }
@@ -64,7 +64,7 @@ bool _isValidGst(String gst) {
 Map<String, dynamic> _sanitizePayload(Map<String, dynamic> payload) {
   final sanitized = <String, dynamic>{};
   payload.forEach((key, value) {
-    if (value == null) return; // Drop nulls safely
+    if (value == null) return;
     if (value is String) {
       final trimmed = value.trim().replaceAll(RegExp(r'\s+'), ' ');
       if (trimmed.isNotEmpty) sanitized[key] = trimmed;
@@ -81,7 +81,6 @@ Map<String, dynamic> _sanitizePayload(Map<String, dynamic> payload) {
       final cleanMap = _sanitizePayload(value);
       if (cleanMap.isNotEmpty) sanitized[key] = cleanMap;
     } else {
-      // Preserve Booleans, Timestamps, FieldValues
       sanitized[key] = value;
     }
   });
@@ -90,8 +89,6 @@ Map<String, dynamic> _sanitizePayload(Map<String, dynamic> payload) {
 
 int _estimatePayloadSize(Map<String, dynamic> payload) {
   try {
-    // A rough JSON stringification to check size limits (Firestore limit is 1MB)
-    // We remove non-encodable types for estimation.
     final testMap = <String, dynamic>{};
     payload.forEach((k, v) {
       if (v is Timestamp || v is FieldValue || v is DateTime) {
@@ -102,7 +99,7 @@ int _estimatePayloadSize(Map<String, dynamic> payload) {
     });
     return utf8.encode(jsonEncode(testMap)).length;
   } catch (_) {
-    return 0; // Fallback
+    return 0;
   }
 }
 
@@ -125,9 +122,121 @@ void _logError({
       'uid': uid,
       'type': 'ERROR',
     });
-  } catch (_) {} // Fail silently if logger fails
+  } catch (_) {}
 }
 
+// --- GLOBAL UI HELPERS FOR PERFORMANCE ISOLATION ---
+InputDecoration _inputDecoration({required String label, required IconData icon, String? hint}) {
+  return InputDecoration(
+    labelText: label,
+    hintText: hint,
+    prefixIcon: Icon(icon, size: 20),
+    filled: true,
+    fillColor: Colors.white,
+    isDense: true,
+    contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+    border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: Colors.grey.shade300)),
+    enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: Colors.grey.shade300)),
+    focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: Colors.blue.shade600, width: 1.2)),
+    errorBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: Colors.red.shade400)),
+    focusedErrorBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: Colors.red.shade400, width: 1.2)),
+  );
+}
+
+Widget _buildTextField({
+  required TextEditingController controller,
+  required String label,
+  required IconData icon,
+  String? hint,
+  TextInputType? keyboardType,
+  String? Function(String?)? validator,
+  int maxLines = 1,
+  void Function(String)? onChanged,
+  bool enabled = true,
+  TextCapitalization textCapitalization = TextCapitalization.none,
+}) {
+  return TextFormField(
+    controller: controller,
+    decoration: _inputDecoration(label: label, icon: icon, hint: hint),
+    keyboardType: keyboardType,
+    maxLines: maxLines,
+    validator: validator,
+    onChanged: onChanged,
+    enabled: enabled,
+    textCapitalization: textCapitalization,
+  );
+}
+
+class _ResponsiveRow extends StatelessWidget {
+  final List<Widget> children;
+  const _ResponsiveRow({Key? key, required this.children}) : super(key: key);
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final isStacked = constraints.maxWidth < 700;
+        if (isStacked) {
+          return Column(
+            children: [
+              for (int i = 0; i < children.length; i++) ...[
+                children[i],
+                if (i != children.length - 1) const SizedBox(height: 12),
+              ],
+            ],
+          );
+        }
+        return Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            for (int i = 0; i < children.length; i++) ...[
+              Expanded(child: children[i]),
+              if (i != children.length - 1) const SizedBox(width: 12),
+            ],
+          ],
+        );
+      },
+    );
+  }
+}
+
+class _SectionBlock extends StatelessWidget {
+  final String title;
+  final String subtitle;
+  final Widget child;
+
+  const _SectionBlock({
+    required this.title,
+    required this.subtitle,
+    required this.child,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: Colors.grey.shade200, width: 0.9),
+          boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.015), blurRadius: 10, offset: const Offset(0, 4))]
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(title, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: Colors.black87)),
+          const SizedBox(height: 4),
+          Text(subtitle, style: TextStyle(fontSize: 12.5, color: Colors.grey.shade600)),
+          const SizedBox(height: 20),
+          child,
+        ],
+      ),
+    );
+  }
+}
+
+// --- STATE MODEL ---
 class _AddressItem {
   final String id;
   DateTime createdAt;
@@ -278,6 +387,7 @@ class _AddressItem {
       final state = _gstStateCodes[code];
       if (state != null && stateController.text.trim().isEmpty) {
         stateController.text = state;
+        updateSummary(); // Lightweight refresh instead of setState
       }
     }
   }
@@ -349,6 +459,401 @@ class _AddressItem {
   }
 }
 
+// --- STANDALONE ADDRESS CARD COMPONENT TO PREVENT GLOBAL REBUILDS ---
+class _AddressCardWidget extends StatefulWidget {
+  final int index;
+  final _AddressItem address;
+  final bool isDuplicateType;
+  final VoidCallback onDuplicate;
+  final VoidCallback onRemove;
+  final VoidCallback onSetPrimary;
+
+  const _AddressCardWidget({
+    Key? key,
+    required this.index,
+    required this.address,
+    required this.isDuplicateType,
+    required this.onDuplicate,
+    required this.onRemove,
+    required this.onSetPrimary,
+  }) : super(key: key);
+
+  @override
+  State<_AddressCardWidget> createState() => _AddressCardWidgetState();
+}
+
+class _AddressCardWidgetState extends State<_AddressCardWidget> {
+
+  Widget _buildCheckbox({required String label, required bool value, required ValueChanged<bool?> onChanged}) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        SizedBox(
+          width: 24,
+          height: 24,
+          child: Checkbox(value: value, onChanged: onChanged, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4))),
+        ),
+        const SizedBox(width: 6),
+        GestureDetector(
+          onTap: () => onChanged(!value),
+          child: Text(label, style: const TextStyle(fontSize: 13, color: Colors.black87)),
+        ),
+      ],
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final address = widget.address;
+
+    return RepaintBoundary(
+      child: Opacity(
+        opacity: address.isActive ? 1.0 : 0.65,
+        child: Container(
+          margin: const EdgeInsets.only(bottom: 16),
+          decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: address.isPrimary ? Colors.blue.shade300 : Colors.grey.shade300, width: address.isPrimary ? 1.5 : 1.2),
+              boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 6, offset: const Offset(0, 2))]
+          ),
+          child: Column(
+            children: [
+              InkWell(
+                onTap: () => setState(() => address.isExpanded = !address.isExpanded),
+                borderRadius: BorderRadius.vertical(top: const Radius.circular(11), bottom: address.isExpanded ? Radius.zero : const Radius.circular(11)),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                  decoration: BoxDecoration(
+                    color: address.isPrimary ? Colors.blue.shade50.withOpacity(0.4) : Colors.grey.shade50,
+                    borderRadius: BorderRadius.vertical(top: const Radius.circular(11), bottom: address.isExpanded ? Radius.zero : const Radius.circular(11)),
+                    border: Border(bottom: BorderSide(color: address.isExpanded ? Colors.grey.shade200 : Colors.transparent)),
+                  ),
+                  child: Row(
+                    children: [
+                      ReorderableDragStartListener(
+                        index: widget.index,
+                        child: const Padding(padding: EdgeInsets.only(right: 8), child: Icon(Icons.drag_indicator, size: 20, color: Colors.grey)),
+                      ),
+                      Text('Address ${widget.index + 1}', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: Colors.grey.shade800)),
+                      if (address.isPrimary) ...[
+                        const SizedBox(width: 10),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                          decoration: BoxDecoration(color: Colors.blue.shade100, borderRadius: BorderRadius.circular(20)),
+                          child: Text('Primary', style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: Colors.blue.shade800)),
+                        ),
+                      ],
+                      if (!address.isActive) ...[
+                        const SizedBox(width: 10),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                          decoration: BoxDecoration(color: Colors.grey.shade300, borderRadius: BorderRadius.circular(20)),
+                          child: Text('Inactive', style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: Colors.grey.shade800)),
+                        ),
+                      ],
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: ValueListenableBuilder<String>(
+                          valueListenable: address.summaryNotifier,
+                          builder: (context, summary, _) {
+                            return Text(
+                              summary,
+                              style: TextStyle(fontSize: 13, color: Colors.grey.shade600, fontWeight: FontWeight.w500),
+                              maxLines: 1, overflow: TextOverflow.ellipsis,
+                            );
+                          },
+                        ),
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.content_copy, size: 18),
+                        onPressed: widget.onDuplicate,
+                        tooltip: 'Duplicate Address',
+                        splashRadius: 20,
+                      ),
+                      Icon(address.isExpanded ? Icons.keyboard_arrow_up : Icons.keyboard_arrow_down, color: Colors.grey.shade600),
+                    ],
+                  ),
+                ),
+              ),
+
+              if (address.isExpanded)
+                Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      if (widget.isDuplicateType) ...[
+                        Container(
+                          margin: const EdgeInsets.only(bottom: 12),
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                          decoration: BoxDecoration(color: Colors.amber.shade50, borderRadius: BorderRadius.circular(6), border: Border.all(color: Colors.amber.shade200)),
+                          child: Row(
+                            children: [
+                              Icon(Icons.info_outline, size: 14, color: Colors.amber.shade800),
+                              const SizedBox(width: 6),
+                              Expanded(child: Text('Multiple "${address.type}" addresses detected.', style: TextStyle(fontSize: 12, color: Colors.amber.shade900))),
+                            ],
+                          ),
+                        ),
+                      ],
+
+                      _ResponsiveRow(
+                        children: [
+                          DropdownButtonFormField<String>(
+                            value: address.type,
+                            decoration: _inputDecoration(label: 'Address Type *', icon: Icons.bookmark_border_outlined),
+                            items: _addressTypeOptions.map((t) => DropdownMenuItem(value: t, child: Text(t))).toList(),
+                            onChanged: (val) {
+                              if (val != null) {
+                                setState(() {
+                                  address.type = val;
+                                  if (val != 'Other') address.customTypeController.clear();
+                                  address.updateSummary();
+                                });
+                              }
+                            },
+                          ),
+                          if (address.type == 'Other')
+                            _buildTextField(
+                              controller: address.customTypeController,
+                              label: 'Custom Type Name *',
+                              icon: Icons.edit_outlined,
+                              validator: (v) => v == null || v.trim().isEmpty ? 'Required' : null,
+                            )
+                          else
+                            const SizedBox.shrink(),
+                        ],
+                      ),
+                      const SizedBox(height: 12),
+                      _buildTextField(
+                        controller: address.streetController,
+                        label: 'Street Address',
+                        icon: Icons.home_outlined,
+                        maxLines: 2,
+                      ),
+                      const SizedBox(height: 12),
+                      _ResponsiveRow(
+                        children: [
+                          _buildTextField(
+                            controller: address.cityController,
+                            label: 'City *',
+                            icon: Icons.location_city_outlined,
+                            validator: (v) => v == null || v.trim().isEmpty ? 'Required' : null,
+                          ),
+                          _buildTextField(
+                            controller: address.stateController,
+                            label: 'State',
+                            icon: Icons.map_outlined,
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 12),
+                      _ResponsiveRow(
+                        children: [
+                          _buildTextField(
+                            controller: address.pincodeController,
+                            label: 'Pincode',
+                            icon: Icons.markunread_mailbox_outlined,
+                            keyboardType: TextInputType.number,
+                            validator: (v) {
+                              if (v != null && v.trim().isNotEmpty) {
+                                final ctry = address.countryController.text.trim().toLowerCase();
+                                if (ctry == 'india' && !RegExp(r'^\d{6}$').hasMatch(v.trim())) {
+                                  return 'Invalid Pincode (6 digits)';
+                                }
+                              }
+                              return null;
+                            },
+                          ),
+                          _buildTextField(
+                            controller: address.countryController,
+                            label: 'Country *',
+                            icon: Icons.public_outlined,
+                            validator: (v) => v == null || v.trim().isEmpty ? 'Required' : null,
+                          ),
+                        ],
+                      ),
+
+                      const Padding(padding: EdgeInsets.symmetric(vertical: 16), child: Divider(height: 1)),
+
+                      const Text('Contact & Tax Details (Optional)', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: Colors.black87)),
+                      const SizedBox(height: 12),
+                      _ResponsiveRow(
+                        children: [
+                          _buildTextField(
+                            controller: address.contactPersonController,
+                            label: 'Contact Person',
+                            icon: Icons.person_outline,
+                          ),
+                          _buildTextField(
+                            controller: address.gstController,
+                            label: 'Address GST',
+                            icon: Icons.receipt_long_outlined,
+                            textCapitalization: TextCapitalization.characters,
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 12),
+                      _ResponsiveRow(
+                        children: [
+                          _buildTextField(
+                            controller: address.contactPhoneController,
+                            label: 'Contact Phone',
+                            icon: Icons.phone_outlined,
+                            keyboardType: TextInputType.phone,
+                          ),
+                          _buildTextField(
+                            controller: address.contactEmailController,
+                            label: 'Contact Email',
+                            icon: Icons.email_outlined,
+                            keyboardType: TextInputType.emailAddress,
+                            validator: (v) {
+                              final email = (v ?? '').trim();
+                              if (email.isEmpty) return null;
+                              if (!RegExp(r'^[^@\s]+@[^@\s]+\.[^@\s]+$').hasMatch(email)) return 'Invalid email';
+                              return null;
+                            },
+                          ),
+                        ],
+                      ),
+
+                      const Padding(padding: EdgeInsets.symmetric(vertical: 16), child: Divider(height: 1)),
+
+                      const Text('Usage Flags & Tags', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: Colors.black87)),
+                      const SizedBox(height: 10),
+                      Wrap(
+                        spacing: 16,
+                        runSpacing: 10,
+                        children: [
+                          _buildCheckbox(label: 'Billing', value: address.isBillingAddress, onChanged: (v) => setState(() => address.isBillingAddress = v ?? false)),
+                          _buildCheckbox(label: 'Shipping', value: address.isShippingAddress, onChanged: (v) => setState(() => address.isShippingAddress = v ?? false)),
+                          _buildCheckbox(label: 'Dispatch', value: address.isDispatchAddress, onChanged: (v) => setState(() => address.isDispatchAddress = v ?? false)),
+                          _buildCheckbox(label: 'Service', value: address.isServiceAddress, onChanged: (v) => setState(() => address.isServiceAddress = v ?? false)),
+                        ],
+                      ),
+                      const SizedBox(height: 16),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: TextFormField(
+                              controller: address.tagInputController,
+                              decoration: _inputDecoration(label: 'Add Tag (e.g. "HQ")', icon: Icons.local_offer_outlined).copyWith(
+                                contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                                suffixIcon: IconButton(
+                                  icon: const Icon(Icons.add, size: 20),
+                                  onPressed: () => setState(() => address.addTag(address.tagInputController.text)),
+                                ),
+                              ),
+                              onFieldSubmitted: (val) => setState(() => address.addTag(val)),
+                            ),
+                          ),
+                        ],
+                      ),
+                      if (address.tags.isNotEmpty) ...[
+                        const SizedBox(height: 10),
+                        Wrap(
+                          spacing: 8,
+                          runSpacing: 8,
+                          children: address.tags.map((tag) => Chip(
+                            label: Text(tag, style: const TextStyle(fontSize: 11)),
+                            onDeleted: () => setState(() => address.removeTag(tag)),
+                            padding: EdgeInsets.zero,
+                            materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                          )).toList(),
+                        ),
+                      ],
+
+                      const SizedBox(height: 16),
+                      const Divider(height: 1),
+                      const SizedBox(height: 12),
+
+                      Wrap(
+                        alignment: WrapAlignment.spaceBetween,
+                        crossAxisAlignment: WrapCrossAlignment.center,
+                        spacing: 12,
+                        runSpacing: 12,
+                        children: [
+                          Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              InkWell(
+                                onTap: widget.onSetPrimary,
+                                borderRadius: BorderRadius.circular(6),
+                                child: Padding(
+                                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Icon(
+                                        address.isPrimary ? Icons.check_circle : Icons.radio_button_unchecked,
+                                        color: address.isPrimary ? Colors.blue.shade700 : Colors.grey.shade500,
+                                        size: 22,
+                                      ),
+                                      const SizedBox(width: 8),
+                                      Text(
+                                        'Primary',
+                                        style: TextStyle(
+                                          fontSize: 13.5,
+                                          fontWeight: address.isPrimary ? FontWeight.w600 : FontWeight.w500,
+                                          color: address.isPrimary ? Colors.blue.shade700 : Colors.grey.shade700,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 16),
+                              InkWell(
+                                onTap: () => setState(() => address.isActive = !address.isActive),
+                                borderRadius: BorderRadius.circular(6),
+                                child: Padding(
+                                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Icon(
+                                        address.isActive ? Icons.toggle_on : Icons.toggle_off,
+                                        color: address.isActive ? Colors.green.shade600 : Colors.grey.shade500,
+                                        size: 32,
+                                      ),
+                                      const SizedBox(width: 4),
+                                      Text(
+                                        address.isActive ? 'Active' : 'Inactive',
+                                        style: TextStyle(
+                                          fontSize: 13.5,
+                                          fontWeight: address.isActive ? FontWeight.w600 : FontWeight.w500,
+                                          color: address.isActive ? Colors.green.shade700 : Colors.grey.shade700,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                          TextButton.icon(
+                            onPressed: widget.onRemove,
+                            icon: const Icon(Icons.delete_outline, size: 18),
+                            label: const Text('Remove Address'),
+                            style: TextButton.styleFrom(
+                              foregroundColor: Colors.red.shade600,
+                              padding: const EdgeInsets.symmetric(horizontal: 12),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class ScreensAddCustomer extends StatefulWidget {
   final DocumentReference<Map<String, dynamic>>? existingDoc;
   final String companyId;
@@ -386,12 +891,15 @@ class _ScreensAddCustomerState extends State<ScreensAddCustomer> {
   final _notesController = TextEditingController();
 
   final List<_AddressItem> _addresses = [];
+  final ValueNotifier<int> _addressListNotifier = ValueNotifier<int>(0);
+
   final _formKey = GlobalKey<FormState>();
 
   bool _isSaving = false;
   bool _isLoadingExisting = false;
   Timer? _draftTimer;
-  String _saveSessionId = ''; // Operation lock token
+  String _saveSessionId = '';
+  String _lastSavedDraftHash = '';
 
   String? _customerCode;
   String? _customerType;
@@ -407,6 +915,8 @@ class _ScreensAddCustomerState extends State<ScreensAddCustomer> {
 
   String _currentUserName = '';
   final Map<String, String> _cachedUserNames = {};
+
+  late Stream<QuerySnapshot<Map<String, dynamic>>> _activeUsersStream;
 
   Map<String, dynamic> _initialCustomerState = {};
 
@@ -434,11 +944,14 @@ class _ScreensAddCustomerState extends State<ScreensAddCustomer> {
           .doc(widget.companyId)
           .collection('users');
 
-  // --- MOUNTED SAFETY HELPER ---
   void _safeSetState(VoidCallback fn) {
     if (mounted) {
       setState(fn);
     }
+  }
+
+  void _notifyAddressChange() {
+    _addressListNotifier.value++;
   }
 
   @override
@@ -450,20 +963,20 @@ class _ScreensAddCustomerState extends State<ScreensAddCustomer> {
     _leadSource = 'Direct';
     _customerStage = 'Potential Customer';
 
-    _gstController.addListener(_onGstChanged);
+    // Store stream reference safely to prevent massive re-renders
+    _activeUsersStream = _companyUsersCol.where('isActive', isEqualTo: true).snapshots();
 
     if (!_isEdit) {
       _loadDraftLocally().then((loaded) {
         if (!loaded && _addresses.isEmpty) {
-          _safeSetState(() {
-            _addresses.add(_AddressItem(
-              isPrimary: true,
-              isBillingAddress: true,
-              createdByUid: widget.currentUserUid,
-              updatedByUid: widget.currentUserUid,
-              erpAddressCode: 'ADDR-001',
-            ));
-          });
+          _addresses.add(_AddressItem(
+            isPrimary: true,
+            isBillingAddress: true,
+            createdByUid: widget.currentUserUid,
+            updatedByUid: widget.currentUserUid,
+            erpAddressCode: 'ADDR-001',
+          ));
+          _notifyAddressChange();
         }
       });
       _draftTimer = Timer.periodic(const Duration(seconds: 15), (_) => _saveDraftLocally());
@@ -477,7 +990,6 @@ class _ScreensAddCustomerState extends State<ScreensAddCustomer> {
   @override
   void dispose() {
     _draftTimer?.cancel();
-    _gstController.removeListener(_onGstChanged);
     _scrollController.dispose();
 
     _companyController.dispose();
@@ -496,6 +1008,8 @@ class _ScreensAddCustomerState extends State<ScreensAddCustomer> {
     _industryCustomController.dispose();
     _notesController.dispose();
 
+    _addressListNotifier.dispose();
+
     for (final addr in _addresses) {
       addr.dispose();
     }
@@ -503,13 +1017,12 @@ class _ScreensAddCustomerState extends State<ScreensAddCustomer> {
     super.dispose();
   }
 
-  // --- AUTOSAVE DRAFT LOGIC ---
+  // --- SMART AUTOSAVE DRAFT LOGIC ---
   Future<void> _saveDraftLocally() async {
     if (_isEdit || _isLoadingExisting || _isSaving) return;
     if (_companyController.text.trim().isEmpty && _phoneController.text.trim().isEmpty && _addresses.length <= 1) return;
 
     try {
-      final prefs = await SharedPreferences.getInstance();
       final draftData = {
         'companyName': _companyController.text,
         'phone': _phoneController.text,
@@ -552,7 +1065,14 @@ class _ScreensAddCustomerState extends State<ScreensAddCustomer> {
           'isServiceAddress': a.isServiceAddress,
         }).toList(),
       };
-      await prefs.setString('draft_customer_${widget.companyId}', jsonEncode(draftData));
+
+      final currentHash = jsonEncode(draftData);
+      if (currentHash == _lastSavedDraftHash) return; // Completely prevents unnecessary disk IO stutters
+
+      _lastSavedDraftHash = currentHash;
+
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('draft_customer_${widget.companyId}', currentHash);
     } catch (_) {}
   }
 
@@ -562,6 +1082,8 @@ class _ScreensAddCustomerState extends State<ScreensAddCustomer> {
       final draftStr = prefs.getString('draft_customer_${widget.companyId}');
       if (draftStr != null) {
         final data = jsonDecode(draftStr);
+        _lastSavedDraftHash = draftStr;
+
         _safeSetState(() {
           _companyController.text = data['companyName'] ?? '';
           _phoneController.text = data['phone'] ?? '';
@@ -613,6 +1135,7 @@ class _ScreensAddCustomerState extends State<ScreensAddCustomer> {
                 updatedByUid: widget.currentUserUid,
               ));
             }
+            _notifyAddressChange();
           }
         });
         return true;
@@ -666,30 +1189,6 @@ class _ScreensAddCustomerState extends State<ScreensAddCustomer> {
         duration: const Duration(milliseconds: 400),
         curve: Curves.easeOut,
       );
-    }
-  }
-
-  void _onGstChanged() {
-    final gst = _gstController.text.trim().toUpperCase();
-    if (gst.length >= 2) {
-      final code = gst.substring(0, 2);
-      final state = _gstStateCodes[code];
-      if (state != null) {
-        _AddressItem? target;
-        for (var a in _addresses) {
-          if (a.isPrimary) {
-            target = a;
-            break;
-          }
-        }
-        if (target == null && _addresses.isNotEmpty) {
-          target = _addresses.first;
-        }
-
-        if (target != null && target.stateController.text.trim().isEmpty) {
-          target.stateController.text = state;
-        }
-      }
     }
   }
 
@@ -830,6 +1329,7 @@ class _ScreensAddCustomerState extends State<ScreensAddCustomer> {
       if (_addresses.isNotEmpty && !_addresses.any((a) => a.isPrimary)) {
         _addresses.first.isPrimary = true;
       }
+      _notifyAddressChange();
 
       final savedCustomerType = (data['customerType'] ?? '').toString().trim();
       if (savedCustomerType.isEmpty) {
@@ -928,52 +1428,50 @@ class _ScreensAddCustomerState extends State<ScreensAddCustomer> {
   }
 
   void _addAddress() {
-    _safeSetState(() {
-      for(var a in _addresses) { a.isExpanded = false; }
-      _addresses.add(_AddressItem(
-        isPrimary: _addresses.isEmpty,
-        isBillingAddress: _addresses.isEmpty,
-        isExpanded: true,
-        createdByUid: widget.currentUserUid,
-        updatedByUid: widget.currentUserUid,
-        erpAddressCode: _getNextAddressCode(),
-      ));
-    });
+    for(var a in _addresses) { a.isExpanded = false; }
+    _addresses.add(_AddressItem(
+      isPrimary: _addresses.isEmpty,
+      isBillingAddress: _addresses.isEmpty,
+      isExpanded: true,
+      createdByUid: widget.currentUserUid,
+      updatedByUid: widget.currentUserUid,
+      erpAddressCode: _getNextAddressCode(),
+    ));
+    _notifyAddressChange();
   }
 
   void _duplicateAddress(int index) {
     final src = _addresses[index];
-    _safeSetState(() {
-      for(var a in _addresses) { a.isExpanded = false; }
-      _addresses.insert(
-        index + 1,
-        _AddressItem(
-          erpAddressCode: _getNextAddressCode(),
-          version: 1,
-          type: src.type,
-          customType: src.customTypeController.text,
-          street: src.streetController.text,
-          city: src.cityController.text,
-          state: src.stateController.text,
-          pincode: src.pincodeController.text,
-          country: src.countryController.text,
-          gst: src.gstController.text,
-          contactPerson: src.contactPersonController.text,
-          contactPhone: src.contactPhoneController.text,
-          contactEmail: src.contactEmailController.text,
-          tags: List.from(src.tags),
-          isPrimary: false,
-          isActive: true,
-          isBillingAddress: false,
-          isShippingAddress: false,
-          isDispatchAddress: false,
-          isServiceAddress: false,
-          isExpanded: true,
-          createdByUid: widget.currentUserUid,
-          updatedByUid: widget.currentUserUid,
-        ),
-      );
-    });
+    for(var a in _addresses) { a.isExpanded = false; }
+    _addresses.insert(
+      index + 1,
+      _AddressItem(
+        erpAddressCode: _getNextAddressCode(),
+        version: 1,
+        type: src.type,
+        customType: src.customTypeController.text,
+        street: src.streetController.text,
+        city: src.cityController.text,
+        state: src.stateController.text,
+        pincode: src.pincodeController.text,
+        country: src.countryController.text,
+        gst: src.gstController.text,
+        contactPerson: src.contactPersonController.text,
+        contactPhone: src.contactPhoneController.text,
+        contactEmail: src.contactEmailController.text,
+        tags: List.from(src.tags),
+        isPrimary: false,
+        isActive: true,
+        isBillingAddress: false,
+        isShippingAddress: false,
+        isDispatchAddress: false,
+        isServiceAddress: false,
+        isExpanded: true,
+        createdByUid: widget.currentUserUid,
+        updatedByUid: widget.currentUserUid,
+      ),
+    );
+    _notifyAddressChange();
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(content: Text('Address duplicated.'), duration: Duration(seconds: 2)),
     );
@@ -991,89 +1489,89 @@ class _ScreensAddCustomerState extends State<ScreensAddCustomer> {
     }
 
     final removed = _addresses[index];
-    _safeSetState(() {
-      _addresses.removeAt(index);
-      removed.dispose();
-      if (removed.isPrimary && _addresses.isNotEmpty) {
-        _addresses.first.isPrimary = true;
-      }
-    });
+    _addresses.removeAt(index);
+    removed.dispose();
+    if (removed.isPrimary && _addresses.isNotEmpty) {
+      _addresses.first.isPrimary = true;
+    }
+    _notifyAddressChange();
   }
 
   void _setPrimaryAddress(int index) {
-    _safeSetState(() {
-      for (int i = 0; i < _addresses.length; i++) {
-        _addresses[i].isPrimary = i == index;
-      }
-    });
+    for (int i = 0; i < _addresses.length; i++) {
+      _addresses[i].isPrimary = i == index;
+    }
+    _notifyAddressChange();
   }
 
   void _onReorderAddresses(int oldIndex, int newIndex) {
-    _safeSetState(() {
-      if (oldIndex < newIndex) newIndex -= 1;
-      final item = _addresses.removeAt(oldIndex);
-      _addresses.insert(newIndex, item);
-    });
+    if (oldIndex < newIndex) newIndex -= 1;
+    final item = _addresses.removeAt(oldIndex);
+    _addresses.insert(newIndex, item);
+    _notifyAddressChange();
   }
 
-  // --- ENTERPRISE GLOBAL SEARCH KEYWORDS GENERATOR ---
-  List<String> _generateAdvancedSearchKeywords(Map<String, dynamic> data, List<Map<String, dynamic>> addresses) {
+  // --- 🚀 ENTERPRISE SEARCH KEYWORDS GENERATOR (N-GRAMS) ---
+  List<String> _generateEnterpriseSearchKeywords(Map<String, dynamic> data, List<Map<String, dynamic>> addresses) {
     final Set<String> keywords = {};
-    final stopWords = {'a', 'an', 'the', 'and', 'or', 'of', 'in', 'on', 'to', 'for', 'with', 'by'};
 
-    void addString(String? text) {
+    void addNgrams(String? text) {
       if (text == null || text.trim().isEmpty) return;
-      final cleaned = text.toLowerCase().replaceAll(RegExp(r'[^a-z0-9\s]'), ' ').replaceAll(RegExp(r'\s+'), ' ').trim();
-      if (cleaned.isEmpty) return;
-      if (cleaned.length > 30) return; // Prevent excessively long keywords
 
-      final parts = cleaned.split(' ');
+      final cleanText = text.toLowerCase().trim();
+      keywords.add(cleanText);
 
-      for (var p in parts) {
-        if (p.length > 1 && !stopWords.contains(p) && p.length <= 30) keywords.add(p);
-      }
+      final parts = cleanText.split(RegExp(r'[\s\-_.\@]+'));
 
-      if (parts.length > 1 && cleaned.length > 2) keywords.add(cleaned);
+      for (final part in parts) {
+        if (part.isEmpty) continue;
 
-      for (int i = 0; i < parts.length - 1; i++) {
-        if (!stopWords.contains(parts[i]) && !stopWords.contains(parts[i+1])) {
-          final comb = '${parts[i]} ${parts[i+1]}';
-          if (comb.length <= 30) keywords.add(comb);
+        // Never skip long words entirely. Cap prefixes at 30 to save index space, but allow full word match.
+        String current = '';
+        int limit = part.length > 30 ? 30 : part.length;
+
+        for (int i = 0; i < limit; i++) {
+          current += part[i];
+          if (current.length >= 2) {
+            keywords.add(current);
+          }
+        }
+        if (part.length > 30) {
+          keywords.add(part);
         }
       }
     }
 
-    addString(data['companyName']);
-    addString(data['customerCode']);
-    addString(data['phone']);
-    addString(data['alternatePhone']);
-    addString(data['businessEmail']);
-    addString(data['gst']);
-    addString(data['pan']);
-    addString(data['customerType']);
-    addString(data['industry']);
-    addString(data['contactName']);
+    addNgrams(data['companyName']);
+    addNgrams(data['customerCode']);
+    addNgrams(data['phone']);
+    addNgrams(data['phoneDigitsOnly']);
+    addNgrams(data['alternatePhone']);
+    addNgrams(data['businessEmail']);
+    addNgrams(data['gst']);
+    addNgrams(data['pan']);
+    addNgrams(data['contactName']);
 
     for (final a in addresses) {
-      addString(a['type']);
-      if (a['isCustomType'] == true) addString(a['customType']);
-      addString(a['street']);
-      addString(a['city']);
-      addString(a['state']);
-      addString(a['pincode']);
-      addString(a['country']);
-      addString(a['gst']);
-      addString(a['contactPerson']);
-      addString(a['contactPhone']);
-      addString(a['contactEmail']);
-      for (final t in (a['tags'] as List? ?? [])) {
-        addString(t.toString());
+      addNgrams(a['city']);
+      addNgrams(a['state']);
+      addNgrams(a['gst']);
+      addNgrams(a['contactPerson']);
+      addNgrams(a['contactPhone']);
+      addNgrams(a['contactEmail']);
+
+      final tagsList = a['tags'];
+      if (tagsList is List) {
+        for (var tag in tagsList) {
+          addNgrams(tag.toString());
+        }
       }
     }
 
-    // Limit keywords payload
     final list = keywords.toList();
-    if (list.length > 500) return list.sublist(0, 500);
+    if (list.length > 1000) {
+      return list.sublist(0, 1000);
+    }
     return list;
   }
 
@@ -1128,8 +1626,7 @@ class _ScreensAddCustomerState extends State<ScreensAddCustomer> {
         delayMs *= 2;
       }
     }
-    // Fallback: never use docs.length because deleted/duplicate customers can repeat IDs.
-    // Scan existing numeric customer codes and use highest + 1.
+
     final fallbackSnap = await FirebaseFirestore.instance
         .collection('companies')
         .doc(widget.companyId)
@@ -1194,7 +1691,6 @@ class _ScreensAddCustomerState extends State<ScreensAddCustomer> {
 
   // --- DATA INTEGRITY VALIDATORS ---
   bool _runPreSaveValidations() {
-    // Check main GST and PAN validity if present
     final mainGst = _gstController.text.trim().toUpperCase();
     if (mainGst.isNotEmpty && !_isValidGst(mainGst)) {
       _scrollToTop();
@@ -1213,7 +1709,6 @@ class _ScreensAddCustomerState extends State<ScreensAddCustomer> {
       return false;
     }
 
-    // Check Address GSTs
     for (var a in _addresses) {
       final aGst = a.gstController.text.trim().toUpperCase();
       if (aGst.isNotEmpty && !_isValidGst(aGst)) {
@@ -1226,18 +1721,16 @@ class _ScreensAddCustomerState extends State<ScreensAddCustomer> {
       }
     }
 
-    // Ensure strictly ONE primary address. Auto-fix if multiple or zero.
     final primaryCount = _addresses.where((a) => a.isPrimary).length;
     if (primaryCount != 1) {
       for (var a in _addresses) { a.isPrimary = false; }
       _addresses.first.isPrimary = true;
     }
 
-    // Duplicate erpAddressCode Check
     final Set<String> codes = {};
     for (var a in _addresses) {
       if (!codes.add(a.erpAddressCode)) {
-        a.erpAddressCode = _getNextAddressCode(); // Auto-fix
+        a.erpAddressCode = _getNextAddressCode();
         codes.add(a.erpAddressCode);
       }
     }
@@ -1247,7 +1740,7 @@ class _ScreensAddCustomerState extends State<ScreensAddCustomer> {
 
   // --- CORE SAVE LOGIC ---
   Future<void> _saveCustomer() async {
-    if (_isSaving) return; // Debounce protection
+    if (_isSaving) return;
 
     final currentSession = DateTime.now().millisecondsSinceEpoch.toString();
     _saveSessionId = currentSession;
@@ -1273,7 +1766,7 @@ class _ScreensAddCustomerState extends State<ScreensAddCustomer> {
     }
 
     FocusScope.of(context).unfocus();
-    _checkWarnings(); // Non-blocking
+    _checkWarnings();
 
     final assignedTo = _canAssignOthers ? (_assignedToUid ?? '').trim() : widget.currentUserUid;
 
@@ -1340,16 +1833,11 @@ class _ScreensAddCustomerState extends State<ScreensAddCustomer> {
           'isServiceAddress': addr.isServiceAddress,
           'combinedAddress': combinedAddress,
           'searchableAddress': combinedAddress.toLowerCase(),
-
-          // CRITICAL FIX: Array cannot reliably contain FieldValue.serverTimestamp()
-          // Using Timestamp.fromDate(DateTime.now()) inside array objects safely.
           'createdAt': Timestamp.fromDate(addr.createdAt),
           'updatedAt': modifiedFields.isNotEmpty ? Timestamp.fromDate(DateTime.now()) : Timestamp.fromDate(addr.updatedAt),
-
           'createdByUid': addr.createdByUid.isEmpty ? widget.currentUserUid : addr.createdByUid,
           'updatedByUid': modifiedFields.isNotEmpty ? widget.currentUserUid : addr.updatedByUid,
           'lastModifiedFields': modifiedFields,
-
           'latitude': null,
           'longitude': null,
           'geoUpdatedAt': null,
@@ -1374,7 +1862,7 @@ class _ScreensAddCustomerState extends State<ScreensAddCustomer> {
 
       if (widget.existingDoc == null && gst.isNotEmpty) {
         final dupSnap = await _customersCol.where('companyName', isEqualTo: name).where('gst', isEqualTo: gst).limit(1).get();
-        if (_saveSessionId != currentSession) return; // Abort if stale
+        if (_saveSessionId != currentSession) return;
 
         if (dupSnap.docs.isNotEmpty) {
           if (!mounted) return;
@@ -1389,7 +1877,7 @@ class _ScreensAddCustomerState extends State<ScreensAddCustomer> {
       final assignedToName = await _getUserNameByUid(assignedTo);
       final currentUserName = _currentUserName.isNotEmpty ? _currentUserName : await _getUserNameByUid(widget.currentUserUid);
 
-      if (_saveSessionId != currentSession) return; // Stale request guard
+      if (_saveSessionId != currentSession) return;
 
       final String finalCustomerCode = _isEdit ? (_customerCode ?? '') : await _generateSecureCustomerCode();
 
@@ -1446,7 +1934,7 @@ class _ScreensAddCustomerState extends State<ScreensAddCustomer> {
         'assignedByUid': widget.currentUserUid,
         'assignedByName': currentUserName,
 
-        'updatedAt': FieldValue.serverTimestamp(), // Parent-level server timestamp safely allowed
+        'updatedAt': FieldValue.serverTimestamp(),
         'updatedBy': widget.currentUserUid,
         'updatedByUid': widget.currentUserUid,
         'updatedByName': currentUserName,
@@ -1459,13 +1947,11 @@ class _ScreensAddCustomerState extends State<ScreensAddCustomer> {
         }
       };
 
-      rawUpdateData['searchKeywords'] = _generateAdvancedSearchKeywords(rawUpdateData, addressesPayload);
+      rawUpdateData['searchKeywords'] = _generateEnterpriseSearchKeywords(rawUpdateData, addressesPayload);
 
-      // Sanitize Payload Before Submitting
       final nowUpdateData = _sanitizePayload(rawUpdateData);
 
-      // Verify Firestore Size Limitation
-      if (_estimatePayloadSize(nowUpdateData) > 950000) { // Safety margin < 1MB
+      if (_estimatePayloadSize(nowUpdateData) > 950000) {
         if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Data size too large. Please reduce address count or notes.'), backgroundColor: Colors.red),
@@ -1558,7 +2044,7 @@ class _ScreensAddCustomerState extends State<ScreensAddCustomer> {
 
       await batch.commit();
 
-      if (_saveSessionId != currentSession) return; // Prevent multiple navigations
+      if (_saveSessionId != currentSession) return;
 
       await _clearDraftLocally();
 
@@ -1577,10 +2063,10 @@ class _ScreensAddCustomerState extends State<ScreensAddCustomer> {
       _logError(module: 'CRM', method: '_saveCustomer', error: e, stack: stack, uid: widget.currentUserUid);
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
+        const SnackBar(
           content: Text('Failed to save customer. Please try again.'),
           backgroundColor: Colors.red,
-          duration: const Duration(seconds: 4),
+          duration: Duration(seconds: 4),
         ),
       );
     } finally {
@@ -1594,9 +2080,9 @@ class _ScreensAddCustomerState extends State<ScreensAddCustomer> {
 
   Widget _buildAssignUserDropdown() {
     return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-      stream: _companyUsersCol.where('isActive', isEqualTo: true).snapshots(),
+      stream: _activeUsersStream,
       builder: (context, snap) {
-        if (snap.connectionState == ConnectionState.waiting) {
+        if (snap.connectionState == ConnectionState.waiting && !snap.hasData) {
           return const Padding(padding: EdgeInsets.symmetric(vertical: 8), child: LinearProgressIndicator(minHeight: 2));
         }
 
@@ -1632,26 +2118,48 @@ class _ScreensAddCustomerState extends State<ScreensAddCustomer> {
           safeAssignedValue = currentUserExists ? widget.currentUserUid : null;
         }
 
-        return DropdownButtonFormField<String>(
-          initialValue: safeAssignedValue,
-          decoration: _inputDecoration(label: 'Assign to', icon: Icons.person_pin_circle_outlined),
-          items: docs.map((doc) {
-            final data = doc.data();
-            final name = _extractUserName(data, fallbackUid: doc.id);
-            final role = (data['role'] ?? '').toString().trim();
-            return DropdownMenuItem<String>(
-              value: doc.id,
-              child: Text(role.isEmpty ? name : '$name • $role', overflow: TextOverflow.ellipsis),
-            );
-          }).toList(),
-          onChanged: _canAssignOthers ? (value) => _safeSetState(() => _assignedToUid = value) : null,
-          validator: (value) {
-            final finalValue = _canAssignOthers ? value : widget.currentUserUid;
-            if (finalValue == null || finalValue.trim().isEmpty) return 'Please select assigned user';
-            return null;
-          },
+        return StatefulBuilder(
+          builder: (context, setLocalState) => DropdownButtonFormField<String>(
+            value: safeAssignedValue,
+            decoration: _inputDecoration(label: 'Assign to', icon: Icons.person_pin_circle_outlined),
+            items: docs.map((doc) {
+              final data = doc.data();
+              final name = _extractUserName(data, fallbackUid: doc.id);
+              final role = (data['role'] ?? '').toString().trim();
+              return DropdownMenuItem<String>(
+                value: doc.id,
+                child: Text(role.isEmpty ? name : '$name • $role', overflow: TextOverflow.ellipsis),
+              );
+            }).toList(),
+            onChanged: _canAssignOthers ? (value) {
+              _assignedToUid = value;
+              setLocalState(() {});
+            } : null,
+            validator: (value) {
+              final finalValue = _canAssignOthers ? value : widget.currentUserUid;
+              if (finalValue == null || finalValue.trim().isEmpty) return 'Please select assigned user';
+              return null;
+            },
+          ),
         );
       },
+    );
+  }
+
+  Widget _buildAssignmentSection() {
+    return _SectionBlock(
+      title: 'Ownership & Assignment',
+      subtitle: 'Who owns and manages this customer record',
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _buildAssignUserDropdown(),
+          if (!_canAssignOthers) ...[
+            const SizedBox(height: 10),
+            Text('You can create customer only for yourself.', style: TextStyle(fontSize: 12.5, color: Colors.grey.shade600)),
+          ],
+        ],
+      ),
     );
   }
 
@@ -1780,7 +2288,7 @@ class _ScreensAddCustomerState extends State<ScreensAddCustomer> {
       subtitle: 'Business identity and core contact channels',
       child: Column(
         children: [
-          _buildResponsiveRow(
+          _ResponsiveRow(
             children: [
               _buildTextField(
                 controller: _companyController,
@@ -1797,7 +2305,7 @@ class _ScreensAddCustomerState extends State<ScreensAddCustomer> {
             ],
           ),
           const SizedBox(height: 12),
-          _buildResponsiveRow(
+          _ResponsiveRow(
             children: [
               _buildTextField(
                 controller: _phoneController,
@@ -1815,7 +2323,7 @@ class _ScreensAddCustomerState extends State<ScreensAddCustomer> {
             ],
           ),
           const SizedBox(height: 12),
-          _buildResponsiveRow(
+          _ResponsiveRow(
             children: [
               _buildTextField(
                 controller: _businessEmailController,
@@ -1838,7 +2346,7 @@ class _ScreensAddCustomerState extends State<ScreensAddCustomer> {
             ],
           ),
           const SizedBox(height: 12),
-          _buildResponsiveRow(
+          _ResponsiveRow(
             children: [
               _buildTextField(
                 controller: _panController,
@@ -1855,103 +2363,90 @@ class _ScreensAddCustomerState extends State<ScreensAddCustomer> {
   }
 
   Widget _buildClassificationSection() {
-    return _SectionBlock(
-      title: 'CRM Classification',
-      subtitle: 'Standard segmentation and lifecycle fields',
-      child: Column(
-        children: [
-          _buildResponsiveRow(
-            children: [
-              DropdownButtonFormField<String>(
-                initialValue: _customerStage,
-                decoration: _inputDecoration(label: 'Customer Stage', icon: Icons.account_tree_outlined),
-                items: _customerStageOptions.map((t) => DropdownMenuItem(value: t, child: Text(t))).toList(),
-                onChanged: (value) => _safeSetState(() => _customerStage = value),
-              ),
-              DropdownButtonFormField<String>(
-                initialValue: _customerType,
-                decoration: _inputDecoration(label: 'Customer Type', icon: Icons.groups_2_outlined),
-                items: _customerTypeOptions.map((t) => DropdownMenuItem(value: t, child: Text(t, overflow: TextOverflow.ellipsis))).toList(),
-                onChanged: (value) {
-                  _safeSetState(() {
-                    _customerType = value;
-                    if (value != 'Other') _customerTypeCustomController.clear();
-                  });
-                },
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          _buildResponsiveRow(
-            children: [
-              DropdownButtonFormField<String>(
-                initialValue: _industry,
-                decoration: _inputDecoration(label: 'Industry', icon: Icons.factory_outlined),
-                items: _industryOptions.map((t) => DropdownMenuItem(value: t, child: Text(t, overflow: TextOverflow.ellipsis))).toList(),
-                onChanged: (value) {
-                  _safeSetState(() {
-                    _industry = value;
-                    if (value != 'Other') _industryCustomController.clear();
-                  });
-                },
-              ),
-              DropdownButtonFormField<String>(
-                initialValue: _leadSource,
-                decoration: _inputDecoration(label: 'Lead Source', icon: Icons.campaign_outlined),
-                items: _leadSourceOptions.map((t) => DropdownMenuItem(value: t, child: Text(t))).toList(),
-                onChanged: (value) => _safeSetState(() => _leadSource = value),
-              ),
-            ],
-          ),
-          if (_customerType == 'Other' || _industry == 'Other') ...[
-            const SizedBox(height: 12),
-            _buildResponsiveRow(
+    return StatefulBuilder(
+        builder: (context, setLocalState) {
+          return _SectionBlock(
+            title: 'CRM Classification',
+            subtitle: 'Standard segmentation and lifecycle fields',
+            child: Column(
               children: [
-                _customerType == 'Other'
-                    ? _buildTextField(controller: _customerTypeCustomController, label: 'Custom Customer Type', icon: Icons.edit_outlined)
-                    : const SizedBox.shrink(),
-                _industry == 'Other'
-                    ? _buildTextField(controller: _industryCustomController, label: 'Custom Industry', icon: Icons.tune_outlined)
-                    : const SizedBox.shrink(),
+                _ResponsiveRow(
+                  children: [
+                    DropdownButtonFormField<String>(
+                      value: _customerStage,
+                      decoration: _inputDecoration(label: 'Customer Stage', icon: Icons.account_tree_outlined),
+                      items: _customerStageOptions.map((t) => DropdownMenuItem(value: t, child: Text(t))).toList(),
+                      onChanged: (value) => setLocalState(() => _customerStage = value),
+                    ),
+                    DropdownButtonFormField<String>(
+                      value: _customerType,
+                      decoration: _inputDecoration(label: 'Customer Type', icon: Icons.groups_2_outlined),
+                      items: _customerTypeOptions.map((t) => DropdownMenuItem(value: t, child: Text(t, overflow: TextOverflow.ellipsis))).toList(),
+                      onChanged: (value) {
+                        setLocalState(() {
+                          _customerType = value;
+                          if (value != 'Other') _customerTypeCustomController.clear();
+                        });
+                      },
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                _ResponsiveRow(
+                  children: [
+                    DropdownButtonFormField<String>(
+                      value: _industry,
+                      decoration: _inputDecoration(label: 'Industry', icon: Icons.factory_outlined),
+                      items: _industryOptions.map((t) => DropdownMenuItem(value: t, child: Text(t, overflow: TextOverflow.ellipsis))).toList(),
+                      onChanged: (value) {
+                        setLocalState(() {
+                          _industry = value;
+                          if (value != 'Other') _industryCustomController.clear();
+                        });
+                      },
+                    ),
+                    DropdownButtonFormField<String>(
+                      value: _leadSource,
+                      decoration: _inputDecoration(label: 'Lead Source', icon: Icons.campaign_outlined),
+                      items: _leadSourceOptions.map((t) => DropdownMenuItem(value: t, child: Text(t))).toList(),
+                      onChanged: (value) => setLocalState(() => _leadSource = value),
+                    ),
+                  ],
+                ),
+                if (_customerType == 'Other' || _industry == 'Other') ...[
+                  const SizedBox(height: 12),
+                  _ResponsiveRow(
+                    children: [
+                      _customerType == 'Other'
+                          ? _buildTextField(controller: _customerTypeCustomController, label: 'Custom Customer Type', icon: Icons.edit_outlined)
+                          : const SizedBox.shrink(),
+                      _industry == 'Other'
+                          ? _buildTextField(controller: _industryCustomController, label: 'Custom Industry', icon: Icons.tune_outlined)
+                          : const SizedBox.shrink(),
+                    ],
+                  ),
+                ],
+                const SizedBox(height: 12),
+                _ResponsiveRow(
+                  children: [
+                    DropdownButtonFormField<String>(
+                      value: _status,
+                      decoration: _inputDecoration(label: 'Status', icon: Icons.verified_user_outlined),
+                      items: _statusOptions.map((t) => DropdownMenuItem(value: t, child: Text(t))).toList(),
+                      onChanged: (value) => setLocalState(() => _status = value),
+                    ),
+                    DropdownButtonFormField<String>(
+                      value: _priority,
+                      decoration: _inputDecoration(label: 'Priority', icon: Icons.flag_outlined),
+                      items: _priorityOptions.map((t) => DropdownMenuItem(value: t, child: Text(t))).toList(),
+                      onChanged: (value) => setLocalState(() => _priority = value),
+                    ),
+                  ],
+                ),
               ],
             ),
-          ],
-          const SizedBox(height: 12),
-          _buildResponsiveRow(
-            children: [
-              DropdownButtonFormField<String>(
-                initialValue: _status,
-                decoration: _inputDecoration(label: 'Status', icon: Icons.verified_user_outlined),
-                items: _statusOptions.map((t) => DropdownMenuItem(value: t, child: Text(t))).toList(),
-                onChanged: (value) => _safeSetState(() => _status = value),
-              ),
-              DropdownButtonFormField<String>(
-                initialValue: _priority,
-                decoration: _inputDecoration(label: 'Priority', icon: Icons.flag_outlined),
-                items: _priorityOptions.map((t) => DropdownMenuItem(value: t, child: Text(t))).toList(),
-                onChanged: (value) => _safeSetState(() => _priority = value),
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildAssignmentSection() {
-    return _SectionBlock(
-      title: 'Ownership & Assignment',
-      subtitle: 'Who owns and manages this customer record',
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          _buildAssignUserDropdown(),
-          if (!_canAssignOthers) ...[
-            const SizedBox(height: 10),
-            Text('You can create customer only for yourself.', style: TextStyle(fontSize: 12.5, color: Colors.grey.shade600)),
-          ],
-        ],
-      ),
+          );
+        }
     );
   }
 
@@ -1967,7 +2462,7 @@ class _ScreensAddCustomerState extends State<ScreensAddCustomer> {
             icon: Icons.person_outline,
           ),
           const SizedBox(height: 12),
-          _buildResponsiveRow(
+          _ResponsiveRow(
             children: [
               _buildTextField(controller: _designationController, label: 'Designation', icon: Icons.badge_outlined),
               _buildTextField(controller: _departmentController, label: 'Department', icon: Icons.account_tree_outlined),
@@ -2006,395 +2501,54 @@ class _ScreensAddCustomerState extends State<ScreensAddCustomer> {
     );
   }
 
-  Widget _buildAddressCard(int index, _AddressItem address) {
-    final isDuplicateType = address.type != 'Other' && _addresses.where((a) => a.type == address.type).length > 1;
-
-    return RepaintBoundary(
-      child: Opacity(
-        opacity: address.isActive ? 1.0 : 0.65,
-        child: Container(
-          margin: const EdgeInsets.only(bottom: 16),
-          decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: address.isPrimary ? Colors.blue.shade300 : Colors.grey.shade300, width: address.isPrimary ? 1.5 : 1.2),
-              boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 6, offset: const Offset(0, 2))]
-          ),
-          child: Column(
-            children: [
-              InkWell(
-                onTap: () => _safeSetState(() => address.isExpanded = !address.isExpanded),
-                borderRadius: BorderRadius.vertical(top: const Radius.circular(11), bottom: address.isExpanded ? Radius.zero : const Radius.circular(11)),
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-                  decoration: BoxDecoration(
-                    color: address.isPrimary ? Colors.blue.shade50.withOpacity(0.4) : Colors.grey.shade50,
-                    borderRadius: BorderRadius.vertical(top: const Radius.circular(11), bottom: address.isExpanded ? Radius.zero : const Radius.circular(11)),
-                    border: Border(bottom: BorderSide(color: address.isExpanded ? Colors.grey.shade200 : Colors.transparent)),
-                  ),
-                  child: Row(
-                    children: [
-                      ReorderableDragStartListener(
-                        index: index,
-                        child: const Padding(padding: EdgeInsets.only(right: 8), child: Icon(Icons.drag_indicator, size: 20, color: Colors.grey)),
-                      ),
-                      Text('Address ${index + 1}', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: Colors.grey.shade800)),
-                      if (address.isPrimary) ...[
-                        const SizedBox(width: 10),
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                          decoration: BoxDecoration(color: Colors.blue.shade100, borderRadius: BorderRadius.circular(20)),
-                          child: Text('Primary', style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: Colors.blue.shade800)),
-                        ),
-                      ],
-                      if (!address.isActive) ...[
-                        const SizedBox(width: 10),
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                          decoration: BoxDecoration(color: Colors.grey.shade300, borderRadius: BorderRadius.circular(20)),
-                          child: Text('Inactive', style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: Colors.grey.shade800)),
-                        ),
-                      ],
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: ValueListenableBuilder<String>(
-                          valueListenable: address.summaryNotifier,
-                          builder: (context, summary, _) {
-                            return Text(
-                              summary,
-                              style: TextStyle(fontSize: 13, color: Colors.grey.shade600, fontWeight: FontWeight.w500),
-                              maxLines: 1, overflow: TextOverflow.ellipsis,
-                            );
-                          },
-                        ),
-                      ),
-                      IconButton(
-                        icon: const Icon(Icons.content_copy, size: 18),
-                        onPressed: () => _duplicateAddress(index),
-                        tooltip: 'Duplicate Address',
-                        splashRadius: 20,
-                      ),
-                      Icon(address.isExpanded ? Icons.keyboard_arrow_up : Icons.keyboard_arrow_down, color: Colors.grey.shade600),
-                    ],
-                  ),
-                ),
-              ),
-
-              if (address.isExpanded)
-                Padding(
-                  padding: const EdgeInsets.all(16),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      if (isDuplicateType) ...[
-                        Container(
-                          margin: const EdgeInsets.only(bottom: 12),
-                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                          decoration: BoxDecoration(color: Colors.amber.shade50, borderRadius: BorderRadius.circular(6), border: Border.all(color: Colors.amber.shade200)),
-                          child: Row(
-                            children: [
-                              Icon(Icons.info_outline, size: 14, color: Colors.amber.shade800),
-                              const SizedBox(width: 6),
-                              Expanded(child: Text('Multiple "${address.type}" addresses detected.', style: TextStyle(fontSize: 12, color: Colors.amber.shade900))),
-                            ],
-                          ),
-                        ),
-                      ],
-
-                      _buildResponsiveRow(
-                        children: [
-                          DropdownButtonFormField<String>(
-                            value: address.type,
-                            decoration: _inputDecoration(label: 'Address Type *', icon: Icons.bookmark_border_outlined),
-                            items: _addressTypeOptions.map((t) => DropdownMenuItem(value: t, child: Text(t))).toList(),
-                            onChanged: (val) {
-                              if (val != null) {
-                                _safeSetState(() {
-                                  address.type = val;
-                                  if (val != 'Other') address.customTypeController.clear();
-                                  address.updateSummary();
-                                });
-                              }
-                            },
-                          ),
-                          if (address.type == 'Other')
-                            _buildTextField(
-                              controller: address.customTypeController,
-                              label: 'Custom Type Name *',
-                              icon: Icons.edit_outlined,
-                              validator: (v) => v == null || v.trim().isEmpty ? 'Required' : null,
-                            )
-                          else
-                            const SizedBox.shrink(),
-                        ],
-                      ),
-                      const SizedBox(height: 12),
-                      _buildTextField(
-                        controller: address.streetController,
-                        label: 'Street Address',
-                        icon: Icons.home_outlined,
-                        maxLines: 2,
-                      ),
-                      const SizedBox(height: 12),
-                      _buildResponsiveRow(
-                        children: [
-                          _buildTextField(
-                            controller: address.cityController,
-                            label: 'City *',
-                            icon: Icons.location_city_outlined,
-                            validator: (v) => v == null || v.trim().isEmpty ? 'Required' : null,
-                          ),
-                          _buildTextField(
-                            controller: address.stateController,
-                            label: 'State',
-                            icon: Icons.map_outlined,
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 12),
-                      _buildResponsiveRow(
-                        children: [
-                          _buildTextField(
-                            controller: address.pincodeController,
-                            label: 'Pincode',
-                            icon: Icons.markunread_mailbox_outlined,
-                            keyboardType: TextInputType.number,
-                            validator: (v) {
-                              if (v != null && v.trim().isNotEmpty) {
-                                final ctry = address.countryController.text.trim().toLowerCase();
-                                if (ctry == 'india' && !RegExp(r'^\d{6}$').hasMatch(v.trim())) {
-                                  return 'Invalid Pincode (6 digits)';
-                                }
-                              }
-                              return null;
-                            },
-                          ),
-                          _buildTextField(
-                            controller: address.countryController,
-                            label: 'Country *',
-                            icon: Icons.public_outlined,
-                            validator: (v) => v == null || v.trim().isEmpty ? 'Required' : null,
-                          ),
-                        ],
-                      ),
-
-                      const Padding(padding: EdgeInsets.symmetric(vertical: 16), child: Divider(height: 1)),
-
-                      const Text('Contact & Tax Details (Optional)', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: Colors.black87)),
-                      const SizedBox(height: 12),
-                      _buildResponsiveRow(
-                        children: [
-                          _buildTextField(
-                            controller: address.contactPersonController,
-                            label: 'Contact Person',
-                            icon: Icons.person_outline,
-                          ),
-                          _buildTextField(
-                            controller: address.gstController,
-                            label: 'Address GST',
-                            icon: Icons.receipt_long_outlined,
-                            textCapitalization: TextCapitalization.characters,
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 12),
-                      _buildResponsiveRow(
-                        children: [
-                          _buildTextField(
-                            controller: address.contactPhoneController,
-                            label: 'Contact Phone',
-                            icon: Icons.phone_outlined,
-                            keyboardType: TextInputType.phone,
-                          ),
-                          _buildTextField(
-                            controller: address.contactEmailController,
-                            label: 'Contact Email',
-                            icon: Icons.email_outlined,
-                            keyboardType: TextInputType.emailAddress,
-                            validator: (v) {
-                              final email = (v ?? '').trim();
-                              if (email.isEmpty) return null;
-                              if (!RegExp(r'^[^@\s]+@[^@\s]+\.[^@\s]+$').hasMatch(email)) return 'Invalid email';
-                              return null;
-                            },
-                          ),
-                        ],
-                      ),
-
-                      const Padding(padding: EdgeInsets.symmetric(vertical: 16), child: Divider(height: 1)),
-
-                      const Text('Usage Flags & Tags', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: Colors.black87)),
-                      const SizedBox(height: 10),
-                      Wrap(
-                        spacing: 16,
-                        runSpacing: 10,
-                        children: [
-                          _buildCheckbox(label: 'Billing', value: address.isBillingAddress, onChanged: (v) => _safeSetState(() => address.isBillingAddress = v ?? false)),
-                          _buildCheckbox(label: 'Shipping', value: address.isShippingAddress, onChanged: (v) => _safeSetState(() => address.isShippingAddress = v ?? false)),
-                          _buildCheckbox(label: 'Dispatch', value: address.isDispatchAddress, onChanged: (v) => _safeSetState(() => address.isDispatchAddress = v ?? false)),
-                          _buildCheckbox(label: 'Service', value: address.isServiceAddress, onChanged: (v) => _safeSetState(() => address.isServiceAddress = v ?? false)),
-                        ],
-                      ),
-                      const SizedBox(height: 16),
-                      Row(
-                        children: [
-                          Expanded(
-                            child: TextFormField(
-                              controller: address.tagInputController,
-                              decoration: _inputDecoration(label: 'Add Tag (e.g. "HQ")', icon: Icons.local_offer_outlined).copyWith(
-                                contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                                suffixIcon: IconButton(
-                                  icon: const Icon(Icons.add, size: 20),
-                                  onPressed: () => _safeSetState(() => address.addTag(address.tagInputController.text)),
-                                ),
-                              ),
-                              onFieldSubmitted: (val) => _safeSetState(() => address.addTag(val)),
-                            ),
-                          ),
-                        ],
-                      ),
-                      if (address.tags.isNotEmpty) ...[
-                        const SizedBox(height: 10),
-                        Wrap(
-                          spacing: 8,
-                          runSpacing: 8,
-                          children: address.tags.map((tag) => Chip(
-                            label: Text(tag, style: const TextStyle(fontSize: 11)),
-                            onDeleted: () => _safeSetState(() => address.removeTag(tag)),
-                            padding: EdgeInsets.zero,
-                            materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                          )).toList(),
-                        ),
-                      ],
-
-                      const SizedBox(height: 16),
-                      const Divider(height: 1),
-                      const SizedBox(height: 12),
-
-                      Wrap(
-                        alignment: WrapAlignment.spaceBetween,
-                        crossAxisAlignment: WrapCrossAlignment.center,
-                        spacing: 12,
-                        runSpacing: 12,
-                        children: [
-                          Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              InkWell(
-                                onTap: () => _setPrimaryAddress(index),
-                                borderRadius: BorderRadius.circular(6),
-                                child: Padding(
-                                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
-                                  child: Row(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      Icon(
-                                        address.isPrimary ? Icons.check_circle : Icons.radio_button_unchecked,
-                                        color: address.isPrimary ? Colors.blue.shade700 : Colors.grey.shade500,
-                                        size: 22,
-                                      ),
-                                      const SizedBox(width: 8),
-                                      Text(
-                                        'Primary',
-                                        style: TextStyle(
-                                          fontSize: 13.5,
-                                          fontWeight: address.isPrimary ? FontWeight.w600 : FontWeight.w500,
-                                          color: address.isPrimary ? Colors.blue.shade700 : Colors.grey.shade700,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              ),
-                              const SizedBox(width: 16),
-                              InkWell(
-                                onTap: () => _safeSetState(() => address.isActive = !address.isActive),
-                                borderRadius: BorderRadius.circular(6),
-                                child: Padding(
-                                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
-                                  child: Row(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      Icon(
-                                        address.isActive ? Icons.toggle_on : Icons.toggle_off,
-                                        color: address.isActive ? Colors.green.shade600 : Colors.grey.shade500,
-                                        size: 32,
-                                      ),
-                                      const SizedBox(width: 4),
-                                      Text(
-                                        address.isActive ? 'Active' : 'Inactive',
-                                        style: TextStyle(
-                                          fontSize: 13.5,
-                                          fontWeight: address.isActive ? FontWeight.w600 : FontWeight.w500,
-                                          color: address.isActive ? Colors.green.shade700 : Colors.grey.shade700,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-                          if (_addresses.length > 1)
-                            TextButton.icon(
-                              onPressed: () => _removeAddress(index),
-                              icon: const Icon(Icons.delete_outline, size: 18),
-                              label: const Text('Remove Address'),
-                              style: TextButton.styleFrom(
-                                foregroundColor: Colors.red.shade600,
-                                padding: const EdgeInsets.symmetric(horizontal: 12),
-                              ),
-                            ),
-                        ],
-                      ),
-                    ],
-                  ),
-                ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
   Widget _buildAddressesSection() {
     return _SectionBlock(
       title: 'Business Addresses',
       subtitle: 'Locations, shipping points, and regional contact details',
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          if (_addresses.isEmpty)
-            _buildEmptyAddressState()
-          else
-            ReorderableListView.builder(
-              shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(),
-              itemCount: _addresses.length,
-              buildDefaultDragHandles: false,
-              onReorderStart: (_) => FocusScope.of(context).unfocus(),
-              onReorder: _onReorderAddresses,
-              proxyDecorator: (child, index, animation) => Material(color: Colors.transparent, child: child),
-              itemBuilder: (context, index) {
-                final address = _addresses[index];
-                return Container(
-                  key: ValueKey(address.id),
-                  child: _buildAddressCard(index, address),
-                );
-              },
-            ),
+      child: ValueListenableBuilder<int>(
+          valueListenable: _addressListNotifier,
+          builder: (context, _, __) {
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                if (_addresses.isEmpty)
+                  _buildEmptyAddressState()
+                else
+                  ReorderableListView.builder(
+                    shrinkWrap: true,
+                    physics: const NeverScrollableScrollPhysics(),
+                    itemCount: _addresses.length,
+                    buildDefaultDragHandles: false,
+                    onReorderStart: (_) => FocusScope.of(context).unfocus(),
+                    onReorder: _onReorderAddresses,
+                    proxyDecorator: (child, index, animation) => Material(color: Colors.transparent, child: child),
+                    itemBuilder: (context, index) {
+                      final address = _addresses[index];
+                      return _AddressCardWidget(
+                        key: ValueKey(address.id),
+                        index: index,
+                        address: address,
+                        isDuplicateType: address.type != 'Other' && _addresses.where((a) => a.type == address.type).length > 1,
+                        onDuplicate: () => _duplicateAddress(index),
+                        onRemove: () => _removeAddress(index),
+                        onSetPrimary: () => _setPrimaryAddress(index),
+                      );
+                    },
+                  ),
 
-          const SizedBox(height: 8),
-          OutlinedButton.icon(
-            onPressed: _addAddress,
-            icon: const Icon(Icons.add_location_alt_outlined, size: 18),
-            label: const Text('Add Another Address'),
-            style: OutlinedButton.styleFrom(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-            ),
-          ),
-        ],
+                const SizedBox(height: 8),
+                OutlinedButton.icon(
+                  onPressed: _addAddress,
+                  icon: const Icon(Icons.add_location_alt_outlined, size: 18),
+                  label: const Text('Add Another Address'),
+                  style: OutlinedButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                  ),
+                ),
+              ],
+            );
+          }
       ),
     );
   }
@@ -2453,122 +2607,6 @@ class _ScreensAddCustomerState extends State<ScreensAddCustomer> {
             ),
           ),
         ),
-      ),
-    );
-  }
-
-  Widget _buildResponsiveRow({required List<Widget> children}) {
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final isStacked = constraints.maxWidth < 700;
-        if (isStacked) {
-          return Column(
-            children: [
-              for (int i = 0; i < children.length; i++) ...[
-                children[i],
-                if (i != children.length - 1) const SizedBox(height: 12),
-              ],
-            ],
-          );
-        }
-        return Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            for (int i = 0; i < children.length; i++) ...[
-              Expanded(child: children[i]),
-              if (i != children.length - 1) const SizedBox(width: 12),
-            ],
-          ],
-        );
-      },
-    );
-  }
-
-  Widget _buildCheckbox({required String label, required bool value, required ValueChanged<bool?> onChanged}) {
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        SizedBox(
-          width: 24,
-          height: 24,
-          child: Checkbox(value: value, onChanged: onChanged, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4))),
-        ),
-        const SizedBox(width: 6),
-        GestureDetector(
-          onTap: () => onChanged(!value),
-          child: Text(label, style: const TextStyle(fontSize: 13, color: Colors.black87)),
-        ),
-      ],
-    );
-  }
-
-  InputDecoration _inputDecoration({required String label, required IconData icon}) {
-    return InputDecoration(
-      labelText: label,
-      prefixIcon: Icon(icon, size: 20),
-      filled: true,
-      fillColor: Colors.white,
-      isDense: true,
-      contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
-      border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: Colors.grey.shade300)),
-      enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: Colors.grey.shade300)),
-      focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: Colors.blue.shade600, width: 1.2)),
-      errorBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: Colors.red.shade400)),
-      focusedErrorBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: Colors.red.shade400, width: 1.2)),
-    );
-  }
-
-  Widget _buildTextField({
-    required TextEditingController controller,
-    required String label,
-    required IconData icon,
-    TextInputType? keyboardType,
-    String? Function(String?)? validator,
-    int maxLines = 1,
-    TextCapitalization textCapitalization = TextCapitalization.none,
-  }) {
-    return TextFormField(
-      controller: controller,
-      decoration: _inputDecoration(label: label, icon: icon),
-      keyboardType: keyboardType,
-      validator: validator,
-      maxLines: maxLines,
-      textCapitalization: textCapitalization,
-    );
-  }
-}
-
-class _SectionBlock extends StatelessWidget {
-  final String title;
-  final String subtitle;
-  final Widget child;
-
-  const _SectionBlock({
-    required this.title,
-    required this.subtitle,
-    required this.child,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: Colors.grey.shade200, width: 0.9),
-          boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.015), blurRadius: 10, offset: const Offset(0, 4))]
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(title, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: Colors.black87)),
-          const SizedBox(height: 4),
-          Text(subtitle, style: TextStyle(fontSize: 12.5, color: Colors.grey.shade600)),
-          const SizedBox(height: 20),
-          child,
-        ],
       ),
     );
   }
