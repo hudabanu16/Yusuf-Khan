@@ -1,6 +1,7 @@
 {
   "projects": {
-    "default": "salman-1ce8f"
+    "default": "salman-1ce8f",
+    "genz": "quik-genz-erp"
   },
   "targets": {},
   "etags": {}

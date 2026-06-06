@@ -41,46 +41,47 @@ class DefaultFirebaseOptions {
   }
 
   static const FirebaseOptions web = FirebaseOptions(
-    apiKey: 'AIzaSyAmitU8rHNfmqJVqW6To8A-cOBLD-jCRZI',
-    appId: '1:686535885370:web:04830ea6747ee55ad42b03',
-    messagingSenderId: '686535885370',
-    projectId: 'quik-genz-erp',
-    authDomain: 'quik-genz-erp.firebaseapp.com',
-    storageBucket: 'quik-genz-erp.firebasestorage.app',
-    measurementId: 'G-164TL3SWLV',
+    apiKey: 'AIzaSyCaxta_H6fvn3VCfM8Ad3RRDQhH8ZLUziM',
+    appId: '1:538647707022:web:a10fb8613ce42ba443f8df',
+    messagingSenderId: '538647707022',
+    projectId: 'salman-1ce8f',
+    authDomain: 'salman-1ce8f.firebaseapp.com',
+    storageBucket: 'salman-1ce8f.firebasestorage.app',
   );
 
   static const FirebaseOptions android = FirebaseOptions(
-    apiKey: 'AIzaSyBFHrlI_0I4GpPA_BAU4JeMjhoosjVNuKs',
-    appId: '1:686535885370:android:86014c30c21b4f6bd42b03',
-    messagingSenderId: '686535885370',
-    projectId: 'quik-genz-erp',
-    storageBucket: 'quik-genz-erp.firebasestorage.app',
+    apiKey: 'AIzaSyCEPJmirllrI0rNjQ8UzLmQGxdHT2N7Z2Q',
+    appId: '1:538647707022:android:44159bf4d817937543f8df',
+    messagingSenderId: '538647707022',
+    projectId: 'salman-1ce8f',
+    storageBucket: 'salman-1ce8f.firebasestorage.app',
   );
+
   static const FirebaseOptions ios = FirebaseOptions(
-    apiKey: 'AIzaSyADKsMS9NTCokHcx_hFYrZ_Tf-iafRCAI8',
-    appId: '1:686535885370:ios:cbd2c927b694f6bcd42b03',
-    messagingSenderId: '686535885370',
-    projectId: 'quik-genz-erp',
-    storageBucket: 'quik-genz-erp.firebasestorage.app',
+    apiKey: 'AIzaSyB700jElw33hh6-wp_rxCx_gxgPcObqRtU',
+    appId: '1:538647707022:ios:7666a27060de7c8843f8df',
+    messagingSenderId: '538647707022',
+    projectId: 'salman-1ce8f',
+    storageBucket: 'salman-1ce8f.firebasestorage.app',
     iosBundleId: 'com.example.genzProtech',
   );
+
   static const FirebaseOptions macos = FirebaseOptions(
-    apiKey: 'AIzaSyADKsMS9NTCokHcx_hFYrZ_Tf-iafRCAI8',
-    appId: '1:686535885370:ios:cbd2c927b694f6bcd42b03',
-    messagingSenderId: '686535885370',
-    projectId: 'quik-genz-erp',
-    storageBucket: 'quik-genz-erp.firebasestorage.app',
+    apiKey: 'AIzaSyB700jElw33hh6-wp_rxCx_gxgPcObqRtU',
+    appId: '1:538647707022:ios:7666a27060de7c8843f8df',
+    messagingSenderId: '538647707022',
+    projectId: 'salman-1ce8f',
+    storageBucket: 'salman-1ce8f.firebasestorage.app',
     iosBundleId: 'com.example.genzProtech',
   );
 
   static const FirebaseOptions windows = FirebaseOptions(
-    apiKey: 'AIzaSyAmitU8rHNfmqJVqW6To8A-cOBLD-jCRZI',
-    appId: '1:686535885370:web:195368de6f45553ad42b03',
-    messagingSenderId: '686535885370',
-    projectId: 'quik-genz-erp',
-    authDomain: 'quik-genz-erp.firebaseapp.com',
-    storageBucket: 'quik-genz-erp.firebasestorage.app',
-    measurementId: 'G-QLJJYSP2B7',
+    apiKey: 'AIzaSyCaxta_H6fvn3VCfM8Ad3RRDQhH8ZLUziM',
+    appId: '1:538647707022:web:a9881877fbee1c1443f8df',
+    messagingSenderId: '538647707022',
+    projectId: 'salman-1ce8f',
+    authDomain: 'salman-1ce8f.firebaseapp.com',
+    storageBucket: 'salman-1ce8f.firebasestorage.app',
   );
+
 }
